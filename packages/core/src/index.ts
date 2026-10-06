@@ -90,6 +90,7 @@ export {
   type LoadConfigOptions,
   loadConfig,
 } from './config/loader';
+export { type CreateEngineOptions, createEngine, type Engine } from './engine';
 export {
   type ChromiumContext,
   type ChromiumLaunchOptions,
