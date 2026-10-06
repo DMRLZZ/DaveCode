@@ -91,6 +91,37 @@ const res = await client.chat.completions.create({
 });
 ```
 
+## Dashboard
+
+A keyboard-first web cockpit for the gateway and the autonomous engine (`packages/ui`, Vite +
+React + Tailwind). The gateway serves its production build (`packages/ui/dist`) at
+`http://localhost:4040/`.
+
+![DaveCode dashboard overview: token burn, quota utilization and recent activity](docs/assets/dashboard-overview.png)
+
+| Task graph | Accounts |
+| :--------: | :------: |
+| ![Task graph as a dependency DAG with STATE.md and task details](docs/assets/dashboard-tasks.png) | ![Accounts with quota meters, cooldowns and enable toggles](docs/assets/dashboard-accounts.png) |
+
+- **Overview**: live token burn (tokens/min over 60 min), requests/min, failovers, health and
+  per-account 1m/5h/24h quota meters with the 85 % backpressure and 90 % shift thresholds.
+- **Accounts, Traffic, Routes**: add accounts with write-only secrets, watch every request with
+  its failover chain inline (`acc A → 429 → acc B ✓`), inspect ordered route targets.
+- **Tasks and Runner**: the task graph as a DAG, board or list next to `STATE.md`, and the
+  runner's state machine, repair cycles and live logs with start/pause/stop.
+- `Ctrl/⌘ K` opens the command palette; `g o`, `g a`, `g t`… jump between screens; `?` lists
+  every shortcut. Dark by default, with a light theme.
+
+Develop it against a running gateway, or fully offline with simulated data:
+
+```bash
+pnpm dev:ui                     # http://localhost:5173, proxies /api and /v1 to :4040
+# open http://localhost:5173/?mock=1 for mock mode (or set VITE_DAVECODE_MOCK=1)
+```
+
+When the gateway is unreachable the dashboard falls back to mock data automatically and shows a
+**Mock data** badge. The screenshots above were taken in mock mode.
+
 ## Providers
 
 | Provider | Kind | Auth | Default |
