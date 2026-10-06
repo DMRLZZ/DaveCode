@@ -1,9 +1,7 @@
+import './styles.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-
-function App() {
-  return <main>DaveCode dashboard</main>;
-}
+import { App } from './App';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root element missing from index.html');

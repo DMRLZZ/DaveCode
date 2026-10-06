@@ -13,6 +13,9 @@
       try {
         storedTheme = localStorage.getItem('davecode.theme');
       } catch (_) {}
+      if (storedTheme === 'system') {
+        storedTheme = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
       if (storedTheme === 'light' || storedTheme === 'dark') {
         document.documentElement.dataset.theme = storedTheme;
       }
