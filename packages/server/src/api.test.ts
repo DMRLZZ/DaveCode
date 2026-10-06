@@ -42,6 +42,33 @@ describe('GET /api/health', () => {
 });
 
 describe('/api/accounts', () => {
+  it('reports hasSecret without ever returning the secret', async () => {
+    await setup();
+    const bare = await app.inject({
+      method: 'POST',
+      url: '/api/accounts',
+      payload: {
+        provider: 'openai-compatible',
+        label: 'Local',
+        config: { baseUrl: 'http://x/v1' },
+      },
+    });
+    const { account } = bare.json();
+    expect(account.hasSecret).toBe(false);
+
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/api/accounts/${account.id}`,
+      payload: { secret: SECRET },
+    });
+    expect(patched.json().account.hasSecret).toBe(true);
+    expect(patched.payload).not.toContain(SECRET);
+
+    const list = await app.inject({ method: 'GET', url: '/api/accounts' });
+    expect(list.json().accounts[0].hasSecret).toBe(true);
+    expect(list.payload).not.toContain(SECRET);
+  });
+
   it('creates accounts with write-only secrets', async () => {
     const seen = await setup();
     const res = await app.inject({

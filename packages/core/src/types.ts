@@ -166,6 +166,8 @@ export interface Account {
   /** ISO timestamp until which the account is cooling down after a 429/503. */
   cooldownUntil?: string;
   lastError?: string;
+  /** Whether the keyring holds a secret for this account. The secret itself is never exposed. */
+  hasSecret?: boolean;
   createdAt: string;
   updatedAt: string;
 }

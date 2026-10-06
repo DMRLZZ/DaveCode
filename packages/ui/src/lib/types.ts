@@ -61,6 +61,8 @@ export interface Account {
   status: AccountStatus;
   cooldownUntil?: string;
   lastError?: string;
+  /** Whether the keyring holds a secret for this account. The secret itself is never exposed. */
+  hasSecret?: boolean;
   createdAt: string;
   updatedAt: string;
 }
