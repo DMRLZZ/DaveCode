@@ -1,4 +1,8 @@
-import { VERSION } from '@davecode/core';
+import { runCli } from './program';
 
-// Full command set (start, status, add-account, run) and the Ink TUI land in Phase 5.
-console.log(`davecode ${VERSION}`);
+const code = await runCli(process.argv.slice(2), {
+  io: { stdout: process.stdout, stderr: process.stderr, stdin: process.stdin },
+  env: process.env,
+  cwd: process.cwd(),
+});
+process.exitCode = code;
