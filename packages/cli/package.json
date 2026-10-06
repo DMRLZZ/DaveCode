@@ -1,0 +1,43 @@
+{
+  "name": "davecode",
+  "version": "0.0.0",
+  "description": "DaveCode CLI & TUI: run the gateway, manage accounts and drive the autonomous engine from your terminal.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "davecode": "./bin/davecode.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DMRLZZ/DaveCode.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "ai",
+    "agent",
+    "llm",
+    "gateway",
+    "claude",
+    "openai",
+    "gemini",
+    "cli",
+    "tui"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx --conditions=source src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@davecode/core": "workspace:*",
+    "@davecode/server": "workspace:*",
+    "commander": "^15.0.0"
+  }
+}

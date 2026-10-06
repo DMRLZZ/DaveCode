@@ -1,0 +1,7 @@
+packages:
+  - packages/*
+
+# Native/binary dependencies allowed to run install scripts.
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true
