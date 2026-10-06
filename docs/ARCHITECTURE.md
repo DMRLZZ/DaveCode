@@ -90,7 +90,7 @@ src/
 ├── providers/          # one adapter per ProviderKind
 ├── router/             # account selection, balancing, hot failover, circuit breaker
 ├── brain/              # global.ts, project.ts, graph.ts (DAG resolver)
-└── autonomous/         # runner.ts, executor.ts, validator.ts, git.ts, judge.ts
+└── autonomous/         # runner.ts, executor.ts, tools.ts, validator.ts, git.ts, judge.ts
 ```
 
 ## Key design decisions
@@ -189,6 +189,59 @@ stateDiagram-v2
   validating --> selecting: failure (cycle = 3), task FAILED
   merging --> selecting: task SUCCESS, STATE.md updated
 ```
+
+Any step can also move to `paused` (`pause()`, honoured at the next step boundary; in-flight
+work finishes first), `stopped` (`stop()`) or `error` (unexpected failure). `idle` doubles as the
+24/7 polling state: with no ready task the loop sleeps `runner.idlePollMs` and selects again.
+
+Module map (`packages/core/src/autonomous/`):
+
+| Module | Responsibility |
+| :----- | :------------- |
+| `runner.ts` | `AutonomousRunner` state machine; structurally satisfies the gateway's `RunnerControl` |
+| `create.ts` | `createRunner(engine, { brain })` / `createExecutor(engine)` wiring from `runner.*` config |
+| `executor.ts` | `Executor` interface and the default `builtin` tool loop over the router |
+| `claude-cli-executor.ts` | Opt-in `claude-cli` delegation (`claude -p` with the account's `CLAUDE_CONFIG_DIR`) |
+| `tools.ts` | `list_dir`, `read_file`, `write_file`, `edit_file`, `search`, `run_command`, `finish` with repo path confinement |
+| `validator.ts` | Runs `runner.validate.{lint,typecheck,test}` and renders the `ValidationReport` |
+| `judge.ts` | `none` / `jev` (OpenRouter Decisions API) / `llm` acceptance judges |
+| `git.ts` | `execFile('git')` wrapper: branches, commits, `merge --no-ff`, PR mode |
+| `process.ts` | Quote-aware argv splitter, Windows `.cmd` shim rules, tail-first output capture |
+
+One task, step by step:
+
+1. **Preflight** (`start()` / `runOnce()`): inside a git work tree, brain initialised, base branch
+   exists, working tree clean (changes under `.davecode/` are ignored because the runner and the
+   dashboard write there). Otherwise the runner refuses with `RunnerError` (gateway: `409`).
+2. **Select** `nextTask(graph)`, set it `IN_PROGRESS` (attempts + 1, `branch` recorded) and append
+   to the STATE.md activity log.
+3. **Prepare** `runner.branchPrefix + id` from `runner.baseBranch`. A branch left by an earlier
+   failed attempt is renamed `…-attempt-<n>` first.
+4. **Implement** with the executor. The `builtin` executor starts from `DAVECODE_SYSTEM_PROMPT`
+   plus task instructions plus `buildTaskContext`, calls the router with OpenAI tools, and stops
+   on `finish`, `runner.maxIterations` round-trips per pass or `runner.maxTaskTokens` per task.
+   Tool paths are confined to the repo (no absolute paths outside it, no `..` or symlink
+   escapes, no `.git`, `.davecode` read-only); `run_command` uses `execFile` with
+   `runner.allowedCommands` (git limited to read-only subcommands).
+5. **Validate** each configured command (no shell, `node_modules/.bin` on PATH,
+   `runner.commandTimeoutMs`), keeping the tail of stdout/stderr. If the checks pass, the change
+   is staged (brain excluded); an empty change counts as a failure. Then the **judge** runs.
+6. **Repair**: on a failed check or a judge rejection, the report (exact output, truncated) is
+   appended to the same executor session, up to `runner.maxRepairCycles`. Judge errors (for
+   example a missing `OPENROUTER_API_KEY`) fail the task without merging.
+7. **Merge**: Conventional Commit (`feat: <title>`, summary body, `DaveCode-Task: <id>` trailer)
+   on the task branch, `merge --no-ff` into the base branch and delete the branch. With
+   `runner.pullRequests` the branch is pushed (never forced) and opened with `gh pr create`;
+   without `gh` or a remote it falls back to a local merge with a warning. The task becomes
+   `SUCCESS` and STATE.md / TASK_GRAPH.json are committed on the base branch
+   (`runner.commitBrain`).
+8. **Failure**: the attempt is committed on its branch (`--no-verify` snapshot) and kept for
+   inspection, the runner returns to the base branch and the task becomes `FAILED` with the
+   reason and the last report in `notes`. `stop()` aborts the in-flight model call or command
+   through an `AbortSignal`, parks partial work the same way and sets the task back to `PENDING`.
+
+Every transition emits `runner.status`; progress lines (tool names and paths, check results,
+never file contents or secrets) are emitted as `runner.log`.
 
 ## Experimental & Terms-of-Service-sensitive features
 
