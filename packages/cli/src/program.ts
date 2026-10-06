@@ -1,4 +1,4 @@
-import { Command, CommanderError, Option } from 'commander';
+import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 import { type CliContext, type CliIO, createContext, type GlobalOptions } from './context';
 import { CliError, EXIT } from './errors';
 
@@ -83,12 +83,52 @@ type Runner = <A extends unknown[]>(
   action: (ctx: CliContext, ...args: A) => Promise<ActionResult>,
 ) => (...args: A) => Promise<void>;
 
+/** Parse a TCP port (0 = pick a free one). */
+export function parsePort(value: string): number {
+  const n = Number(value);
+  if (!/^\d+$/.test(value.trim()) || !Number.isInteger(n) || n < 0 || n > 65535) {
+    throw new InvalidArgumentError('expected a port number between 0 and 65535');
+  }
+  return n;
+}
+
+/** Parse a non-negative integer (priorities, weights, limits). */
+export function parseInteger(value: string): number {
+  const n = Number(value);
+  if (!/^-?\d+$/.test(value.trim()) || !Number.isSafeInteger(n) || n < 0) {
+    throw new InvalidArgumentError('expected a non-negative integer');
+  }
+  return n;
+}
+
+/** Repeatable option collector (`--model a --model b`, also accepts `a,b`). */
+export function collect(value: string, previous: string[] = []): string[] {
+  return [
+    ...previous,
+    ...value
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean),
+  ];
+}
+
 /** Subcommands. Each action dynamically imports its module. */
 function registerCommands(program: Command, run: Runner): void {
-  // Placeholder so the program builds before the command modules land.
-  void program;
-  void run;
-  void Option;
+  program
+    .command('start')
+    .description('start the gateway (OpenAI-compatible /v1, dashboard API and web dashboard)')
+    .addOption(new Option('-p, --port <port>', 'port to listen on').argParser(parsePort))
+    .option('--host <host>', 'interface to bind (default 127.0.0.1)')
+    .option('--no-dashboard', 'do not serve the web dashboard')
+    .option('--project <dir>', 'repository whose project brain to serve (default: detected)')
+    .option('--verbose', 'print gateway request logs')
+    .option('-q, --quiet', 'do not print the live activity log')
+    .action(
+      run(async (ctx, opts: import('./commands/start').StartOptions) => {
+        const { startCommand } = await import('./commands/start');
+        return startCommand(ctx, opts);
+      }),
+    );
 }
 
 /** Render an error for humans: `error: …` plus an optional hint, without a stack trace. */
