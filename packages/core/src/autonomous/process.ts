@@ -119,7 +119,12 @@ function killTree(child: ChildProcess): void {
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true });
   } else {
-    child.kill('SIGKILL');
+    try {
+      // The child leads its own process group (detached), so this also reaches grandchildren.
+      process.kill(-child.pid, 'SIGKILL');
+    } catch {
+      child.kill('SIGKILL');
+    }
   }
 }
 
@@ -206,6 +211,8 @@ export function runProcess(opts: RunProcessOptions): Promise<ProcessResult> {
       cwd: opts.cwd,
       env,
       shell: prepared.shell,
+      // POSIX: own process group so a timeout kills the whole tree (see killTree).
+      detached: process.platform !== 'win32',
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
