@@ -6,6 +6,7 @@ import { ChromiumProfileManager } from './identity/chromium';
 import { Keyring } from './identity/keyring';
 import { SandboxManager } from './identity/sandbox';
 import { davecodeHome, type GlobalPaths, globalPaths } from './paths';
+import { createProviders } from './providers/registry';
 import { UsageTracker } from './rate-limiter/tracker';
 import { type Clock, QuotaEngine } from './rate-limiter/window';
 import { Router } from './router/router';
@@ -22,7 +23,7 @@ export interface CreateEngineOptions {
   projectRoot?: string;
   /** Environment for `DAVECODE_*` overrides and `DAVECODE_MASTER_KEY` (default `process.env`). */
   env?: NodeJS.ProcessEnv;
-  /** Provider adapters by kind (default: empty). */
+  /** Provider adapters by kind (default: every built-in adapter from `createProviders()`). */
   providers?: Map<ProviderKind, Provider>;
   /** Programmatic config overrides, applied after files and env vars. */
   config?: DaveConfigInput;
@@ -90,7 +91,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       getAccount: (id) => accounts.get(id),
     });
     tracker.hydrate();
-    const providers = options.providers ?? new Map<ProviderKind, Provider>();
+    const providers = options.providers ?? createProviders();
     const router = new Router({
       config,
       accounts,

@@ -1,4 +1,4 @@
-import { providerError } from '@davecode/core';
+import { providerError } from '@davecode/core/testing';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildGateway } from './gateway';

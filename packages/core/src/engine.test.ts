@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createEngine } from './engine';
+import { PROVIDER_KINDS } from './router/candidates';
 import { FakeProvider } from './router/testing';
 import type { ProviderKind } from './types';
 
@@ -21,7 +22,8 @@ describe('createEngine', () => {
     const engine = createEngine({ home, env: {} });
     try {
       expect(engine.home).toBe(home);
-      expect(engine.providers.size).toBe(0);
+      // Every built-in adapter is registered by default.
+      expect([...engine.providers.keys()].sort()).toEqual([...PROVIDER_KINDS].sort());
       expect(engine.config.server.port).toBe(4040);
       expect(existsSync(join(home, 'state.db'))).toBe(true);
       expect(existsSync(join(home, 'master.key'))).toBe(true);

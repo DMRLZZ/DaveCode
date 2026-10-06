@@ -6,10 +6,10 @@ import {
   createEngine,
   type DaveConfigInput,
   type Engine,
-  FakeProvider,
   PROVIDER_KINDS,
   type ProviderKind,
 } from '@davecode/core';
+import { FakeProvider } from '@davecode/core/testing';
 
 export interface TestEngine {
   engine: Engine;

@@ -147,14 +147,6 @@ export {
   type StreamResult,
 } from './router/router';
 export {
-  type FakeCall,
-  FakeProvider,
-  type FakeResponse,
-  fakeChunk,
-  fakeCompletion,
-  providerError,
-} from './router/testing';
-export {
   type AccountCreateInput,
   AccountRepository,
   type AccountUpdateInput,
