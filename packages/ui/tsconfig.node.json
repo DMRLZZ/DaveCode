@@ -1,0 +1,11 @@
+{
+  "//": "Node-side files: Vite/Vitest config and the type-only drift check against @davecode/core.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": ["vite.config.ts", "vitest.config.ts", "src/lib/types.contract.ts"]
+}

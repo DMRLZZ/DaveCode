@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <title>DaveCode</title>
+  <rect width="32" height="32" rx="7" fill="#0c0c0d"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="6.5" stroke="#2a2a2e"/>
+  <path d="M10 9h5.5a7 7 0 0 1 0 14H10V9Z" stroke="#f0f0f2" stroke-width="2.25" stroke-linejoin="round"/>
+  <circle cx="22.5" cy="16" r="2.25" fill="#ff7a3d"/>
+</svg>
