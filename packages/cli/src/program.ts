@@ -141,6 +141,106 @@ function registerCommands(program: Command, run: Runner): void {
     );
 
   registerAccounts(program, run);
+  registerProject(program, run);
+}
+
+function registerProject(program: Command, run: Runner): void {
+  program
+    .command('init')
+    .description('scaffold the project brain (.davecode/) in this repository')
+    .option('--name <name>', 'project name used in STATE.md and ARCHITECTURE.md')
+    .option('--config', 'write a starter .davecode/config.json without asking')
+    .option('--no-config', 'do not write .davecode/config.json')
+    .action(
+      run(async (ctx, opts: { name?: string; config?: boolean }) => {
+        const { initCommand } = await import('./commands/init');
+        return initCommand(ctx, opts);
+      }),
+    );
+
+  const tasks = program.command('tasks').description('show and edit the task graph');
+  tasks
+    .command('list', { isDefault: true })
+    .alias('ls')
+    .description('task tree with status and blocked reasons')
+    .action(
+      run(async (ctx) => {
+        const { tasksList } = await import('./commands/tasks');
+        return tasksList(ctx);
+      }),
+    );
+  tasks
+    .command('next')
+    .description('the task the runner would pick next')
+    .action(
+      run(async (ctx) => {
+        const { tasksNext } = await import('./commands/tasks');
+        return tasksNext(ctx);
+      }),
+    );
+  tasks
+    .command('add <id> <title...>')
+    .description('add a PENDING task')
+    .option('-d, --depends <ids>', 'dependencies (repeatable or comma-separated)', collect)
+    .addOption(new Option('-p, --priority <n>', 'higher runs first').argParser(parseInteger))
+    .option('--description <text>', 'longer description')
+    .option(
+      '-a, --acceptance <criterion>',
+      'acceptance criterion (repeatable)',
+      (v, prev: string[] = []) => [...prev, v],
+    )
+    .action(
+      run(
+        async (
+          ctx,
+          id: string,
+          title: string[],
+          opts: import('./commands/tasks').AddTaskOptions,
+        ) => {
+          const { tasksAdd } = await import('./commands/tasks');
+          return tasksAdd(ctx, id, title, opts);
+        },
+      ),
+    );
+  tasks
+    .command('status <id> <status>')
+    .description('move a task to PENDING | IN_PROGRESS | SUCCESS | FAILED')
+    .option('--notes <text>', 'note stored on the task')
+    .action(
+      run(async (ctx, id: string, status: string, opts: { notes?: string }) => {
+        const { tasksStatus } = await import('./commands/tasks');
+        return tasksStatus(ctx, id, status, opts);
+      }),
+    );
+
+  const config = program.command('config').description('show the resolved configuration');
+  config
+    .command('show', { isDefault: true })
+    .description('resolved config as JSON (secrets redacted)')
+    .action(
+      run(async (ctx) => {
+        const { configShow } = await import('./commands/config');
+        return configShow(ctx);
+      }),
+    );
+  config
+    .command('path')
+    .description('where config, state and brains live')
+    .action(
+      run(async (ctx) => {
+        const { configPath } = await import('./commands/config');
+        return configPath(ctx);
+      }),
+    );
+  config
+    .command('get <key>')
+    .description('one value by dotted key, e.g. server.port')
+    .action(
+      run(async (ctx, key: string) => {
+        const { configGet } = await import('./commands/config');
+        return configGet(ctx, key);
+      }),
+    );
 }
 
 type AddOpts = import('./commands/accounts').AddCommandFlags;

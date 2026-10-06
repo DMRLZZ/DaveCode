@@ -111,7 +111,7 @@ const ASCII_GLYPHS: Glyphs = {
   running: '~',
   success: '*',
   failed: 'x',
-  blocked: '-',
+  blocked: '.',
   tee: '|-',
   elbow: '`-',
   pipe: '| ',
