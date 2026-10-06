@@ -66,10 +66,20 @@ export function needsShell(command: string): boolean {
   return process.platform === 'win32' && /\.(cmd|bat)$/i.test(command);
 }
 
-const SHELL_SAFE = /^[\w.:=@%+\-/\\[\]]+$/;
+/**
+ * Characters that cmd.exe never interprets. Deliberately excludes `%` and `!` (variable
+ * expansion), quotes, whitespace and every operator, so no escaping is ever needed.
+ */
+const SHELL_SAFE = /^[\w.:=@+\-/\\[\]]+$/;
 
-function quoteForCmd(arg: string): string {
-  return SHELL_SAFE.test(arg) ? arg : `"${arg.replace(/"/g, '""')}"`;
+/** True when `arg` can be passed through cmd.exe verbatim. */
+export function isShellSafeArg(arg: string): boolean {
+  return SHELL_SAFE.test(arg);
+}
+
+/** Quote the resolved binary path (it may contain spaces); arguments must already be safe. */
+function quoteCommand(path: string): string {
+  return isShellSafeArg(path) ? path : `"${path}"`;
 }
 
 export interface CliRunOptions {
@@ -130,8 +140,20 @@ export function runCli(opts: CliRunOptions): CliRun {
     });
   }
 
+  if (shell) {
+    // cmd.exe quoting cannot neutralise %VAR% expansion, so refuse anything that is not
+    // trivially safe (e.g. a client-supplied model name) instead of trying to escape it.
+    const unsafe = args.some((arg) => !isShellSafeArg(arg));
+    if (unsafe || /["%!]/.test(resolved)) {
+      throw new ProviderError(
+        `${opts.provider}: refusing to pass an unsafe argument through the Windows shell`,
+        { kind: 'bad_request', provider: opts.provider, accountId: opts.accountId },
+      );
+    }
+  }
+
   const child = shell
-    ? spawn(`${quoteForCmd(resolved)} ${args.map(quoteForCmd).join(' ')}`, {
+    ? spawn(`${quoteCommand(resolved)} ${args.join(' ')}`, {
         cwd: opts.cwd,
         env,
         shell: true,

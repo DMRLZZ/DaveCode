@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ProviderError } from '../../errors';
+import { isShellSafeArg } from './cli';
 import { classifyMessage, errorFromHttp, redact, toProviderError } from './errors';
 import { parseNdjson, parseSse, readLines } from './lines';
 
@@ -101,5 +102,36 @@ describe('error mapping', () => {
     const abort = new DOMException('aborted', 'AbortError');
     expect(toProviderError(abort, scope).kind).toBe('timeout');
     expect(toProviderError(new TypeError('fetch failed'), scope).kind).toBe('network');
+  });
+});
+
+describe('isShellSafeArg', () => {
+  it('accepts plain flags, model ids and paths', () => {
+    const safe = [
+      '-p',
+      '--output-format',
+      'stream-json',
+      'claude-sonnet-5-5',
+      'C:\\tools\\fake.js',
+    ];
+    for (const arg of safe) {
+      expect(isShellSafeArg(arg)).toBe(true);
+    }
+  });
+
+  it('rejects anything cmd.exe could interpret', () => {
+    for (const arg of [
+      '%USERPROFILE%',
+      'a&calc',
+      'x|y',
+      'a b',
+      '"q"',
+      '!v!',
+      'a^b',
+      '<in',
+      '>out',
+    ]) {
+      expect(isShellSafeArg(arg)).toBe(false);
+    }
   });
 });
