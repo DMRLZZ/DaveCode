@@ -283,7 +283,7 @@
     @apply italic;
   }
   .prose-dc :not(pre) > code {
-    @apply rounded border border-line bg-raised px-1 py-px text-[12px] text-fg;
+    @apply rounded border border-line bg-raised px-1 py-px text-[11.5px] text-fg-2;
   }
   .prose-dc pre {
     @apply my-3 overflow-x-auto rounded-md border border-line bg-raised p-3 text-[12px] leading-5 text-fg;

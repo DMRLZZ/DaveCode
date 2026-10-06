@@ -12,12 +12,14 @@ import { applyTheme, updateSettings, useSettings } from './lib/settings';
 import { Accounts } from './routes/accounts/Accounts';
 import { NotFound } from './routes/NotFound';
 import { Overview } from './routes/Overview';
+import { Tasks } from './routes/tasks/Tasks';
 import { Traffic } from './routes/traffic/Traffic';
 
 const PAGES: Partial<Record<PageId, ComponentType>> = {
   overview: Overview,
   accounts: Accounts,
   traffic: Traffic,
+  tasks: Tasks,
 };
 
 export function App() {
