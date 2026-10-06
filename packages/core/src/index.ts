@@ -106,6 +106,7 @@ export {
   estimateTokens,
   type TokenInput,
 } from './rate-limiter/tokens';
+export { UsageTracker, type UsageTrackerOptions } from './rate-limiter/tracker';
 export {
   type Clock,
   limitsFor,
