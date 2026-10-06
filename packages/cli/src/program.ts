@@ -139,6 +139,123 @@ function registerCommands(program: Command, run: Runner): void {
         return statusCommand(ctx);
       }),
     );
+
+  registerAccounts(program, run);
+}
+
+type AddOpts = import('./commands/accounts').AddCommandFlags;
+
+function addAccountOptions(command: Command, run: Runner): Command {
+  return command
+    .option(
+      '--provider <kind>',
+      'anthropic | openai | gemini | openai-compatible | claude-cli | codex-cli | gemini-web',
+    )
+    .option('--label <name>', 'human-friendly name')
+    .addOption(
+      new Option('--priority <n>', 'lower is tried first (default 100)').argParser(parseInteger),
+    )
+    .addOption(
+      new Option('--weight <n>', 'traffic share among equal priorities').argParser(parseInteger),
+    )
+    .option('--secret-env <var>', 'read the API key from this environment variable')
+    .option('--secret-stdin', 'read the API key from stdin')
+    .option('--secret <value>', 'API key (discouraged: visible in shell history)')
+    .option('--base-url <url>', 'endpoint for openai-compatible accounts')
+    .option('--model <id>', 'advertised model (repeatable or comma-separated)', collect)
+    .option('--default-model <id>', 'model used for davecode/auto without a route')
+    .option('--binary-path <path>', 'CLI binary for claude-cli / codex-cli')
+    .option('--limit <key=value>', 'quota limit, e.g. tokens5h=500000 (repeatable)', collect)
+    .option('--disabled', 'add the account disabled')
+    .option('-y, --yes', 'never prompt: take everything from flags')
+    .option('--no-login', 'do not offer to log in after adding a CLI account')
+    .option('--local', 'write to the local database even if a gateway is running')
+    .addHelpText(
+      'after',
+      `
+Examples:
+  davecode accounts add                                   # interactive
+  davecode accounts add --provider anthropic --label work --secret-env ANTHROPIC_API_KEY --yes
+  echo "$OPENROUTER_KEY" | davecode accounts add --provider openai-compatible \\
+      --base-url https://openrouter.ai/api/v1 --model openai/gpt-5.5 --secret-stdin
+  davecode accounts add --provider claude-cli --label "Claude Pro" --yes`,
+    )
+    .action(
+      run(async (ctx, opts: AddOpts) => {
+        const { accountsAdd } = await import('./commands/accounts');
+        return accountsAdd(ctx, opts);
+      }),
+    );
+}
+
+function registerAccounts(program: Command, run: Runner): void {
+  const accounts = program.command('accounts').description('manage provider accounts');
+
+  accounts
+    .command('list', { isDefault: true })
+    .alias('ls')
+    .description('list accounts')
+    .option('--local', 'read the local database even if a gateway is running')
+    .action(
+      run(async (ctx, opts: { local?: boolean }) => {
+        const { accountsList } = await import('./commands/accounts');
+        return accountsList(ctx, opts);
+      }),
+    );
+
+  addAccountOptions(
+    accounts.command('add').description('add an account (interactive in a terminal)'),
+    run,
+  );
+
+  accounts
+    .command('remove <id>')
+    .alias('rm')
+    .description('remove an account, its secret and its sandbox')
+    .option('-y, --yes', 'do not ask for confirmation')
+    .option('--local', 'write to the local database even if a gateway is running')
+    .action(
+      run(async (ctx, id: string, opts: { yes?: boolean; local?: boolean }) => {
+        const { accountsRemove } = await import('./commands/accounts');
+        return accountsRemove(ctx, id, opts);
+      }),
+    );
+
+  for (const [name, enabled] of [
+    ['enable', true],
+    ['disable', false],
+  ] as const) {
+    accounts
+      .command(`${name} <id>`)
+      .description(`${name} an account${enabled ? ' (also clears error and cooldown state)' : ''}`)
+      .option('--local', 'write to the local database even if a gateway is running')
+      .action(
+        run(async (ctx, id: string, opts: { local?: boolean }) => {
+          const { accountsSetEnabled } = await import('./commands/accounts');
+          return accountsSetEnabled(ctx, id, enabled, opts);
+        }),
+      );
+  }
+
+  accounts
+    .command('login <id> [args...]')
+    .description('log a claude-cli / codex-cli account in, inside its own isolated config dir')
+    .allowUnknownOption()
+    .option('--local', 'read the local database even if a gateway is running')
+    .addHelpText(
+      'after',
+      `
+Launches the real CLI with CLAUDE_CONFIG_DIR / CODEX_HOME pointing at the account's sandbox,
+so every account keeps a separate login. Extra arguments after -- replace the default ones.`,
+    )
+    .action(
+      run(async (ctx, id: string, args: string[], opts: { local?: boolean }) => {
+        const { accountsLogin } = await import('./commands/accounts');
+        return accountsLogin(ctx, id, args, opts);
+      }),
+    );
+
+  addAccountOptions(program.command('add-account').description('alias of `accounts add`'), run);
 }
 
 /** Render an error for humans: `error: …` plus an optional hint, without a stack trace. */
