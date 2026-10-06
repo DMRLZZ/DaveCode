@@ -12,6 +12,7 @@ import { applyTheme, updateSettings, useSettings } from './lib/settings';
 import { Accounts } from './routes/accounts/Accounts';
 import { NotFound } from './routes/NotFound';
 import { Overview } from './routes/Overview';
+import { Runner } from './routes/runner/Runner';
 import { Tasks } from './routes/tasks/Tasks';
 import { Traffic } from './routes/traffic/Traffic';
 
@@ -20,6 +21,7 @@ const PAGES: Partial<Record<PageId, ComponentType>> = {
   accounts: Accounts,
   traffic: Traffic,
   tasks: Tasks,
+  runner: Runner,
 };
 
 export function App() {

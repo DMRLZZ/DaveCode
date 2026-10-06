@@ -183,7 +183,7 @@ export class MockEngine implements DaveClient {
       startedAt: new Date(this.t0 - 4.2 * MINUTE).toISOString(),
     };
     this.generateHistory();
-    this.seedRunnerHistory();
+    if (this.opts.runnerAvailable) this.seedRunnerHistory();
   }
 
   // -------------------------------------------------------------------------
