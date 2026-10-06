@@ -40,7 +40,13 @@ interface AccountRow {
   last_error: string | null;
   created_at: string;
   updated_at: string;
+  /** Computed by SELECT_ACCOUNT; absent on rows built in memory. */
+  has_secret?: number;
 }
+
+/** Every read includes whether the keyring holds a secret, without exposing it. */
+const SELECT_ACCOUNT = `SELECT a.*, EXISTS (SELECT 1 FROM secrets s WHERE s.account_id = a.id) AS has_secret
+  FROM accounts a`;
 
 function parseObject(json: string): Record<string, unknown> {
   try {
@@ -66,6 +72,7 @@ function toAccount(row: AccountRow): Account {
     status: row.status as AccountStatus,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    hasSecret: row.has_secret === 1,
   };
   if (row.cooldown_until) account.cooldownUntil = row.cooldown_until;
   if (row.last_error) account.lastError = row.last_error;
@@ -111,13 +118,13 @@ export class AccountRepository {
   /** All accounts ordered by priority, then creation time. */
   list(): Account[] {
     const rows = this.db
-      .prepare('SELECT * FROM accounts ORDER BY priority ASC, created_at ASC, id ASC')
+      .prepare(`${SELECT_ACCOUNT} ORDER BY a.priority ASC, a.created_at ASC, a.id ASC`)
       .all() as AccountRow[];
     return rows.map(toAccount);
   }
 
   get(id: string): Account | undefined {
-    const row = this.db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as
+    const row = this.db.prepare(`${SELECT_ACCOUNT} WHERE a.id = ?`).get(id) as
       | AccountRow
       | undefined;
     return row ? toAccount(row) : undefined;

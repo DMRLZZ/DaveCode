@@ -237,7 +237,11 @@ function AccountEditor({
       {(meta.auth === 'api-key' || meta.auth === 'optional-key') && (
         <Field
           label={`Replace ${(meta.secretLabel ?? 'secret').replace(' (optional)', '')}`}
-          hint="Write-only. Leave empty to keep the stored secret; it is never displayed."
+          hint={
+            account.hasSecret === false
+              ? 'No secret stored yet. Write-only: it is encrypted at rest and never displayed.'
+              : 'A secret is stored. Write-only: leave empty to keep it; it is never displayed.'
+          }
         >
           {({ id, describedBy }) => (
             <SecretInput

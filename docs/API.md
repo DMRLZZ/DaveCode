@@ -122,7 +122,7 @@ interface AccountCreate {
 type AccountPatch = Partial<Omit<AccountCreate, 'provider'>> & { enabled?: boolean };
 ```
 
-Secrets are write-only: no endpoint ever returns them. Creating a `gemini-web` account while
+Secrets are write-only: no endpoint ever returns them. `Account.hasSecret` tells you whether one is stored. Creating a `gemini-web` account while
 `experimental.geminiWeb` is off returns `400` with code `experimental_disabled`. Unknown body
 fields and credential-like `config` keys (`apiKey`, `token`, `password`, `cookie`…) are rejected
 with `400 invalid_body`; send credentials in `secret`. `AccountCreate` also accepts
@@ -142,7 +142,9 @@ resets an enabled account to `active` and clears `cooldownUntil` and `lastError`
 `GET /api/usage/timeseries?minutes=60&bucketSec=60`
 
 Returns `{ "buckets": UsageBucket[] }`, oldest first. Buckets are aligned to `bucketSec`
-boundaries and zero-filled; `tokens` is prompt + completion.
+boundaries and zero-filled; `tokens` is prompt + completion. Every upstream **attempt** is
+counted (successful, failed and rate-limited alike; failed attempts usually carry 0 tokens), and
+the last bucket is the current, still-filling one.
 
 ```json
 {
@@ -163,7 +165,12 @@ boundaries and zero-filled; `tokens` is prompt + completion.
 { "requests": UsageRecord[] }
 ```
 
-Most recent first.
+Most recent first; `limit` defaults to 100 and is capped at 1000 (`/api/logs` defaults to 200,
+same cap). There is **one record per upstream attempt**: a request that failed over twice yields
+three records sharing the same `requestId`, which is how clients rebuild failover chains.
+`ts` is when the attempt finished, `latencyMs` its duration, and `model` is the concrete
+upstream model that was called (not the `davecode/<route>` alias the client asked for). The
+same holds for `model` in `request.*` events.
 
 ### Routes
 
@@ -202,10 +209,15 @@ empty graph and `/api/brain` returns empty strings. Without a runner, `GET /api/
 
 ### Live events
 
-`GET /api/events` returns `text/event-stream`. On connect, the server replays the recent event
-buffer, then streams new events as they happen:
+`GET /api/events` returns `text/event-stream`. Every event carries a strictly increasing
+`id` (per gateway process). On connect the server replays the buffered events after the
+client's cursor, taken from the `Last-Event-ID` header (sent automatically by `EventSource` on
+reconnect) or a `?lastEventId=` query parameter; without one it replays the whole buffer. A
+cursor higher than the latest id (the gateway restarted) also replays the whole buffer. Then
+new events are streamed as they happen:
 
 ```
+id: 42
 event: request.completed
 data: {"type":"request.completed","requestId":"req_…","ts":1760000000000,…}
 

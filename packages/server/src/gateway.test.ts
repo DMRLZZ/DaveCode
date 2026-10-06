@@ -248,6 +248,28 @@ describe('GET /api/events', () => {
     await expect.poll(() => active, { timeout: 2000 }).toBe(0);
   });
 
+  it('numbers events and resumes after Last-Event-ID without duplicates', async () => {
+    const { t, base } = await listen();
+    for (const message of ['one', 'two', 'three']) {
+      t.engine.events.emit({ type: 'log', level: 'info', scope: 'test', message });
+    }
+
+    const first = await connect(`${base}/api/events`);
+    const all = await first.waitFor((s) => s.includes('"message":"three"'));
+    expect(all).toMatch(/id: 1\nevent: log\n/);
+    expect(all).toMatch(/id: 3\nevent: log\n/);
+    first.close();
+
+    const resumed = await connect(`${base}/api/events`, { 'last-event-id': '2' });
+    await resumed.waitFor((s) => s.includes('"message":"three"'));
+    t.engine.events.emit({ type: 'log', level: 'info', scope: 'test', message: 'four' });
+    const text = await resumed.waitFor((s) => s.includes('"message":"four"'));
+    expect(text).not.toContain('"message":"one"');
+    expect(text).not.toContain('"message":"two"');
+    expect(text).toMatch(/id: 4\nevent: log\n/);
+    resumed.close();
+  });
+
   it('accepts ?token= when auth is enabled', async () => {
     const { base } = await listen({ server: { authToken: TOKEN } });
     const ok = await connect(`${base}/api/events?token=${TOKEN}`);

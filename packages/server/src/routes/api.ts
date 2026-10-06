@@ -67,7 +67,8 @@ export function registerApiRoutes(
         target: created.id,
         details: { provider: created.provider, label: created.label, hasSecret: !!secret },
       });
-      return created;
+      // Re-read so the response reflects the stored secret (hasSecret).
+      return accounts.get(created.id) ?? created;
     })();
     emitAccount(account);
     return reply.code(201).send({ account });
@@ -92,8 +93,9 @@ export function registerApiRoutes(
       engine.router.breaker.reset(existing.id);
     }
     const account = engine.db.transaction(() => {
-      const updated = accounts.update(existing.id, patch)!;
+      // Store the secret first so the re-read account reports hasSecret correctly.
       if (secret !== undefined) keyring.set(existing.id, secret);
+      const updated = accounts.update(existing.id, patch)!;
       audit.record({
         actor: 'api',
         action: 'account.update',
