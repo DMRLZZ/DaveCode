@@ -129,6 +129,16 @@ function registerCommands(program: Command, run: Runner): void {
         return startCommand(ctx, opts);
       }),
     );
+
+  program
+    .command('status')
+    .description('gateway health, accounts and 1m/5h/24h quota usage')
+    .action(
+      run(async (ctx) => {
+        const { statusCommand } = await import('./commands/status');
+        return statusCommand(ctx);
+      }),
+    );
 }
 
 /** Render an error for humans: `error: …` plus an optional hint, without a stack trace. */
