@@ -33,3 +33,11 @@ All notable changes to this project are documented here. The format follows
 - `createEngine()` composition root wiring config, storage, identity, quotas and the router.
 - Fastify gateway: OpenAI-compatible `/v1` (JSON + SSE), the full `/api` surface, live
   `/api/events`, bearer auth, CORS for the Vite dev server and optional dashboard hosting.
+- `@davecode/ui` web dashboard (Vite, React 19, Tailwind CSS v4): overview with live token burn
+  and quota pressure, accounts (add/edit with write-only secrets, gemini-web Terms-of-Service
+  gate), traffic with inline failover chains, routes, task graph DAG/board/list with the project
+  brain, runner control with a live log console, settings, command palette and keyboard
+  shortcuts. Dark by default with a light theme.
+- Typed client for every `/api` endpoint plus an `/api/events` stream with backoff reconnects,
+  and a realistic in-browser mock mode (`?mock=1`, `VITE_DAVECODE_MOCK=1`, or automatic when the
+  gateway is unreachable).
