@@ -90,4 +90,20 @@ export {
   type LoadConfigOptions,
   loadConfig,
 } from './config/loader';
+export {
+  type AccountCreateInput,
+  AccountRepository,
+  type AccountUpdateInput,
+} from './storage/accounts';
+export { type AuditEntry, type AuditInput, AuditLog } from './storage/audit';
+export {
+  type Database,
+  MIGRATIONS,
+  migrate,
+  type OpenDatabaseOptions,
+  openDatabase,
+  schemaVersion,
+} from './storage/database';
+export { newId } from './storage/ids';
+export { type TimeseriesOptions, UsageRepository, type UsageTotals } from './storage/usage';
 // --- end phase 1 & 2 ---
