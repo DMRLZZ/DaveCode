@@ -80,3 +80,14 @@ export {
 } from './providers';
 export * from './types';
 export { VERSION } from './version';
+
+// --- phase 1 & 2: storage, identity, quotas, router, engine ---
+
+export {
+  ConfigError,
+  deepMerge,
+  envLayer,
+  type LoadConfigOptions,
+  loadConfig,
+} from './config/loader';
+// --- end phase 1 & 2 ---
