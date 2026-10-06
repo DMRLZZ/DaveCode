@@ -1,5 +1,7 @@
 import { type ComponentType, useEffect, useRef } from 'react';
+import { CommandPalette } from './components/shell/CommandPalette';
 import { ConnectionStatus } from './components/shell/ConnectionStatus';
+import { ShortcutsDialog } from './components/shell/ShortcutsDialog';
 import { Sidebar } from './components/shell/Sidebar';
 import { Toaster } from './components/shell/Toaster';
 import { TopBar } from './components/shell/TopBar';
@@ -9,6 +11,7 @@ import { pageForPath } from './lib/nav';
 import { useHealth } from './lib/queries';
 import { useLocation } from './lib/router';
 import { applyTheme, updateSettings, useSettings } from './lib/settings';
+import { useGlobalShortcuts } from './lib/shortcuts';
 import { ui } from './lib/ui-state';
 import { Accounts } from './routes/accounts/Accounts';
 import { NotFound } from './routes/NotFound';
@@ -37,6 +40,7 @@ export function App() {
   const collapsed = settings.sidebarCollapsed || narrow;
   const mainRef = useRef<HTMLElement>(null);
   const health = useHealth();
+  useGlobalShortcuts();
 
   useEffect(() => applyTheme(settings.theme), [settings.theme]);
 
@@ -80,6 +84,8 @@ export function App() {
           {page ? <Page id={page.id} /> : <NotFound />}
         </main>
       </div>
+      <CommandPalette />
+      <ShortcutsDialog />
       <Toaster />
     </div>
   );
