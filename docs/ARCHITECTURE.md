@@ -121,6 +121,9 @@ Each account is tracked in four sliding windows: **TPM** and **RPM** (60 s), **5
 4. Call the provider. On `rate_limit`, `quota_exhausted`, `unavailable`, `timeout`, `network`
    or `context_length`, put the account in cooldown (honouring `Retry-After`), emit
    `router.failover` and immediately try the next candidate, up to `routing.maxFailovers`.
+   (`context_length` fails over without a cooldown, since the prompt rather than the account is
+   at fault.) `auth` errors never fail over and mark the account `error`; a per-account circuit
+   breaker skips accounts after repeated consecutive failures until a half-open probe succeeds.
 
 Subscription providers (`claude-cli`, `codex-cli`, `gemini-web`) only rotate across multiple
 accounts of the same provider when `experimental.multiAccountRotation` is enabled.

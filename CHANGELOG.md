@@ -26,3 +26,10 @@ All notable changes to this project are documented here. The format follows
 - AES-256-GCM keyring for account secrets with a per-install master key.
 - Per-account sandboxes for CLI providers (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) and isolated
   Chromium profiles for experimental browser providers (`playwright-core` optional).
+- Token estimation with `js-tiktoken` (`o200k_base`) and a chars/4 fallback.
+- Sliding-window quota engine (1 m, 5 h, 24 h) and a SQLite-backed usage tracker.
+- Router with quota-aware weighted balancing, backpressure, 5 h quota shift, per-account
+  circuit breaker and hot failover (streams fail over only before the first chunk).
+- `createEngine()` composition root wiring config, storage, identity, quotas and the router.
+- Fastify gateway: OpenAI-compatible `/v1` (JSON + SSE), the full `/api` surface, live
+  `/api/events`, bearer auth, CORS for the Vite dev server and optional dashboard hosting.

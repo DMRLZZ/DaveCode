@@ -90,6 +90,7 @@ export {
   type LoadConfigOptions,
   loadConfig,
 } from './config/loader';
+export { type CreateEngineOptions, createEngine, type Engine } from './engine';
 export {
   type ChromiumContext,
   type ChromiumLaunchOptions,
@@ -100,6 +101,51 @@ export {
 } from './identity/chromium';
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
 export { accountDir, SandboxManager } from './identity/sandbox';
+export {
+  approximateTokens,
+  countTextTokens,
+  estimateTokens,
+  type TokenInput,
+} from './rate-limiter/tokens';
+export { UsageTracker, type UsageTrackerOptions } from './rate-limiter/tracker';
+export {
+  type Clock,
+  limitsFor,
+  QUOTA_WINDOWS,
+  QuotaEngine,
+  type QuotaEngineOptions,
+  type RecordOptions,
+  WINDOW_MS,
+} from './rate-limiter/window';
+export {
+  accountServes,
+  type Candidate,
+  configuredModels,
+  defaultModelFor,
+  inferProviders,
+  type ModelSpec,
+  PROVIDER_KINDS,
+  parseModel,
+  ROUTE_PREFIX,
+  resolveCandidates,
+} from './router/candidates';
+export {
+  CircuitBreaker,
+  type CircuitBreakerOptions,
+  type CircuitState,
+} from './router/circuit-breaker';
+export { RouterError, type RouterErrorCode, type RouterErrorOptions } from './router/errors';
+export {
+  type CompletionResult,
+  type RankedCandidate,
+  type RouteRequestOptions,
+  Router,
+  type RouterOptions,
+  type RoutingMeta,
+  type RoutingPlan,
+  type SkipReason,
+  type StreamResult,
+} from './router/router';
 export {
   type AccountCreateInput,
   AccountRepository,
