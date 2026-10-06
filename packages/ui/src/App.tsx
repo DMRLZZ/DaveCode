@@ -1,4 +1,4 @@
-import { type ComponentType, useEffect, useRef, useState } from 'react';
+import { type ComponentType, useEffect, useRef } from 'react';
 import { ConnectionStatus } from './components/shell/ConnectionStatus';
 import { Sidebar } from './components/shell/Sidebar';
 import { Toaster } from './components/shell/Toaster';
@@ -9,19 +9,24 @@ import { pageForPath } from './lib/nav';
 import { useHealth } from './lib/queries';
 import { useLocation } from './lib/router';
 import { applyTheme, updateSettings, useSettings } from './lib/settings';
+import { ui } from './lib/ui-state';
 import { Accounts } from './routes/accounts/Accounts';
 import { NotFound } from './routes/NotFound';
 import { Overview } from './routes/Overview';
+import { RoutesPage } from './routes/RoutesPage';
 import { Runner } from './routes/runner/Runner';
+import { Settings } from './routes/Settings';
 import { Tasks } from './routes/tasks/Tasks';
 import { Traffic } from './routes/traffic/Traffic';
 
-const PAGES: Partial<Record<PageId, ComponentType>> = {
+const PAGES: Record<PageId, ComponentType> = {
   overview: Overview,
   accounts: Accounts,
   traffic: Traffic,
+  routes: RoutesPage,
   tasks: Tasks,
   runner: Runner,
+  settings: Settings,
 };
 
 export function App() {
@@ -30,8 +35,6 @@ export function App() {
   const page = pageForPath(path);
   const narrow = useMediaQuery('(max-width: 1023px)');
   const collapsed = settings.sidebarCollapsed || narrow;
-  const [, setPaletteOpen] = useState(false);
-  const [, setHelpOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
   const health = useHealth();
 
@@ -65,8 +68,8 @@ export function App() {
         <TopBar
           title={page?.label ?? 'Not found'}
           status={<ConnectionStatus />}
-          onOpenPalette={() => setPaletteOpen(true)}
-          onOpenHelp={() => setHelpOpen(true)}
+          onOpenPalette={ui.openPalette}
+          onOpenHelp={ui.openHelp}
         />
         <main
           id="main"
@@ -74,7 +77,7 @@ export function App() {
           tabIndex={-1}
           className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 outline-none md:px-6"
         >
-          <Page id={page?.id} label={page?.label} />
+          {page ? <Page id={page.id} /> : <NotFound />}
         </main>
       </div>
       <Toaster />
@@ -82,8 +85,7 @@ export function App() {
   );
 }
 
-function Page({ id, label }: { id: PageId | undefined; label: string | undefined }) {
-  if (!id) return <NotFound />;
+function Page({ id }: { id: PageId }) {
   const Component = PAGES[id];
-  return Component ? <Component /> : <p className="text-muted">{label}</p>;
+  return <Component />;
 }

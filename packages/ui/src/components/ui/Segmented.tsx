@@ -32,7 +32,7 @@ export function Segmented<T extends string>({
   return (
     <fieldset
       className={cn(
-        'inline-flex items-center gap-0.5 rounded-md border border-line bg-bg p-0.5',
+        'inline-flex w-fit items-center gap-0.5 rounded-md border border-line bg-bg p-0.5',
         className,
       )}
     >
