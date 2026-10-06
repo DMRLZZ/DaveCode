@@ -21,3 +21,8 @@ All notable changes to this project are documented here. The format follows
   experimental driver-injected `gemini-web`, all translating to the OpenAI wire format with
   uniform `ProviderError` mapping, plus the `createProviders()` registry.
 - MIT license, contributing guide, code of conduct, security policy and CI.
+- Layered config loader (defaults, global, project, `DAVECODE_*` env) with file-specific errors.
+- SQLite storage (WAL, versioned migrations) with account, usage and audit repositories.
+- AES-256-GCM keyring for account secrets with a per-install master key.
+- Per-account sandboxes for CLI providers (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`) and isolated
+  Chromium profiles for experimental browser providers (`playwright-core` optional).

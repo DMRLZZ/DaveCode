@@ -90,6 +90,14 @@ export {
   type LoadConfigOptions,
   loadConfig,
 } from './config/loader';
+export {
+  type ChromiumContext,
+  type ChromiumLaunchOptions,
+  ChromiumProfileManager,
+  type ChromiumProfileManagerOptions,
+  ChromiumUnavailableError,
+  ExperimentalDisabledError,
+} from './identity/chromium';
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
 export { accountDir, SandboxManager } from './identity/sandbox';
 export {
