@@ -1,0 +1,349 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+/* Dark is the default; [data-theme="light"] on <html> switches every token at once. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant light (&:where([data-theme="light"], [data-theme="light"] *));
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --dc-bg: #09090a;
+  --dc-panel: #0f0f11;
+  --dc-raised: #141417;
+  --dc-hover: #1a1a1e;
+  --dc-active: #212126;
+  --dc-line: #1e1e22;
+  --dc-line-strong: #2a2a30;
+  --dc-fg: #ececee;
+  --dc-fg-2: #a6a6ae;
+  --dc-muted: #80808a;
+  --dc-faint: #4f4f57;
+  --dc-accent: #ff7a3d;
+  --dc-accent-text: #ff8f5c;
+  --dc-accent-fg: #1a0a02;
+  --dc-accent-soft: rgb(255 122 61 / 0.12);
+  --dc-ok: #3ecf6e;
+  --dc-ok-soft: rgb(62 207 110 / 0.12);
+  --dc-warn: #e8c547;
+  --dc-warn-soft: rgb(232 197 71 / 0.12);
+  --dc-err: #f2555a;
+  --dc-err-soft: rgb(242 85 90 / 0.12);
+  --dc-info: #5aa9ff;
+  --dc-info-soft: rgb(90 169 255 / 0.12);
+  --dc-meter: #8b8b95;
+  --dc-track: #1d1d22;
+  --dc-scrim: rgb(0 0 0 / 0.6);
+  --dc-term-bg: #070708;
+  --dc-shadow: 0 16px 48px -12px rgb(0 0 0 / 0.7), 0 0 0 1px rgb(255 255 255 / 0.06);
+  /* Categorical slots (validated: dataviz validate_palette, dark, surface #111113). */
+  --dc-s1: #3987e5;
+  --dc-s2: #d95926;
+  --dc-s3: #199e70;
+  --dc-s4: #c98500;
+  --dc-s5: #d55181;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --dc-bg: #f6f6f4;
+  --dc-panel: #ffffff;
+  --dc-raised: #fbfbfa;
+  --dc-hover: #f2f2f0;
+  --dc-active: #eaeae7;
+  --dc-line: #e6e6e2;
+  --dc-line-strong: #d5d5d0;
+  --dc-fg: #111113;
+  --dc-fg-2: #4b4b53;
+  --dc-muted: #6a6a72;
+  --dc-faint: #a3a3aa;
+  --dc-accent: #e0561a;
+  --dc-accent-text: #b4430e;
+  --dc-accent-fg: #ffffff;
+  --dc-accent-soft: rgb(224 86 26 / 0.1);
+  --dc-ok: #188a41;
+  --dc-ok-soft: rgb(24 138 65 / 0.1);
+  --dc-warn: #9a6f00;
+  --dc-warn-soft: rgb(196 145 0 / 0.14);
+  --dc-err: #d1343a;
+  --dc-err-soft: rgb(209 52 58 / 0.1);
+  --dc-info: #1f63c7;
+  --dc-info-soft: rgb(31 99 199 / 0.1);
+  --dc-meter: #77777f;
+  --dc-track: #ececea;
+  --dc-scrim: rgb(20 20 22 / 0.4);
+  --dc-term-bg: #0d0d0f;
+  --dc-shadow: 0 16px 48px -16px rgb(17 17 19 / 0.22), 0 0 0 1px rgb(17 17 19 / 0.08);
+  /* Categorical slots (validated: dataviz validate_palette, light, surface #ffffff). */
+  --dc-s1: #2a78d6;
+  --dc-s2: #eb6834;
+  --dc-s3: #1baf7a;
+  --dc-s4: #eda100;
+  --dc-s5: #e87ba4;
+}
+
+/* The log console is a terminal: always dark, whatever the app theme. */
+.term {
+  color-scheme: dark;
+  --dc-fg: #ececee;
+  --dc-fg-2: #b4b4bc;
+  --dc-muted: #8a8a94;
+  --dc-faint: #5a5a62;
+  --dc-line: #1e1e22;
+  --dc-line-strong: #2a2a30;
+  --dc-hover: #18181c;
+  --dc-raised: #141417;
+  --dc-accent: #ff7a3d;
+  --dc-ok: #3ecf6e;
+  --dc-warn: #e8c547;
+  --dc-err: #f2555a;
+  --dc-info: #5aa9ff;
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+
+  --color-bg: var(--dc-bg);
+  --color-panel: var(--dc-panel);
+  --color-raised: var(--dc-raised);
+  --color-hover: var(--dc-hover);
+  --color-active: var(--dc-active);
+  --color-line: var(--dc-line);
+  --color-line-strong: var(--dc-line-strong);
+  --color-fg: var(--dc-fg);
+  --color-fg-2: var(--dc-fg-2);
+  --color-muted: var(--dc-muted);
+  --color-faint: var(--dc-faint);
+  --color-accent: var(--dc-accent);
+  --color-accent-text: var(--dc-accent-text);
+  --color-accent-fg: var(--dc-accent-fg);
+  --color-accent-soft: var(--dc-accent-soft);
+  --color-ok: var(--dc-ok);
+  --color-ok-soft: var(--dc-ok-soft);
+  --color-warn: var(--dc-warn);
+  --color-warn-soft: var(--dc-warn-soft);
+  --color-err: var(--dc-err);
+  --color-err-soft: var(--dc-err-soft);
+  --color-info: var(--dc-info);
+  --color-info-soft: var(--dc-info-soft);
+  --color-meter: var(--dc-meter);
+  --color-track: var(--dc-track);
+  --color-scrim: var(--dc-scrim);
+  --color-term: var(--dc-term-bg);
+  --color-s1: var(--dc-s1);
+  --color-s2: var(--dc-s2);
+  --color-s3: var(--dc-s3);
+  --color-s4: var(--dc-s4);
+  --color-s5: var(--dc-s5);
+
+  --shadow-overlay: var(--dc-shadow);
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  --ease-snappy: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  --animate-fade-in: fade-in 180ms var(--ease-snappy);
+  --animate-row-in: row-in 200ms var(--ease-snappy);
+  --animate-sheet-in: sheet-in 200ms var(--ease-snappy);
+  --animate-pop-in: pop-in 160ms var(--ease-snappy);
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+  --animate-pulse-dot: pulse-dot 2s ease-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes shimmer {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+}
+
+@layer base {
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-bg font-sans text-[13px] leading-5 text-fg antialiased;
+    font-feature-settings: "ss01", "cv11";
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background: var(--dc-accent-soft);
+    color: var(--dc-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--dc-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  button,
+  [role="button"],
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dc-line-strong) transparent;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer components {
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .eyebrow {
+    @apply text-2xs font-medium tracking-[0.08em] text-muted uppercase;
+  }
+
+  .skeleton {
+    @apply animate-shimmer rounded bg-hover;
+  }
+
+  /* Rendered markdown (STATE.md / ARCHITECTURE.md). */
+  .prose-dc {
+    @apply text-[13px] leading-6 text-fg-2;
+  }
+  .prose-dc :where(h1, h2, h3, h4) {
+    @apply font-semibold tracking-tight text-fg;
+  }
+  .prose-dc h1 {
+    @apply mt-0 mb-3 text-lg;
+  }
+  .prose-dc h2 {
+    @apply mt-6 mb-2 border-b border-line pb-1.5 text-sm;
+  }
+  .prose-dc h3 {
+    @apply mt-4 mb-1.5 text-[13px];
+  }
+  .prose-dc p {
+    @apply my-2;
+  }
+  .prose-dc :where(ul, ol) {
+    @apply my-2 pl-5;
+  }
+  .prose-dc ul {
+    @apply list-disc;
+  }
+  .prose-dc ol {
+    @apply list-decimal;
+  }
+  .prose-dc li {
+    @apply my-0.5 marker:text-faint;
+  }
+  .prose-dc a {
+    @apply text-accent-text underline decoration-accent/40 underline-offset-2;
+  }
+  .prose-dc strong {
+    @apply font-semibold text-fg;
+  }
+  .prose-dc em {
+    @apply italic;
+  }
+  .prose-dc :not(pre) > code {
+    @apply rounded border border-line bg-raised px-1 py-px text-[11.5px] text-fg-2;
+  }
+  .prose-dc pre {
+    @apply my-3 overflow-x-auto rounded-md border border-line bg-raised p-3 text-[12px] leading-5 text-fg;
+  }
+  .prose-dc table {
+    @apply my-3 w-full border-collapse text-[12px];
+  }
+  .prose-dc th {
+    @apply border-b border-line-strong px-2 py-1.5 text-left font-medium text-fg;
+  }
+  .prose-dc td {
+    @apply border-b border-line px-2 py-1.5 align-top;
+  }
+  .prose-dc blockquote {
+    @apply my-3 border-l-2 border-line-strong pl-3 text-muted;
+  }
+  .prose-dc hr {
+    @apply my-5 border-line;
+  }
+  .prose-dc input[type="checkbox"] {
+    @apply mr-1.5 align-middle accent-accent;
+  }
+}
+
+/* Reduced motion must beat every component-level transition, hence !important. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: user preference overrides all motion */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: user preference overrides all motion */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: user preference overrides all motion */
+    transition-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: user preference overrides all motion */
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: Highlight;
+  }
+}
