@@ -21,7 +21,12 @@ pnpm-debug.log*
 .davecode/profiles/
 .davecode/*.db
 .davecode/*.db-*
+.davecode/.lock
 .jevflow/
+
+# local agent tooling
+.claude/worktrees/
+.claude/settings.local.json
 
 # editors / OS
 .vscode/*
