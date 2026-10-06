@@ -145,8 +145,30 @@ accounts of the same provider when `experimental.multiAccountRotation` is enable
 └── TASK_GRAPH.json         DAG of tasks: PENDING | IN_PROGRESS | SUCCESS | FAILED
 ```
 
-The task graph is validated on load (unknown dependencies and cycles are rejected). The next
-task is the highest-priority `PENDING` node whose dependencies are all `SUCCESS`.
+The task graph is validated on read and on write (`parseTaskGraph`): duplicate ids, unknown
+dependencies, self-dependencies and cycles are rejected, and cycle errors name the path
+(`a → b → c → a`). The next task is the highest-priority `PENDING` node whose dependencies are
+all `SUCCESS`; ties keep file order. Status changes are immutable updates that follow
+`PENDING → IN_PROGRESS → SUCCESS | FAILED | PENDING`, `FAILED → PENDING` (retry) and
+`SUCCESS → PENDING` (reopen); entering `IN_PROGRESS` increments `attempts`.
+
+Module map (`packages/core/src/brain/`):
+
+| Module | Responsibility |
+| :----- | :------------- |
+| `graph.ts` | zod schema, DAG validation, `nextTask`/`readyTasks`/`blockedTasks`, `summarize`, `updateTask`/`setTaskStatus` |
+| `project.ts` | `ProjectBrain`: scaffold, read/write STATE.md, ARCHITECTURE.md and the graph, `task.updated` events |
+| `markdown.ts` | level-2 section parser behind `updateStateSection` and `appendStateLog` (fence-aware, preserves other content) |
+| `lock.ts` | `.davecode/.lock` (`{ pid, ts }`, stale after 30 s) serialising read-modify-write cycles between the runner and the dashboard |
+| `global.ts` | `GlobalBrain`: flat markdown notes in `~/.davecode/brain/`, names sanitised, no path traversal |
+| `context.ts` | `buildTaskContext` and `DAVECODE_SYSTEM_PROMPT` |
+
+All writes are atomic (temp file + rename). `buildTaskContext` emits, in order, `GLOBAL BRAIN`,
+`PROJECT ARCHITECTURE`, `PROJECT STATE` and `CURRENT TASK` sections. Over budget (default
+60 000 characters) it cuts the least important material first: global notes, then the oldest
+STATE.md activity-log entries, then the rest of STATE.md, and ARCHITECTURE.md only as a last
+resort. Every cut is marked `[… truncated to fit the context budget]` and the task section is
+never truncated. Add `.davecode/.lock` to a project's `.gitignore`.
 
 ## Autonomous loop
 

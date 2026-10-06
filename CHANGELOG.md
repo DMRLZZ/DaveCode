@@ -12,4 +12,8 @@ All notable changes to this project are documented here. The format follows
 - Shared domain contracts, `ProviderError` failover classification and the typed `EventBus`.
 - zod configuration schema with ToS-sensitive features disabled by default.
 - Architecture, HTTP API and specification documents.
+- Dual-brain context system: task graph DAG resolver with cycle paths and status transitions,
+  `ProjectBrain` (STATE.md section helpers, atomic writes, lock file, `task.updated` events),
+  `GlobalBrain` markdown notes, `buildTaskContext` with budgeted truncation and the master
+  `DAVECODE_SYSTEM_PROMPT`.
 - MIT license, contributing guide, code of conduct, security policy and CI.
