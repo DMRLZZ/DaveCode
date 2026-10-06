@@ -101,6 +101,12 @@ export {
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
 export { accountDir, SandboxManager } from './identity/sandbox';
 export {
+  approximateTokens,
+  countTextTokens,
+  estimateTokens,
+  type TokenInput,
+} from './rate-limiter/tokens';
+export {
   type AccountCreateInput,
   AccountRepository,
   type AccountUpdateInput,
