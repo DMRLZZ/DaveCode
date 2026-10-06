@@ -5,6 +5,14 @@ export default defineConfig({
     // Resolve workspace packages to their TypeScript sources (see "source" export condition).
     conditions: ['source'],
   },
+  // Tests run in Vite's SSR environment, which ignores the top-level `resolve.conditions`.
+  // Without this, cross-package imports (server → core) would hit stale or missing `dist/`.
+  ssr: {
+    resolve: {
+      conditions: ['source', 'module', 'node', 'development|production'],
+      externalConditions: ['source'],
+    },
+  },
   test: {
     include: ['packages/*/src/**/*.test.ts', 'packages/*/test/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**', 'packages/ui/**'],
