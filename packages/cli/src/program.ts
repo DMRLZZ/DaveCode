@@ -142,6 +142,16 @@ function registerCommands(program: Command, run: Runner): void {
 
   registerAccounts(program, run);
   registerProject(program, run);
+
+  program
+    .command('doctor')
+    .description('check the environment and print fixes')
+    .action(
+      run(async (ctx) => {
+        const { doctorCommand } = await import('./commands/doctor');
+        return doctorCommand(ctx);
+      }),
+    );
 }
 
 function registerProject(program: Command, run: Runner): void {
