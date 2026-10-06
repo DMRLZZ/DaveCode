@@ -10,7 +10,7 @@ describe('EventBus', () => {
     const event = bus.emit({ type: 'log', level: 'info', scope: 'test', message: 'hello' });
 
     expect(event.ts).toBeTypeOf('number');
-    expect(handler).toHaveBeenCalledWith(event);
+    expect(handler).toHaveBeenCalledWith(event, 1);
   });
 
   it('stops delivering after unsubscribe', () => {
@@ -29,6 +29,23 @@ describe('EventBus', () => {
     }
     const messages = bus.recent().map((e) => (e.type === 'log' ? e.message : ''));
     expect(messages).toEqual(['2', '3', '4']);
+  });
+
+  it('assigns increasing sequence numbers and replays after a cursor', () => {
+    const bus = new EventBus(3);
+    const seqs: number[] = [];
+    bus.subscribe((_event, seq) => seqs.push(seq));
+    for (let i = 0; i < 4; i++) {
+      bus.emit({ type: 'log', level: 'debug', scope: 'test', message: String(i) });
+    }
+
+    expect(seqs).toEqual([1, 2, 3, 4]);
+    expect(bus.lastSeq).toBe(4);
+    expect(bus.since(2).map((e) => e.seq)).toEqual([3, 4]);
+    // Seq 1 fell out of the buffer; a stale cursor gets what is left.
+    expect(bus.since(0).map((e) => e.seq)).toEqual([2, 3, 4]);
+    // A cursor from a previous process (higher than lastSeq) replays everything buffered.
+    expect(bus.since(99).map((e) => e.seq)).toEqual([2, 3, 4]);
   });
 
   it('isolates subscribers that throw', () => {

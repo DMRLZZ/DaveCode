@@ -62,7 +62,13 @@ export type DaveEventType = DaveEvent['type'];
 type WithoutTs<E> = E extends DaveEvent ? Omit<E, 'ts'> & { ts?: number } : never;
 export type DaveEventInput = WithoutTs<DaveEvent>;
 
-export type DaveEventHandler = (event: DaveEvent) => void;
+/** `seq` is a per-process, strictly increasing sequence number (the SSE `id:`). */
+export type DaveEventHandler = (event: DaveEvent, seq: number) => void;
+
+export interface SequencedEvent {
+  seq: number;
+  event: DaveEvent;
+}
 
 /**
  * In-process pub/sub with a bounded replay buffer so late subscribers
@@ -70,17 +76,19 @@ export type DaveEventHandler = (event: DaveEvent) => void;
  */
 export class EventBus {
   private readonly handlers = new Set<DaveEventHandler>();
-  private readonly buffer: DaveEvent[] = [];
+  private readonly buffer: SequencedEvent[] = [];
+  private seq = 0;
 
   constructor(private readonly bufferSize = 500) {}
 
   emit(input: DaveEventInput): DaveEvent {
     const event = { ...input, ts: input.ts ?? Date.now() } as DaveEvent;
-    this.buffer.push(event);
+    const seq = ++this.seq;
+    this.buffer.push({ seq, event });
     if (this.buffer.length > this.bufferSize) this.buffer.shift();
     for (const handler of this.handlers) {
       try {
-        handler(event);
+        handler(event, seq);
       } catch {
         // A misbehaving subscriber must never break the emitter.
       }
@@ -96,6 +104,20 @@ export class EventBus {
 
   /** Most recent events, oldest first. */
   recent(limit = this.bufferSize): DaveEvent[] {
-    return this.buffer.slice(-limit);
+    return this.buffer.slice(-limit).map((entry) => entry.event);
+  }
+
+  /** Sequence number of the latest emitted event (0 before the first). */
+  get lastSeq(): number {
+    return this.seq;
+  }
+
+  /**
+   * Buffered events emitted after `afterSeq`, oldest first. A cursor from the future
+   * (e.g. a client that saw a previous process) replays the whole buffer.
+   */
+  since(afterSeq: number): SequencedEvent[] {
+    if (afterSeq > this.seq) return [...this.buffer];
+    return this.buffer.filter((entry) => entry.seq > afterSeq);
   }
 }

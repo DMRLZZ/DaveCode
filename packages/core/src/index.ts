@@ -56,6 +56,7 @@ export {
   type DaveEventInput,
   type DaveEventType,
   EventBus,
+  type SequencedEvent,
 } from './events';
 export {
   davecodeHome,
