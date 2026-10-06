@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "foundation",
+      "title": "Monorepo foundation, shared contracts and OSS docs",
+      "status": "SUCCESS",
+      "dependsOn": [],
+      "priority": 100
+    },
+    {
+      "id": "p1-storage",
+      "title": "SQLite storage (WAL), migrations and repositories",
+      "description": "accounts, secrets, sessions, token_usage and audit_logs tables with typed repositories.",
+      "status": "PENDING",
+      "dependsOn": ["foundation"],
+      "priority": 90
+    },
+    {
+      "id": "p1-identity",
+      "title": "Encrypted keyring, sandbox manager and Chromium profile manager",
+      "status": "PENDING",
+      "dependsOn": ["p1-storage"],
+      "priority": 90
+    },
+    {
+      "id": "p1-config",
+      "title": "Layered config loader (defaults, global, project, env)",
+      "status": "PENDING",
+      "dependsOn": ["foundation"],
+      "priority": 90
+    },
+    {
+      "id": "p2-quota",
+      "title": "Sliding-window quota engine (1m, 5h, 24h) and SQLite-backed tracker",
+      "status": "PENDING",
+      "dependsOn": ["p1-storage"],
+      "priority": 80
+    },
+    {
+      "id": "p2-providers",
+      "title": "Provider adapters: anthropic, openai, gemini, openai-compatible, claude-cli, codex-cli, gemini-web (experimental)",
+      "status": "PENDING",
+      "dependsOn": ["p1-identity"],
+      "priority": 80
+    },
+    {
+      "id": "p2-router",
+      "title": "Router with balancing, backpressure, cooldowns and hot failover",
+      "status": "PENDING",
+      "dependsOn": ["p2-quota", "p2-providers", "p1-config"],
+      "priority": 80
+    },
+    {
+      "id": "p1-gateway",
+      "title": "Fastify gateway: /v1 OpenAI-compatible proxy, /api REST, SSE events",
+      "status": "PENDING",
+      "dependsOn": ["p2-router"],
+      "priority": 75
+    },
+    {
+      "id": "p3-brain",
+      "title": "Global and project brain managers, task graph DAG resolver with cycle detection",
+      "status": "PENDING",
+      "dependsOn": ["foundation"],
+      "priority": 70
+    },
+    {
+      "id": "p4-runner",
+      "title": "Autonomous runner: state machine, executor, validator, repair cycles, git flow, optional judge",
+      "status": "PENDING",
+      "dependsOn": ["p2-router", "p3-brain"],
+      "priority": 60
+    },
+    {
+      "id": "p5-dashboard",
+      "title": "Web dashboard (Vite + React + Tailwind) against docs/API.md",
+      "status": "PENDING",
+      "dependsOn": ["foundation"],
+      "priority": 50
+    },
+    {
+      "id": "p5-cli",
+      "title": "CLI commands and Ink TUI",
+      "status": "PENDING",
+      "dependsOn": ["p1-gateway", "p4-runner"],
+      "priority": 40
+    },
+    {
+      "id": "release-0.1.0",
+      "title": "Integration tests, docs polish and v0.1.0 release",
+      "status": "PENDING",
+      "dependsOn": ["p5-cli", "p5-dashboard"],
+      "priority": 10
+    }
+  ]
+}
