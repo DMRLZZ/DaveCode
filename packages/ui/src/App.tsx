@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { ConnectionStatus } from './components/shell/ConnectionStatus';
 import { Sidebar } from './components/shell/Sidebar';
 import { TopBar } from './components/shell/TopBar';
 import { useMediaQuery } from './lib/hooks';
 import { pageForPath } from './lib/nav';
+import { useHealth } from './lib/queries';
 import { useLocation } from './lib/router';
 import { applyTheme, updateSettings, useSettings } from './lib/settings';
 import { NotFound } from './routes/NotFound';
@@ -16,6 +18,7 @@ export function App() {
   const [, setPaletteOpen] = useState(false);
   const [, setHelpOpen] = useState(false);
   const mainRef = useRef<HTMLElement>(null);
+  const health = useHealth();
 
   useEffect(() => applyTheme(settings.theme), [settings.theme]);
 
@@ -40,11 +43,13 @@ export function App() {
       <Sidebar
         activeId={page?.id}
         collapsed={collapsed}
+        version={health.data?.version}
         onToggle={() => updateSettings({ sidebarCollapsed: !settings.sidebarCollapsed })}
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           title={page?.label ?? 'Not found'}
+          status={<ConnectionStatus />}
           onOpenPalette={() => setPaletteOpen(true)}
           onOpenHelp={() => setHelpOpen(true)}
         />
