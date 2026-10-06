@@ -107,6 +107,15 @@ export {
   type TokenInput,
 } from './rate-limiter/tokens';
 export {
+  type Clock,
+  limitsFor,
+  QUOTA_WINDOWS,
+  QuotaEngine,
+  type QuotaEngineOptions,
+  type RecordOptions,
+  WINDOW_MS,
+} from './rate-limiter/window';
+export {
   type AccountCreateInput,
   AccountRepository,
   type AccountUpdateInput,
