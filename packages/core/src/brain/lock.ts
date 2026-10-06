@@ -29,6 +29,8 @@ export class LockTimeoutError extends Error {
   }
 }
 
+const TRANSIENT_OPEN_ERRORS = ['EPERM', 'EACCES', 'EBUSY'];
+
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 async function readLockInfo(path: string): Promise<LockInfo | undefined> {
@@ -87,6 +89,12 @@ export async function withFileLock<T>(
       }
       break;
     } catch (err) {
+      if (TRANSIENT_OPEN_ERRORS.some((code) => isNodeError(err, code))) {
+        // Windows reports EPERM/EACCES while another process's delete of the lock is pending.
+        if (Date.now() >= deadline) throw err;
+        await sleep(retryMs);
+        continue;
+      }
       if (!isNodeError(err, 'EEXIST')) throw err;
       const age = await lockAge(lockPath);
       if (age !== undefined && age > staleMs) {
@@ -103,6 +111,8 @@ export async function withFileLock<T>(
   } finally {
     // Only release a lock that is still ours (it may have been taken over after going stale).
     const current = await readLockInfo(lockPath);
-    if (current?.token === token) await rm(lockPath, { force: true });
+    if (current?.token === token) {
+      await rm(lockPath, { force: true, maxRetries: 5, retryDelay: 10 });
+    }
   }
 }
