@@ -10,6 +10,8 @@ import {
   type TaskPatch,
   updateTask as updateGraphTask,
 } from './graph';
+import { type LockOptions, withFileLock } from './lock';
+import { getSection, touchLastUpdated, upsertSection } from './markdown';
 
 // ---------------------------------------------------------------------------
 // Project root discovery
@@ -41,6 +43,8 @@ export async function findProjectRoot(startDir: string): Promise<string | undefi
 // ---------------------------------------------------------------------------
 // Templates
 // ---------------------------------------------------------------------------
+
+const ACTIVITY_LOG_HEADING = 'Activity log';
 
 const today = (now: Date) => now.toISOString().slice(0, 10);
 
@@ -94,6 +98,8 @@ export interface ProjectBrainOptions {
   events?: EventBus;
   /** Clock override (tests). */
   now?: () => Date;
+  /** Tuning for the `.davecode/.lock` file guarding read-modify-write cycles. */
+  lock?: LockOptions;
 }
 
 export interface ProjectBrainInitOptions extends ProjectBrainOptions {
@@ -112,6 +118,7 @@ export class ProjectBrain {
   readonly paths: ProjectPaths;
   protected readonly events: EventBus | undefined;
   protected readonly now: () => Date;
+  protected readonly lockOptions: LockOptions;
 
   constructor(
     readonly root: string,
@@ -120,6 +127,20 @@ export class ProjectBrain {
     this.paths = projectPaths(root);
     this.events = opts.events;
     this.now = opts.now ?? (() => new Date());
+    this.lockOptions = opts.lock ?? {};
+  }
+
+  /** Path of the lock file shared by every process touching this brain. */
+  get lockPath(): string {
+    return join(this.paths.dir, '.lock');
+  }
+
+  /**
+   * Runs `fn` while holding `.davecode/.lock` (pid + timestamp, stale after 30 s). Not re-entrant:
+   * do not call locking methods of the same brain from inside `fn`.
+   */
+  withLock<T>(fn: () => Promise<T>): Promise<T> {
+    return withFileLock(this.lockPath, fn, this.lockOptions);
   }
 
   /** Scaffolds any missing brain file from its template. Existing files are never overwritten. */
@@ -168,8 +189,33 @@ export class ProjectBrain {
     return this.readText(this.paths.state);
   }
 
+  /** Replaces STATE.md verbatim. */
   async writeState(content: string): Promise<void> {
-    await atomicWriteFile(this.paths.state, content);
+    await this.withLock(() => atomicWriteFile(this.paths.state, content));
+  }
+
+  /**
+   * Replaces (or appends) the `## heading` section of STATE.md, preserving everything else, and
+   * refreshes the `_Last updated: YYYY-MM-DD_` line when present.
+   */
+  async updateStateSection(heading: string, markdown: string): Promise<void> {
+    await this.editState((state) => upsertSection(state, heading, markdown));
+  }
+
+  /** Appends `- <ISO timestamp>: entry` under `## Activity log` (created when missing). */
+  async appendStateLog(entry: string): Promise<void> {
+    const line = `- ${this.now().toISOString().slice(0, 19)}Z: ${entry.trim().replace(/\s*\r?\n\s*/g, ' ')}`;
+    await this.editState((state) => {
+      const existing = getSection(state, ACTIVITY_LOG_HEADING);
+      return upsertSection(state, ACTIVITY_LOG_HEADING, existing ? `${existing}\n${line}` : line);
+    });
+  }
+
+  private async editState(change: (state: string) => string): Promise<void> {
+    await this.withLock(async () => {
+      const next = touchLastUpdated(change(await this.readState()), this.now());
+      await atomicWriteFile(this.paths.state, next);
+    });
   }
 
   async readArchitecture(): Promise<string> {
@@ -185,6 +231,10 @@ export class ProjectBrain {
 
   /** Validates then atomically writes the graph (2-space JSON, trailing newline). */
   async writeGraph(graph: TaskGraph): Promise<void> {
+    await this.withLock(() => this.writeGraphUnlocked(graph));
+  }
+
+  private async writeGraphUnlocked(graph: TaskGraph): Promise<void> {
     await atomicWriteFile(this.paths.taskGraph, serializeGraph(parseTaskGraph(graph)));
   }
 
@@ -210,9 +260,11 @@ export class ProjectBrain {
     id: string,
     change: (graph: TaskGraph) => TaskGraph,
   ): Promise<TaskNode> {
-    const next = change(await this.readGraph());
-    await this.writeGraph(next);
-    const task = next.tasks.find((t) => t.id === id) as TaskNode;
+    const task = await this.withLock(async () => {
+      const next = change(await this.readGraph());
+      await this.writeGraphUnlocked(next);
+      return next.tasks.find((t) => t.id === id) as TaskNode;
+    });
     this.events?.emit({ type: 'task.updated', task });
     return task;
   }
