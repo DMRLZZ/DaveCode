@@ -5,17 +5,25 @@ import { ProviderError, type ProviderErrorOptions } from '../errors';
 import type {
   ChatCompletion,
   ChatCompletionChunk,
+  ChatMessage,
   ChatRequest,
   ModelInfo,
   Provider,
   ProviderCallContext,
   ProviderKind,
+  ToolCall,
   Usage,
 } from '../types';
 
 /** A scripted outcome for one provider call. */
 export type FakeResponse =
-  | { type: 'complete'; content?: string; usage?: Usage }
+  | {
+      type: 'complete';
+      content?: string;
+      usage?: Usage;
+      /** Assistant tool calls (non-streaming only); sets `finish_reason: 'tool_calls'`. */
+      toolCalls?: ToolCall[];
+    }
   | { type: 'error'; error: Error }
   | {
       type: 'stream';
@@ -32,16 +40,34 @@ export interface FakeCall {
   stream: boolean;
   secret?: string;
   sandboxDir: string;
+  /** Messages the provider received (a copy). */
+  messages: ChatMessage[];
 }
 
-export function fakeCompletion(model: string, content: string, usage?: Usage): ChatCompletion {
+export function fakeCompletion(
+  model: string,
+  content: string,
+  usage?: Usage,
+  toolCalls?: ToolCall[],
+): ChatCompletion {
+  const message: ChatMessage = { role: 'assistant', content };
+  if (toolCalls && toolCalls.length > 0) message.tool_calls = toolCalls;
   return {
     id: 'chatcmpl-fake',
     object: 'chat.completion',
     created: 1_760_000_000,
     model,
-    choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+    choices: [{ index: 0, message, finish_reason: message.tool_calls ? 'tool_calls' : 'stop' }],
     usage: usage ?? { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+  };
+}
+
+/** Shorthand for a scripted tool call (`arguments` is JSON-encoded). */
+export function fakeToolCall(name: string, args: Record<string, unknown>, id?: string): ToolCall {
+  return {
+    id: id ?? `call_${name}_${Math.random().toString(36).slice(2, 8)}`,
+    type: 'function',
+    function: { name, arguments: JSON.stringify(args) },
   };
 }
 
@@ -92,6 +118,7 @@ export class FakeProvider implements Provider {
       model: req.model,
       stream,
       sandboxDir: ctx.sandboxDir,
+      messages: req.messages.map((m) => ({ ...m })),
     };
     if (ctx.secret !== undefined) call.secret = ctx.secret;
     this.calls.push(call);
@@ -114,8 +141,9 @@ export class FakeProvider implements Provider {
       return fakeCompletion(req.model, response.chunks.join(''), response.usage);
     return fakeCompletion(
       req.model,
-      response.content ?? `ok from ${ctx.account.id}`,
+      response.content ?? (response.toolCalls ? '' : `ok from ${ctx.account.id}`),
       response.usage,
+      response.toolCalls,
     );
   }
 
