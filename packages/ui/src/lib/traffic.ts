@@ -19,6 +19,8 @@ export interface ChainAttempt {
   errorKind?: ProviderErrorKind;
   errorStatus?: number;
   errorMessage?: string;
+  /** The router announced a failover away from this attempt. */
+  failedOver?: boolean;
 }
 
 export interface RequestChain {
@@ -68,6 +70,29 @@ function lastPendingIndex(attempts: ChainAttempt[], accountId: string): number {
   return -1;
 }
 
+/**
+ * Seeded records and replayed events describe the same attempts. Two observations of the
+ * same account within this window are treated as one attempt.
+ */
+const MATCH_MS = 2000;
+
+function findMatching(
+  attempts: ChainAttempt[],
+  accountId: string,
+  ts: number,
+  field: 'startedTs' | 'endedTs',
+  outcome?: AttemptOutcome,
+): number {
+  for (let i = attempts.length - 1; i >= 0; i--) {
+    const a = attempts[i];
+    if (!a || a.accountId !== accountId) continue;
+    if (outcome && a.outcome !== outcome) continue;
+    const at = a[field];
+    if (at !== undefined && Math.abs(at - ts) <= MATCH_MS) return i;
+  }
+  return -1;
+}
+
 function deriveOutcome(chain: RequestChain): AttemptOutcome {
   const last = chain.attempts[chain.attempts.length - 1];
   if (!last) return 'pending';
@@ -92,7 +117,10 @@ export function applyChainEvent(chain: RequestChain | undefined, e: ChainEvent):
   switch (e.type) {
     case 'request.started': {
       if (!next.model) next.model = e.model;
-      if (lastPendingIndex(next.attempts, e.accountId) === -1) {
+      if (
+        lastPendingIndex(next.attempts, e.accountId) === -1 &&
+        findMatching(next.attempts, e.accountId, e.ts, 'startedTs') === -1
+      ) {
         next.attempts.push({
           accountId: e.accountId,
           provider: e.provider,
@@ -105,6 +133,7 @@ export function applyChainEvent(chain: RequestChain | undefined, e: ChainEvent):
     case 'request.completed': {
       if (!next.model) next.model = e.model;
       let i = lastPendingIndex(next.attempts, e.accountId);
+      if (i === -1) i = findMatching(next.attempts, e.accountId, e.ts, 'endedTs', 'success');
       if (i === -1) {
         next.attempts.push({
           accountId: e.accountId,
@@ -127,6 +156,7 @@ export function applyChainEvent(chain: RequestChain | undefined, e: ChainEvent):
     }
     case 'request.failed': {
       let i = lastPendingIndex(next.attempts, e.accountId);
+      if (i === -1) i = findMatching(next.attempts, e.accountId, e.ts, 'endedTs', 'failed');
       if (i === -1) {
         next.attempts.push({
           accountId: e.accountId,
@@ -138,9 +168,10 @@ export function applyChainEvent(chain: RequestChain | undefined, e: ChainEvent):
       }
       const a = next.attempts[i];
       if (a) {
+        const wasPending = a.outcome === 'pending';
         a.outcome = 'failed';
-        a.endedTs = e.ts;
-        a.latencyMs = e.ts - a.startedTs;
+        a.endedTs = wasPending ? e.ts : (a.endedTs ?? e.ts);
+        a.latencyMs = a.latencyMs ?? e.ts - a.startedTs;
         a.errorKind = e.error.kind;
         a.errorStatus = e.error.status;
         a.errorMessage = e.error.message;
@@ -148,11 +179,16 @@ export function applyChainEvent(chain: RequestChain | undefined, e: ChainEvent):
       break;
     }
     case 'router.failover': {
-      next.failovers += 1;
       if (e.toAccountId === null) next.exhausted = true;
+      let found = false;
       for (let i = next.attempts.length - 1; i >= 0; i--) {
         const a = next.attempts[i];
         if (a && a.accountId === e.fromAccountId) {
+          found = true;
+          if (!a.failedOver) {
+            a.failedOver = true;
+            next.failovers += 1;
+          }
           a.errorKind ??= e.reason;
           if (a.outcome === 'pending') {
             a.outcome = 'failed';
@@ -161,6 +197,7 @@ export function applyChainEvent(chain: RequestChain | undefined, e: ChainEvent):
           break;
         }
       }
+      if (!found) next.failovers += 1;
       break;
     }
   }
@@ -182,7 +219,7 @@ export function chainsFromRecords(records: UsageRecord[]): RequestChain[] {
     list.sort((a, b) => a.ts - b.ts);
     const first = list[0];
     if (!first) continue;
-    const attempts: ChainAttempt[] = list.map((r) => ({
+    const attempts: ChainAttempt[] = list.map((r, i) => ({
       accountId: r.accountId,
       provider: r.provider,
       startedTs: r.ts - r.latencyMs,
@@ -193,6 +230,7 @@ export function chainsFromRecords(records: UsageRecord[]): RequestChain[] {
       completionTokens: r.completionTokens,
       errorKind: r.errorKind ?? (r.status === 'rate_limited' ? 'rate_limit' : undefined),
       errorStatus: r.status === 'rate_limited' ? 429 : undefined,
+      failedOver: i < list.length - 1,
     }));
     const last = attempts[attempts.length - 1];
     chains.push({

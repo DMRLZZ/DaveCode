@@ -601,10 +601,10 @@ export class MockEngine implements DaveClient {
     const heavy = target.model.includes('opus') || target.model.includes('pro');
     const promptTokens = Math.round((fast ? 900 : 2400) * Math.exp(this.rng() * 1.6));
     const completionTokens = Math.round(
-      (fast ? 90 : heavy ? 900 : 420) * Math.exp(this.rng() * 1.2),
+      (fast ? 80 : heavy ? 700 : 300) * Math.exp(this.rng() * 1.1),
     );
     const latencyMs = Math.round(
-      (base + completionTokens * perToken * (fast ? 0.5 : 1)) * (0.75 + this.rng() * 0.5),
+      (base + completionTokens * perToken * (fast ? 0.35 : 0.6)) * (0.75 + this.rng() * 0.5),
     );
     const util = this.util5h(account, ts);
     let pFail = seed?.failRate ?? 0.01;
@@ -1153,10 +1153,12 @@ export class MockEngine implements DaveClient {
 
   private nextId(prefix: string): string {
     this.seq += 1;
-    const rand = Math.floor(this.rng() * 0xffffff)
-      .toString(16)
-      .padStart(6, '0');
-    return `${prefix}_${rand}${this.seq.toString(16).padStart(4, '0')}`;
+    const hex = () =>
+      Math.floor(this.rng() * 0xffffff)
+        .toString(16)
+        .padStart(6, '0');
+    // Random-looking like real ids; the sequence suffix guarantees uniqueness.
+    return `${prefix}_${hex()}${hex()}${this.seq.toString(36)}`;
   }
 
   private modelsFor(account: Account): string[] {

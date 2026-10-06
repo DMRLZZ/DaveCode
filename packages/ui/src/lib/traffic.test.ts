@@ -181,4 +181,87 @@ describe('chainsFromRecords', () => {
     expect(x?.outcome).toBe('success');
     expect(x?.attempts[0]?.errorKind).toBe('rate_limit');
   });
+
+  it('merges replayed events into a chain seeded from records without duplicating attempts', () => {
+    const [seeded] = chainsFromRecords([
+      {
+        id: 'u1',
+        requestId: 'dup',
+        accountId: 'a',
+        provider: 'claude-cli',
+        model: 'm',
+        promptTokens: 0,
+        completionTokens: 0,
+        latencyMs: 300,
+        status: 'rate_limited',
+        errorKind: 'rate_limit',
+        ts: 1300,
+      },
+      {
+        id: 'u2',
+        requestId: 'dup',
+        accountId: 'b',
+        provider: 'anthropic',
+        model: 'm',
+        promptTokens: 10,
+        completionTokens: 5,
+        latencyMs: 900,
+        status: 'success',
+        ts: 2202,
+      },
+    ]);
+    let chain = seeded;
+    const replay: ChainEvent[] = [
+      {
+        type: 'request.started',
+        requestId: 'dup',
+        model: 'm',
+        accountId: 'a',
+        provider: 'claude-cli',
+        ts: 1000,
+      },
+      {
+        type: 'request.failed',
+        requestId: 'dup',
+        accountId: 'a',
+        provider: 'claude-cli',
+        error: { kind: 'rate_limit', message: '429', status: 429 },
+        ts: 1300,
+      },
+      {
+        type: 'router.failover',
+        requestId: 'dup',
+        fromAccountId: 'a',
+        toAccountId: 'b',
+        reason: 'rate_limit',
+        ts: 1301,
+      },
+      {
+        type: 'request.started',
+        requestId: 'dup',
+        model: 'm',
+        accountId: 'b',
+        provider: 'anthropic',
+        ts: 1302,
+      },
+      {
+        type: 'request.completed',
+        requestId: 'dup',
+        model: 'm',
+        accountId: 'b',
+        provider: 'anthropic',
+        promptTokens: 10,
+        completionTokens: 5,
+        latencyMs: 900,
+        ts: 2202,
+      },
+    ];
+    for (const e of replay) chain = applyChainEvent(chain, e);
+    expect(chain?.attempts.map((a) => [a.accountId, a.outcome])).toEqual([
+      ['a', 'failed'],
+      ['b', 'success'],
+    ]);
+    expect(chain?.failovers).toBe(1);
+    expect(chain?.outcome).toBe('success');
+  });
 });
