@@ -29,11 +29,31 @@ const QUOTA_PATTERNS = [
 
 const OVERLOAD_PATTERNS = [/overloaded/i];
 
+const AUTH_PATTERNS = [/api key not valid/i, /API_KEY_INVALID/, /invalid api key/i];
+
 /** Classify an error from message text only; returns undefined when nothing matches. */
 export function classifyMessage(text: string): ProviderErrorKind | undefined {
   if (CONTEXT_PATTERNS.some((p) => p.test(text))) return 'context_length';
   if (QUOTA_PATTERNS.some((p) => p.test(text))) return 'quota_exhausted';
   if (OVERLOAD_PATTERNS.some((p) => p.test(text))) return 'unavailable';
+  if (AUTH_PATTERNS.some((p) => p.test(text))) return 'auth';
+  return undefined;
+}
+
+/** Google style `error.details[].retryDelay` ("30s" / "1.5s") from an error body, in ms. */
+export function retryDelayFromBody(body: string): number | undefined {
+  try {
+    const json: unknown = JSON.parse(body);
+    const details = isRecord(json) && isRecord(json.error) ? json.error.details : undefined;
+    if (!Array.isArray(details)) return undefined;
+    for (const d of details) {
+      const delay = isRecord(d) ? asString(d.retryDelay) : undefined;
+      const match = delay ? /^(\d+(?:\.\d+)?)s$/.exec(delay) : null;
+      if (match?.[1]) return Math.round(Number(match[1]) * 1000);
+    }
+  } catch {
+    // not JSON
+  }
   return undefined;
 }
 
@@ -108,7 +128,9 @@ export function errorFromHttp(
   if (byText && status < 500) kind = byText;
   if (status >= 500 && kind === 'unknown') kind = 'unavailable';
   const retryAfterMs =
-    status === 429 || status === 503 || status === 529 ? retryAfterFromHeaders(headers) : undefined;
+    status === 429 || status === 503 || status === 529
+      ? (retryAfterFromHeaders(headers) ?? retryDelayFromBody(body))
+      : undefined;
   const text = redact(message || `HTTP ${status}`, scope.secret);
   return new ProviderError(`${scope.provider} upstream error (HTTP ${status}): ${text}`, {
     kind,
