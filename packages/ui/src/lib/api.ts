@@ -30,11 +30,14 @@ export class ApiError extends Error {
     this.code = code;
   }
 
-  /** True when the gateway answered (even with an error), i.e. it is reachable. */
+  /** True when the DaveCode gateway itself answered (even with an error). */
   get reachable(): boolean {
-    return this.status > 0 && this.code !== 'bad_response';
+    return this.status > 0 && !UNREACHABLE_CODES.has(this.code);
   }
 }
+
+/** Transport-level codes: something other than the gateway answered, or nothing did. */
+const UNREACHABLE_CODES = new Set(['network', 'bad_response', 'gateway_unreachable']);
 
 export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError;
@@ -112,6 +115,15 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
 
     if (!res.ok) {
       const err = (json as Partial<ApiErrorBody> | undefined)?.error;
+      // A 502/503/504 without the /api error envelope comes from a proxy (Vite dev/preview,
+      // a reverse proxy) that could not reach the gateway, not from the gateway itself.
+      if (!err && res.status >= 502 && res.status <= 504) {
+        throw new ApiError(
+          res.status,
+          'gateway_unreachable',
+          `Gateway unreachable (proxy answered ${res.status})`,
+        );
+      }
       throw new ApiError(
         res.status,
         err?.code ?? `http_${res.status}`,
