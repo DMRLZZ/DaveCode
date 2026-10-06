@@ -27,11 +27,17 @@ by default.
 
 | Status | Meaning |
 | :----- | :------ |
-| 400 | Invalid body (zod validation message included) |
-| 401 | Missing/invalid bearer token |
-| 404 | Unknown resource |
-| 429 | Every candidate account is saturated or cooling down |
-| 502 | All failover targets failed upstream |
+| 400 | Invalid body (zod validation message included, code `invalid_body`), or `experimental_disabled` |
+| 401 | Missing/invalid bearer token (`invalid_api_key` on `/v1`, `unauthorized` on `/api`) |
+| 404 | Unknown resource (`not_found`) or no account can serve the model (`model_not_found`) |
+| 429 | Every candidate account is saturated or cooling down (`no_capacity`), or every attempt was rate limited upstream (`rate_limited`) |
+| 501 | The autonomous runner is not available in this process (`runner_unavailable`) |
+| 502 | All failover targets failed upstream (`upstream_failed`), or upstream credentials were rejected (`upstream_auth_error`) |
+| 503 | Matching accounts exist but none is usable: disabled, in error or without an adapter (`no_available_account`) |
+
+Upstream errors that are not failover-eligible are returned as-is with their kind as `code`:
+`bad_request` → 400, `context_length` → 400 `context_length_exceeded`, `auth` → 502
+`upstream_auth_error` (the account is marked `error`), anything else → 502.
 
 ---
 
@@ -44,15 +50,22 @@ by default.
 ```
 
 Includes every model of every enabled account plus one entry per configured route, exposed as
-`davecode/<route-name>` (e.g. `davecode/auto`), with `owned_by: "davecode"`.
+`davecode/<route-name>` (e.g. `davecode/auto`), with `owned_by: "davecode"`. The default route
+(`routing.defaultRoute`) is always listed. An account's models come from `config.models` when
+set, otherwise from its provider adapter.
 
 ### `POST /v1/chat/completions`
 
 Body: `ChatRequest`. The `model` field accepts:
 
-1. `davecode/<route>`: use a configured route (ordered failover targets).
-2. `<provider>/<model>`, e.g. `anthropic/claude-sonnet-5-5`: any account of that provider.
-3. A bare model id: the first enabled account that lists it.
+1. `davecode/<route>`: use a configured route (ordered failover targets). Unknown names fall
+   back to the default route. If the default route is not configured, every account that sets
+   `config.defaultModel` (or `config.models`) is a candidate with that model.
+2. `<provider>/<model>`, e.g. `anthropic/claude-sonnet-5-5`: any account of that provider (and,
+   when the account sets `config.models`, only if the model is listed).
+3. A bare model id: accounts that list it in `config.models`; accounts without a list match when
+   the id belongs to their provider family (`claude*`, `gpt-*`/`o<n>*`, `gemini*`), and
+   `openai-compatible` accounts match unknown families.
 
 Non-streaming responses return a `ChatCompletion`. With `"stream": true` the response is
 `text/event-stream` with one `data: <ChatCompletionChunk JSON>` line per chunk, terminated by
@@ -110,7 +123,13 @@ type AccountPatch = Partial<Omit<AccountCreate, 'provider'>> & { enabled?: boole
 ```
 
 Secrets are write-only: no endpoint ever returns them. Creating a `gemini-web` account while
-`experimental.geminiWeb` is off returns `400` with code `experimental_disabled`.
+`experimental.geminiWeb` is off returns `400` with code `experimental_disabled`. Unknown body
+fields and credential-like `config` keys (`apiKey`, `token`, `password`, `cookie`…) are rejected
+with `400 invalid_body`; send credentials in `secret`. `AccountCreate` also accepts
+`enabled?: boolean`.
+
+`PATCH` with `enabled: false` sets `status: "disabled"`. `enabled: true` or a new `secret`
+resets an enabled account to `active` and clears `cooldownUntil` and `lastError`.
 
 ### Usage
 
@@ -177,6 +196,10 @@ Most recent first.
 | `POST` | `/api/runner/pause` | `{ "status": RunnerStatus }` |
 | `POST` | `/api/runner/stop` | `{ "status": RunnerStatus }` |
 
+When the gateway runs without a project brain, `/api/tasks` returns `project: null` with an
+empty graph and `/api/brain` returns empty strings. Without a runner, `GET /api/runner` returns
+`{ "status": { "state": "idle" } }` and the control endpoints return `501 runner_unavailable`.
+
 ### Live events
 
 `GET /api/events` returns `text/event-stream`. On connect, the server replays the recent event
@@ -188,7 +211,8 @@ data: {"type":"request.completed","requestId":"req_…","ts":1760000000000,…}
 
 ```
 
-A comment line (`: ping`) is sent every 15 seconds as a heartbeat.
+The stream opens with `retry: 3000`. A comment line (`: ping`) is sent every 15 seconds as a
+heartbeat.
 
 `GET /api/logs?limit=200` returns `{ "events": DaveEvent[] }` from the same buffer, for clients
 that prefer polling.
