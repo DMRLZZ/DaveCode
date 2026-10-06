@@ -16,4 +16,8 @@ All notable changes to this project are documented here. The format follows
   `ProjectBrain` (STATE.md section helpers, atomic writes, lock file, `task.updated` events),
   `GlobalBrain` markdown notes, `buildTaskContext` with budgeted truncation and the master
   `DAVECODE_SYSTEM_PROMPT`.
+- Provider adapters in `@davecode/core`: `openai`, `openai-compatible`, `anthropic`, `gemini`,
+  `claude-cli` (per-account `CLAUDE_CONFIG_DIR`), `codex-cli` (per-account `CODEX_HOME`) and an
+  experimental driver-injected `gemini-web`, all translating to the OpenAI wire format with
+  uniform `ProviderError` mapping, plus the `createProviders()` registry.
 - MIT license, contributing guide, code of conduct, security policy and CI.
