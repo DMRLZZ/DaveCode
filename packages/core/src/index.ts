@@ -90,6 +90,7 @@ export {
   type LoadConfigOptions,
   loadConfig,
 } from './config/loader';
+export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
 export {
   type AccountCreateInput,
   AccountRepository,
