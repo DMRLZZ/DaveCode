@@ -64,5 +64,19 @@ export {
   type ProjectPaths,
   projectPaths,
 } from './paths';
+// --- providers ---
+export {
+  AnthropicProvider,
+  ClaudeCliProvider,
+  CodexCliProvider,
+  type CreateProvidersOptions,
+  createProviders,
+  GeminiProvider,
+  type GeminiWebDriver,
+  GeminiWebProvider,
+  OpenAICompatibleProvider,
+  OpenAIProvider,
+  type OpenAIProviderOptions,
+} from './providers';
 export * from './types';
 export { VERSION } from './version';
