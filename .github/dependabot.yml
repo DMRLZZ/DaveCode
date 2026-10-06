@@ -8,6 +8,13 @@ updates:
       dev-tooling:
         patterns: ['@biomejs/*', 'typescript', 'vitest', 'tsup', 'tsx', '@types/*']
     open-pull-requests-limit: 5
+    ignore:
+      # TypeScript 7 (native port) lacks the compiler API tsup's dts build needs; migrate deliberately.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # Keep Node typings on the LTS lines we support (see engines / CI matrix).
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     schedule:
