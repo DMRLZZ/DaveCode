@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in DaveCode is not working as expected
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. **Never paste API keys, tokens or cookies.**
+        Security issues go through SECURITY.md, not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure route `auto` with …
+        2. Run `davecode start`
+        3. Send …
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Gateway / proxy (/v1)
+        - Router / quotas / failover
+        - Providers
+        - Identity / keyring / sandboxes
+        - Brain / task graph
+        - Autonomous runner
+        - CLI / TUI
+        - Web dashboard
+        - Docs
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: DaveCode version or commit
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: macOS 15 / Windows 11 / Ubuntu 24.04, Node 24.x
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact anything sensitive.
+      render: shell

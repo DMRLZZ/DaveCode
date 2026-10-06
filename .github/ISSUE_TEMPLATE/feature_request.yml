@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an idea or improvement for DaveCode
+labels: [enhancement, triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should DaveCode behave? Config, API or UI sketches are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: tos
+    attributes:
+      label: Terms of Service
+      options:
+        - label: This feature does not require automating a provider in a way its Terms of Service prohibit (or I explain why it should ship as an opt-in experimental flag).
+          required: true
