@@ -243,6 +243,15 @@ export interface UsageRecord {
   ts: number;
 }
 
+/** One bucket of `GET /api/usage/timeseries`. Tokens are prompt + completion. */
+export interface UsageBucket {
+  /** Bucket start, epoch milliseconds. */
+  ts: number;
+  tokens: number;
+  requests: number;
+  byAccount: Record<string, { tokens: number; requests: number }>;
+}
+
 // ---------------------------------------------------------------------------
 // Dual-brain context & task graph
 // ---------------------------------------------------------------------------

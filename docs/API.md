@@ -122,6 +122,9 @@ Secrets are write-only: no endpoint ever returns them. Creating a `gemini-web` a
 
 `GET /api/usage/timeseries?minutes=60&bucketSec=60`
 
+Returns `{ "buckets": UsageBucket[] }`, oldest first. Buckets are aligned to `bucketSec`
+boundaries and zero-filled; `tokens` is prompt + completion.
+
 ```json
 {
   "buckets": [

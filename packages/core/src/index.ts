@@ -80,3 +80,40 @@ export {
 } from './providers';
 export * from './types';
 export { VERSION } from './version';
+
+// --- phase 1 & 2: storage, identity, quotas, router, engine ---
+
+export {
+  ConfigError,
+  deepMerge,
+  envLayer,
+  type LoadConfigOptions,
+  loadConfig,
+} from './config/loader';
+export {
+  type ChromiumContext,
+  type ChromiumLaunchOptions,
+  ChromiumProfileManager,
+  type ChromiumProfileManagerOptions,
+  ChromiumUnavailableError,
+  ExperimentalDisabledError,
+} from './identity/chromium';
+export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
+export { accountDir, SandboxManager } from './identity/sandbox';
+export {
+  type AccountCreateInput,
+  AccountRepository,
+  type AccountUpdateInput,
+} from './storage/accounts';
+export { type AuditEntry, type AuditInput, AuditLog } from './storage/audit';
+export {
+  type Database,
+  MIGRATIONS,
+  migrate,
+  type OpenDatabaseOptions,
+  openDatabase,
+  schemaVersion,
+} from './storage/database';
+export { newId } from './storage/ids';
+export { type TimeseriesOptions, UsageRepository, type UsageTotals } from './storage/usage';
+// --- end phase 1 & 2 ---
