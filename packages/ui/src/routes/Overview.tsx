@@ -252,7 +252,7 @@ export function Overview() {
           <PanelHeader
             id="activity-title"
             title="Recent activity"
-            meta="failovers, cooldowns, tasks, runner"
+            meta="failovers · cooldowns · runner"
             actions={
               <Link to="/traffic" className="text-[12px] text-muted hover:text-fg">
                 Traffic →

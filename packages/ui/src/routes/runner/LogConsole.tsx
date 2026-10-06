@@ -143,44 +143,46 @@ export function LogConsole({
             </button>
           ))}
         </fieldset>
-        <div className="relative ml-auto">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-muted"
-            strokeWidth={1.75}
-          />
-          <input
-            type="search"
-            aria-label="Filter log lines"
-            placeholder="Filter"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="h-6 w-40 rounded border border-line-strong bg-transparent pr-2 pl-6 font-mono text-[11px] text-fg placeholder:text-faint focus-visible:border-accent focus-visible:outline-none"
-            data-filter-input
-          />
+        <div className="ml-auto flex items-center gap-1">
+          <div className="relative">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-muted"
+              strokeWidth={1.75}
+            />
+            <input
+              type="search"
+              aria-label="Filter log lines"
+              placeholder="Filter"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-6 w-32 rounded border border-line-strong bg-transparent pr-2 pl-6 font-mono text-[11px] text-fg placeholder:text-faint focus-visible:border-accent focus-visible:outline-none"
+              data-filter-input
+            />
+          </div>
+          <button
+            type="button"
+            aria-pressed={wrap}
+            onClick={() => setWrap((w) => !w)}
+            aria-label="Wrap long lines"
+            title="Wrap long lines"
+            className={cn(
+              'inline-flex size-6 items-center justify-center rounded',
+              wrap ? 'bg-hover text-fg' : 'text-muted hover:text-fg',
+            )}
+          >
+            <WrapText aria-hidden className="size-3.5" strokeWidth={1.75} />
+          </button>
+          <button
+            type="button"
+            onClick={onClear}
+            aria-label="Clear console"
+            title="Clear console"
+            className="inline-flex size-6 items-center justify-center rounded text-muted hover:bg-hover hover:text-fg"
+          >
+            <Eraser aria-hidden className="size-3.5" strokeWidth={1.75} />
+          </button>
         </div>
-        <button
-          type="button"
-          aria-pressed={wrap}
-          onClick={() => setWrap((w) => !w)}
-          aria-label="Wrap long lines"
-          title="Wrap long lines"
-          className={cn(
-            'inline-flex size-6 items-center justify-center rounded',
-            wrap ? 'bg-hover text-fg' : 'text-muted hover:text-fg',
-          )}
-        >
-          <WrapText aria-hidden className="size-3.5" strokeWidth={1.75} />
-        </button>
-        <button
-          type="button"
-          onClick={onClear}
-          aria-label="Clear console"
-          title="Clear console"
-          className="inline-flex size-6 items-center justify-center rounded text-muted hover:bg-hover hover:text-fg"
-        >
-          <Eraser aria-hidden className="size-3.5" strokeWidth={1.75} />
-        </button>
       </div>
 
       <div className="relative min-h-0 flex-1">

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { NAV } from './nav';
 import { navigate } from './router';
 import { getSettings, updateSettings } from './settings';
-import { ui } from './ui-state';
+import { toggleSidebar, ui } from './ui-state';
 
 export interface ShortcutDef {
   keys: string[];
@@ -56,6 +56,7 @@ export function useGlobalShortcuts(): void {
         ui.togglePalette();
         return;
       }
+      if (e.key === 'Escape') ui.setSidebarOverlay(false);
       if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
       if (isTyping(e.target) || modalOpen()) return;
 
@@ -79,7 +80,9 @@ export function useGlobalShortcuts(): void {
           break;
         case '[':
           e.preventDefault();
-          updateSettings({ sidebarCollapsed: !getSettings().sidebarCollapsed });
+          toggleSidebar(() =>
+            updateSettings({ sidebarCollapsed: !getSettings().sidebarCollapsed }),
+          );
           break;
         case '/': {
           const input = document.querySelector<HTMLInputElement>('[data-filter-input]');

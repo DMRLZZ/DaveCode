@@ -1,10 +1,11 @@
-import { type ComponentType, useEffect, useRef } from 'react';
+import { type ComponentType, lazy, Suspense, useEffect, useRef } from 'react';
 import { CommandPalette } from './components/shell/CommandPalette';
 import { ConnectionStatus } from './components/shell/ConnectionStatus';
 import { ShortcutsDialog } from './components/shell/ShortcutsDialog';
 import { Sidebar } from './components/shell/Sidebar';
 import { Toaster } from './components/shell/Toaster';
 import { TopBar } from './components/shell/TopBar';
+import { Skeleton } from './components/ui/Skeleton';
 import { useMediaQuery } from './lib/hooks';
 import type { PageId } from './lib/nav';
 import { pageForPath } from './lib/nav';
@@ -12,32 +13,39 @@ import { useHealth } from './lib/queries';
 import { useLocation } from './lib/router';
 import { applyTheme, updateSettings, useSettings } from './lib/settings';
 import { useGlobalShortcuts } from './lib/shortcuts';
-import { ui } from './lib/ui-state';
-import { Accounts } from './routes/accounts/Accounts';
+import { NARROW_QUERY, toggleSidebar, ui, useUi } from './lib/ui-state';
 import { NotFound } from './routes/NotFound';
 import { Overview } from './routes/Overview';
-import { RoutesPage } from './routes/RoutesPage';
-import { Runner } from './routes/runner/Runner';
-import { Settings } from './routes/Settings';
-import { Tasks } from './routes/tasks/Tasks';
-import { Traffic } from './routes/traffic/Traffic';
 
+// The overview ships in the main chunk; other screens load on first visit.
 const PAGES: Record<PageId, ComponentType> = {
   overview: Overview,
-  accounts: Accounts,
-  traffic: Traffic,
-  routes: RoutesPage,
-  tasks: Tasks,
-  runner: Runner,
-  settings: Settings,
+  accounts: lazy(() => import('./routes/accounts/Accounts').then((m) => ({ default: m.Accounts }))),
+  traffic: lazy(() => import('./routes/traffic/Traffic').then((m) => ({ default: m.Traffic }))),
+  routes: lazy(() => import('./routes/RoutesPage').then((m) => ({ default: m.RoutesPage }))),
+  tasks: lazy(() => import('./routes/tasks/Tasks').then((m) => ({ default: m.Tasks }))),
+  runner: lazy(() => import('./routes/runner/Runner').then((m) => ({ default: m.Runner }))),
+  settings: lazy(() => import('./routes/Settings').then((m) => ({ default: m.Settings }))),
 };
+
+function PageFallback() {
+  return (
+    <div className="flex flex-col gap-4" role="status" aria-label="Loading page">
+      <Skeleton className="h-6 w-40" />
+      <Skeleton className="h-4 w-80" />
+      <Skeleton className="mt-4 h-64 w-full rounded-lg" />
+    </div>
+  );
+}
 
 export function App() {
   const settings = useSettings();
   const { path } = useLocation();
   const page = pageForPath(path);
-  const narrow = useMediaQuery('(max-width: 1023px)');
-  const collapsed = settings.sidebarCollapsed || narrow;
+  const narrow = useMediaQuery(NARROW_QUERY);
+  const { sidebarOverlay } = useUi();
+  const overlay = narrow && sidebarOverlay;
+  const collapsed = narrow ? !sidebarOverlay : settings.sidebarCollapsed;
   const mainRef = useRef<HTMLElement>(null);
   const health = useHealth();
   useGlobalShortcuts();
@@ -47,6 +55,7 @@ export function App() {
   // Move focus to the main region on navigation so screen readers announce the new page.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs on route change only
   useEffect(() => {
+    ui.setSidebarOverlay(false);
     mainRef.current?.focus({ preventScroll: true });
     window.scrollTo({ top: 0 });
     document.title = page ? `${page.label} · DaveCode` : 'DaveCode';
@@ -65,9 +74,20 @@ export function App() {
       <Sidebar
         activeId={page?.id}
         collapsed={collapsed}
+        overlay={overlay}
         version={health.data?.version}
-        onToggle={() => updateSettings({ sidebarCollapsed: !settings.sidebarCollapsed })}
+        onToggle={() =>
+          toggleSidebar(() => updateSettings({ sidebarCollapsed: !settings.sidebarCollapsed }))
+        }
       />
+      {overlay && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={() => ui.setSidebarOverlay(false)}
+          className="fixed inset-0 z-30 bg-scrim animate-fade-in"
+        />
+      )}
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           title={page?.label ?? 'Not found'}
@@ -93,5 +113,9 @@ export function App() {
 
 function Page({ id }: { id: PageId }) {
   const Component = PAGES[id];
-  return <Component />;
+  return (
+    <Suspense fallback={<PageFallback />}>
+      <Component />
+    </Suspense>
+  );
 }

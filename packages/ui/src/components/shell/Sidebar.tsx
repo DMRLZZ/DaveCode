@@ -31,11 +31,14 @@ export function BrandMark({ className }: { className?: string }) {
 export function Sidebar({
   activeId,
   collapsed,
+  overlay,
   onToggle,
   version,
 }: {
   activeId: string | undefined;
   collapsed: boolean;
+  /** Narrow viewport: expanded on top of the content instead of pushing it. */
+  overlay?: boolean;
   onToggle: () => void;
   version?: string;
 }) {
@@ -43,87 +46,94 @@ export function Sidebar({
   const settings = NAV.find((n) => n.id === 'settings');
 
   return (
-    <aside
-      aria-label="Primary"
-      className={cn(
-        'sticky top-0 flex h-dvh shrink-0 flex-col border-r border-line bg-panel transition-[width] duration-200 ease-snappy',
-        collapsed ? 'w-[52px]' : 'w-[216px]',
-      )}
-    >
-      <div
+    <>
+      {/* Keeps the content in place while the overlay sidebar is open. */}
+      {overlay && <div aria-hidden className="w-[52px] shrink-0" />}
+      <aside
+        aria-label="Primary"
         className={cn(
-          'flex h-12 items-center gap-2.5 border-b border-line',
-          collapsed ? 'justify-center px-0' : 'px-3.5',
+          'top-0 flex h-dvh shrink-0 flex-col border-r border-line bg-panel transition-[width] duration-200 ease-snappy',
+          overlay ? 'fixed inset-y-0 left-0 z-40 shadow-overlay' : 'sticky',
+          collapsed ? 'w-[52px]' : 'w-[216px]',
         )}
       >
-        <BrandMark className="size-6 shrink-0" />
-        {!collapsed && (
-          <div className="flex min-w-0 items-baseline gap-1.5">
-            <span className="text-[14px] font-semibold tracking-tight text-fg">DaveCode</span>
-            {version && <span className="truncate font-mono text-2xs text-faint">v{version}</span>}
-          </div>
-        )}
-      </div>
+        <div
+          className={cn(
+            'flex h-12 items-center gap-2.5 border-b border-line',
+            collapsed ? 'justify-center px-0' : 'px-3.5',
+          )}
+        >
+          <BrandMark className="size-6 shrink-0" />
+          {!collapsed && (
+            <div className="flex min-w-0 items-baseline gap-1.5">
+              <span className="text-[14px] font-semibold tracking-tight text-fg">DaveCode</span>
+              {version && (
+                <span className="truncate font-mono text-2xs text-faint">v{version}</span>
+              )}
+            </div>
+          )}
+        </div>
 
-      <nav
-        aria-label="Main"
-        className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3"
-      >
-        {groups.map((group) => (
-          <div key={group} className="flex flex-col gap-px">
+        <nav
+          aria-label="Main"
+          className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 py-3"
+        >
+          {groups.map((group) => (
+            <div key={group} className="flex flex-col gap-px">
+              {!collapsed ? (
+                <p className="eyebrow px-2 pb-1.5">{group}</p>
+              ) : (
+                <div aria-hidden className="mx-2 mb-1.5 h-px bg-line first:hidden" />
+              )}
+              <ul className="flex flex-col gap-px">
+                {NAV.filter((n) => n.group === group).map((item) => (
+                  <li key={item.id}>
+                    <NavLink item={item} active={item.id === activeId} collapsed={collapsed} />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </nav>
+
+        <div className="flex flex-col gap-px border-t border-line px-2 py-2">
+          {settings && (
+            <NavLink item={settings} active={activeId === 'settings'} collapsed={collapsed} />
+          )}
+          <a
+            href={DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            title={collapsed ? 'Documentation' : undefined}
+            className={cn(navClass(false, collapsed))}
+          >
+            <BookOpen aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
             {!collapsed ? (
-              <p className="eyebrow px-2 pb-1.5">{group}</p>
+              <span>Docs</span>
             ) : (
-              <div aria-hidden className="mx-2 mb-1.5 h-px bg-line first:hidden" />
+              <span className="sr-only">Documentation (opens in a new tab)</span>
             )}
-            <ul className="flex flex-col gap-px">
-              {NAV.filter((n) => n.group === group).map((item) => (
-                <li key={item.id}>
-                  <NavLink item={item} active={item.id === activeId} collapsed={collapsed} />
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </nav>
-
-      <div className="flex flex-col gap-px border-t border-line px-2 py-2">
-        {settings && (
-          <NavLink item={settings} active={activeId === 'settings'} collapsed={collapsed} />
-        )}
-        <a
-          href={DOCS_URL}
-          target="_blank"
-          rel="noreferrer"
-          title={collapsed ? 'Documentation' : undefined}
-          className={cn(navClass(false, collapsed))}
-        >
-          <BookOpen aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
-          {!collapsed ? (
-            <span>Docs</span>
-          ) : (
-            <span className="sr-only">Documentation (opens in a new tab)</span>
-          )}
-        </a>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar  [' : 'Collapse sidebar  ['}
-          className={cn(navClass(false, collapsed))}
-        >
-          {collapsed ? (
-            <PanelLeftOpen aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
-          ) : (
-            <>
-              <PanelLeftClose aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
-              <span>Collapse</span>
-              <Kbd className="ml-auto">[</Kbd>
-            </>
-          )}
-        </button>
-      </div>
-    </aside>
+          </a>
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={collapsed ? 'Expand sidebar  [' : 'Collapse sidebar  ['}
+            className={cn(navClass(false, collapsed))}
+          >
+            {collapsed ? (
+              <PanelLeftOpen aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+            ) : (
+              <>
+                <PanelLeftClose aria-hidden className="size-4 shrink-0" strokeWidth={1.75} />
+                <span>Collapse</span>
+                <Kbd className="ml-auto">[</Kbd>
+              </>
+            )}
+          </button>
+        </div>
+      </aside>
+    </>
   );
 }
 
