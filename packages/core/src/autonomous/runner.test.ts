@@ -134,7 +134,8 @@ describe('commitMessage', () => {
   });
 });
 
-describe('AutonomousRunner', () => {
+// Each test drives real git in a temp repo, which is slow on Windows CI runners.
+describe('AutonomousRunner', { timeout: 60_000 }, () => {
   it('runOnce implements, validates, merges and records SUCCESS', async () => {
     const executor = new ScriptedExecutor([write({ 'src/a.txt': 'a\n' })]);
     const { root, brain, runner, states } = await setup(tasks({ id: 'a' }), { executor });
