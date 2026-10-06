@@ -1,0 +1,179 @@
+<div align="center">
+
+# DaveCode
+
+**Local-first autonomous software engineer and multi-provider AI gateway.**
+
+One OpenAI-compatible endpoint in front of Claude, GPT, Gemini and your local models, with
+quota-aware routing and hot failover, plus an engine that turns a task graph into tested,
+merged code while you sleep.
+
+[![CI](https://github.com/DMRLZZ/DaveCode/actions/workflows/ci.yml/badge.svg)](https://github.com/DMRLZZ/DaveCode/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Node](https://img.shields.io/badge/node-%3E%3D22.12-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
+![Status](https://img.shields.io/badge/status-alpha-orange)
+
+</div>
+
+---
+
+> [!WARNING]
+> DaveCode is in **early development**. APIs and config may change between minor versions until
+> `1.0`. See the [roadmap](#roadmap) for what already works.
+
+## Why DaveCode?
+
+You pay for several AI tools, and you still hit `429 Too Many Requests` in the middle of a
+refactor, copy context between chat windows, and babysit agents that declare victory before the
+tests pass. DaveCode fixes the plumbing:
+
+- **One endpoint, every model.** Point any OpenAI SDK, editor or agent at
+  `http://localhost:4040/v1` and use `davecode/auto`.
+- **Never stall on a rate limit.** Sliding-window quota tracking (TPM, RPM, 5 h, 24 h) per
+  account, smooth backpressure at 85 %, and hot failover to the next account or provider when an
+  upstream returns `429`/`5xx`.
+- **Isolated identities.** Each Claude Code / Codex account runs in its own sandboxed config
+  directory; secrets are AES-256-GCM encrypted at rest and never leave your machine.
+- **A brain that persists.** A global brain for your preferences plus a per-repo brain
+  (`STATE.md`, `ARCHITECTURE.md`, `TASK_GRAPH.json`) injected into every task.
+- **Autonomous, but accountable.** Each task runs on its own `davecode/task-<id>` branch and is only
+  merged after your linters and tests pass, with up to three self-repair cycles. An optional
+  judge ([TypeSafe Jev](https://www.llmreference.com/provider/typesafe-ai/jev) or any of your
+  routes) checks acceptance criteria with calibrated confidence. The default is free,
+  deterministic checks.
+- **Terminal-first, with a cockpit.** A TUI in the spirit of Claude Code and opencode, plus a
+  real-time web dashboard for token burn, failovers and task traces.
+
+## How it works
+
+```mermaid
+flowchart LR
+  C[Your tools<br/>SDKs · editors · agents] -->|OpenAI API| G[DaveCode gateway<br/>:4040]
+  T[TUI] --> G
+  D[Dashboard] -->|REST + SSE| G
+  G --> R{Router<br/>quotas + failover}
+  R --> A[Anthropic]
+  R --> O[OpenAI]
+  R --> M[Gemini]
+  R --> L[OpenRouter / Ollama /<br/>LM Studio / vLLM]
+  R --> CC[Claude Code CLI]
+  R --> CX[Codex CLI]
+  G --> E[Autonomous runner]
+  E --> B[(Project brain<br/>.davecode/)]
+```
+
+Read the full design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the HTTP contract in
+[docs/API.md](docs/API.md).
+
+## Quick start
+
+> Requires **Node.js 22.12+** and **pnpm 10+**. Published npm packages arrive with `v0.1.0`; until
+> then, run from source.
+
+```bash
+git clone https://github.com/DMRLZZ/DaveCode.git
+cd DaveCode
+pnpm install
+pnpm build
+```
+
+Then use any OpenAI-compatible client:
+
+```ts
+import OpenAI from 'openai';
+
+const client = new OpenAI({ baseURL: 'http://localhost:4040/v1', apiKey: 'unused-locally' });
+
+const res = await client.chat.completions.create({
+  model: 'davecode/auto',
+  messages: [{ role: 'user', content: 'Explain this stack trace…' }],
+});
+```
+
+## Providers
+
+| Provider | Kind | Auth | Default |
+| :------- | :--- | :--- | :------ |
+| Anthropic API | `anthropic` | API key | ✅ |
+| OpenAI API | `openai` | API key | ✅ |
+| Google Gemini API | `gemini` | API key | ✅ |
+| OpenRouter, Ollama, LM Studio, vLLM, LiteLLM… | `openai-compatible` | Optional key + base URL | ✅ |
+| Claude Code CLI | `claude-cli` | Your Claude login, isolated per account | ✅ |
+| Codex CLI | `codex-cli` | Your ChatGPT/OpenAI login, isolated per account | ✅ |
+| Gemini web session | `gemini-web` | Browser profile | ⚠️ Experimental, off |
+
+### Terms of Service
+
+DaveCode's original specification includes two capabilities that automate consumer products in
+ways their providers may prohibit:
+
+- driving a **Gemini web session** through Chromium (`experimental.geminiWeb`), and
+- **rotating several subscription logins** of the same provider to get around per-account limits
+  (`experimental.multiAccountRotation`).
+
+Both are **disabled by default**. If you turn them on, you accept the risk of your accounts being
+rate-limited or suspended by the provider. API-key providers and cross-provider failover are not
+affected.
+
+## Configuration
+
+DaveCode merges built-in defaults, `~/.davecode/config.json`, `<repo>/.davecode/config.json` and
+environment variables. A minimal example:
+
+```json
+{
+  "routing": {
+    "routes": [
+      {
+        "name": "auto",
+        "targets": [
+          { "provider": "anthropic", "model": "claude-sonnet-5-5" },
+          { "provider": "openai", "model": "gpt-5.5" },
+          { "provider": "openai-compatible", "model": "qwen3:32b" }
+        ]
+      }
+    ]
+  },
+  "runner": {
+    "validate": { "lint": "pnpm lint", "typecheck": "pnpm typecheck", "test": "pnpm test" },
+    "judge": { "kind": "none" }
+  }
+}
+```
+
+The full schema with documentation lives in
+[`packages/core/src/config/schema.ts`](packages/core/src/config/schema.ts).
+
+## Project layout
+
+```
+packages/
+├── core/     @davecode/core: contracts, storage, identity, quotas, providers, router, brain, runner
+├── server/   @davecode/server: Fastify gateway (/v1 proxy, /api, SSE), serves the dashboard
+├── cli/      davecode: CLI commands and the Ink TUI
+└── ui/       @davecode/ui: Vite + React + Tailwind dashboard
+docs/         architecture, API contract, original spec
+.davecode/    DaveCode's own project brain (we dogfood it)
+```
+
+## Roadmap
+
+- [x] **Foundation:** monorepo, shared contracts, config schema, CI
+- [ ] **Phase 1, gateway & identity:** SQLite storage, encrypted keyring, sandbox manager,
+  OpenAI-compatible gateway
+- [ ] **Phase 2, quotas & router:** sliding windows, provider adapters, hot failover
+- [ ] **Phase 3, dual brain:** global/project brain, task graph DAG with cycle detection
+- [ ] **Phase 4, autonomous loop:** runner state machine, validator, repair cycles, git flow, judge
+- [ ] **Phase 5, interfaces:** web dashboard, CLI and TUI
+- [ ] **v0.1.0:** npm release
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) to get set up, and please follow
+our [Code of Conduct](CODE_OF_CONDUCT.md). Security issues go through [SECURITY.md](SECURITY.md),
+not public issues.
+
+## License
+
+[MIT](LICENSE) © DaveCode contributors
