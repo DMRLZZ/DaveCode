@@ -164,3 +164,102 @@ export {
 export { newId } from './storage/ids';
 export { type TimeseriesOptions, UsageRepository, type UsageTotals } from './storage/usage';
 // --- end phase 1 & 2 ---
+
+// --- phase 4: autonomous runner ---
+
+export {
+  CLAUDE_CLI_INSTRUCTIONS,
+  ClaudeCliExecutor,
+  type ClaudeCliExecutorOptions,
+  selectClaudeAccount,
+} from './autonomous/claude-cli-executor';
+export { type CreateRunnerOptions, createExecutor, createRunner } from './autonomous/create';
+export {
+  BuiltinExecutor,
+  type BuiltinExecutorOptions,
+  type Executor,
+  ExecutorAbortedError,
+  ExecutorError,
+  type ExecutorLogger,
+  type ExecutorResult,
+  type ExecutorRunOptions,
+  type ExecutorSession,
+  type ExecutorStopReason,
+  type ExecutorTask,
+  initialTaskPrompt,
+  repairPrompt,
+  routeModel,
+  TASK_INSTRUCTIONS,
+} from './autonomous/executor';
+export {
+  assertSafeRef,
+  BRAIN_DIR,
+  type CommitOptions,
+  Git,
+  GitError,
+  type GitOptions,
+  type PullRequestResult,
+} from './autonomous/git';
+export {
+  acceptanceOf,
+  type CreateJudgeDeps,
+  createJudge,
+  DEFAULT_JEV_BASE_URL,
+  DEFAULT_JEV_MODEL,
+  extractJsonObject,
+  JevJudge,
+  type JevJudgeOptions,
+  type Judge,
+  type JudgeConfig,
+  JudgeError,
+  type JudgeInput,
+  type JudgeKind,
+  type JudgeVerdict,
+  LLM_JUDGE_PROMPT,
+  LlmJudge,
+  type LlmJudgeOptions,
+  llmVerdictSchema,
+  NoneJudge,
+} from './autonomous/judge';
+export {
+  CommandError,
+  type ProcessResult,
+  type RunProcessOptions,
+  runProcess,
+  splitCommand,
+  truncateHead,
+  truncateTail,
+} from './autonomous/process';
+export {
+  AutonomousRunner,
+  type AutonomousRunnerOptions,
+  commitMessage,
+  type RunnerConfig,
+  RunnerError,
+  type RunnerErrorCode,
+  type RunOnceResult,
+  type RunOutcome,
+} from './autonomous/runner';
+export {
+  DEFAULT_ALLOWED_COMMANDS,
+  PathEscapeError,
+  READ_ONLY_GIT_SUBCOMMANDS,
+  type ResolvedPath,
+  resolveRepoPath,
+  TOOL_DEFINITIONS,
+  type ToolOutcome,
+  WorkspaceTools,
+  type WorkspaceToolsOptions,
+} from './autonomous/tools';
+export {
+  summarizeValidation,
+  VALIDATION_STEPS,
+  type ValidationCommands,
+  type ValidationReport,
+  type ValidationStep,
+  type ValidationStepName,
+  Validator,
+  type ValidatorOptions,
+} from './autonomous/validator';
+export { ProjectBrainSource } from './brain/source';
+// --- end phase 4 ---
