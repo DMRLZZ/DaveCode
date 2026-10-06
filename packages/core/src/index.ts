@@ -91,6 +91,7 @@ export {
   loadConfig,
 } from './config/loader';
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
+export { accountDir, SandboxManager } from './identity/sandbox';
 export {
   type AccountCreateInput,
   AccountRepository,
