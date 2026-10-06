@@ -1,3 +1,47 @@
+// --- phase 3: dual brain ---
+export {
+  buildTaskContext,
+  CONTEXT_TRUNCATION_MARKER,
+  DAVECODE_SYSTEM_PROMPT,
+  DEFAULT_CONTEXT_BUDGET_CHARS,
+  type TaskContextInput,
+} from './brain/context';
+export {
+  GlobalBrain,
+  InvalidNoteNameError,
+  type NoteInfo,
+  sanitizeNoteName,
+} from './brain/global';
+export {
+  type BlockedTask,
+  blockedTasks,
+  canTransition,
+  findCycles,
+  type GraphSummary,
+  nextTask,
+  parseTaskGraph,
+  readyTasks,
+  setTaskStatus,
+  summarize,
+  TASK_STATUSES,
+  TaskGraphError,
+  type TaskGraphIssue,
+  type TaskGraphIssueCode,
+  type TaskPatch,
+  taskGraphSchema,
+  topologicalOrder,
+  type UpdateOptions,
+  updateTask,
+  validateTaskGraph,
+} from './brain/graph';
+export { type LockOptions, LockTimeoutError, withFileLock } from './brain/lock';
+export {
+  findProjectRoot,
+  ProjectBrain,
+  type ProjectBrainInitOptions,
+  type ProjectBrainOptions,
+  type ProjectBrainSnapshot,
+} from './brain/project';
 export { configSchema, type DaveConfig, type DaveConfigInput } from './config/schema';
 export {
   errorKindFromStatus,
