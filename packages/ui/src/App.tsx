@@ -1,13 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
+import { type ComponentType, useEffect, useRef, useState } from 'react';
 import { ConnectionStatus } from './components/shell/ConnectionStatus';
 import { Sidebar } from './components/shell/Sidebar';
 import { TopBar } from './components/shell/TopBar';
 import { useMediaQuery } from './lib/hooks';
+import type { PageId } from './lib/nav';
 import { pageForPath } from './lib/nav';
 import { useHealth } from './lib/queries';
 import { useLocation } from './lib/router';
 import { applyTheme, updateSettings, useSettings } from './lib/settings';
 import { NotFound } from './routes/NotFound';
+import { Overview } from './routes/Overview';
+
+const PAGES: Partial<Record<PageId, ComponentType>> = {
+  overview: Overview,
+};
 
 export function App() {
   const settings = useSettings();
@@ -59,13 +65,15 @@ export function App() {
           tabIndex={-1}
           className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 outline-none md:px-6"
         >
-          {page ? <Placeholder label={page.label} /> : <NotFound />}
+          <Page id={page?.id} label={page?.label} />
         </main>
       </div>
     </div>
   );
 }
 
-function Placeholder({ label }: { label: string }) {
-  return <p className="text-muted">{label}</p>;
+function Page({ id, label }: { id: PageId | undefined; label: string | undefined }) {
+  if (!id) return <NotFound />;
+  const Component = PAGES[id];
+  return Component ? <Component /> : <p className="text-muted">{label}</p>;
 }
