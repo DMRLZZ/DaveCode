@@ -12,7 +12,12 @@ function useNativeDialog(open: boolean, onClose: () => void) {
   useEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      // Focus the dialog itself (not the close button) so no stray focus ring shows;
+      // Tab then moves into the content as usual.
+      dialog.focus();
+    }
     if (!open && dialog.open) dialog.close();
   }, [open]);
 
@@ -61,10 +66,11 @@ export function Sheet({
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click is a pointer shortcut; Escape is handled natively
     <dialog
       ref={ref}
+      tabIndex={-1}
       aria-labelledby={titleId}
       onClick={onBackdropClick}
       className={cn(
-        'fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none max-w-none border-l border-line bg-panel p-0 text-fg shadow-overlay',
+        'fixed inset-y-0 right-0 left-auto m-0 h-dvh max-h-none max-w-none border-l border-line bg-panel p-0 text-fg shadow-overlay outline-none',
         'backdrop:bg-scrim open:animate-sheet-in',
         width,
         className,
@@ -109,10 +115,11 @@ export function Dialog({
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click is a pointer shortcut; Escape is handled natively
     <dialog
       ref={ref}
+      tabIndex={-1}
       aria-labelledby={titleId}
       onClick={onBackdropClick}
       className={cn(
-        'm-auto w-[min(520px,calc(100vw-2rem))] rounded-xl border border-line-strong bg-panel p-0 text-fg shadow-overlay',
+        'm-auto w-[min(520px,calc(100vw-2rem))] rounded-xl border border-line-strong bg-panel p-0 text-fg shadow-overlay outline-none',
         'backdrop:bg-scrim open:animate-pop-in',
         className,
       )}

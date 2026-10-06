@@ -1,6 +1,7 @@
 import { type ComponentType, useEffect, useRef, useState } from 'react';
 import { ConnectionStatus } from './components/shell/ConnectionStatus';
 import { Sidebar } from './components/shell/Sidebar';
+import { Toaster } from './components/shell/Toaster';
 import { TopBar } from './components/shell/TopBar';
 import { useMediaQuery } from './lib/hooks';
 import type { PageId } from './lib/nav';
@@ -8,11 +9,13 @@ import { pageForPath } from './lib/nav';
 import { useHealth } from './lib/queries';
 import { useLocation } from './lib/router';
 import { applyTheme, updateSettings, useSettings } from './lib/settings';
+import { Accounts } from './routes/accounts/Accounts';
 import { NotFound } from './routes/NotFound';
 import { Overview } from './routes/Overview';
 
 const PAGES: Partial<Record<PageId, ComponentType>> = {
   overview: Overview,
+  accounts: Accounts,
 };
 
 export function App() {
@@ -68,6 +71,7 @@ export function App() {
           <Page id={page?.id} label={page?.label} />
         </main>
       </div>
+      <Toaster />
     </div>
   );
 }
