@@ -117,6 +117,43 @@ export {
   WINDOW_MS,
 } from './rate-limiter/window';
 export {
+  accountServes,
+  type Candidate,
+  configuredModels,
+  defaultModelFor,
+  inferProviders,
+  type ModelSpec,
+  PROVIDER_KINDS,
+  parseModel,
+  ROUTE_PREFIX,
+  resolveCandidates,
+} from './router/candidates';
+export {
+  CircuitBreaker,
+  type CircuitBreakerOptions,
+  type CircuitState,
+} from './router/circuit-breaker';
+export { RouterError, type RouterErrorCode, type RouterErrorOptions } from './router/errors';
+export {
+  type CompletionResult,
+  type RankedCandidate,
+  type RouteRequestOptions,
+  Router,
+  type RouterOptions,
+  type RoutingMeta,
+  type RoutingPlan,
+  type SkipReason,
+  type StreamResult,
+} from './router/router';
+export {
+  type FakeCall,
+  FakeProvider,
+  type FakeResponse,
+  fakeChunk,
+  fakeCompletion,
+  providerError,
+} from './router/testing';
+export {
   type AccountCreateInput,
   AccountRepository,
   type AccountUpdateInput,
