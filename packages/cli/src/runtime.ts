@@ -2,27 +2,23 @@ import { existsSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import type { AddressInfo } from 'node:net';
-import { basename, dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  type AutonomousRunner,
   createEngine,
+  createRunner,
   type DaveConfigInput,
   type Engine,
   ProjectBrain,
-  type TaskGraph,
+  ProjectBrainSource,
 } from '@davecode/core';
-import {
-  type BrainSource,
-  type GatewayOptions,
-  type ProjectInfo,
-  type RunnerControl,
-  startGateway,
-} from '@davecode/server';
+import { type GatewayOptions, type ProjectInfo, startGateway } from '@davecode/server';
 import { connectHost } from './client';
 
 /**
- * Process wiring shared by `davecode start`, `chat` (in-process gateway) and future `run`:
- * engine + project brain + gateway + (from Phase 4) the autonomous runner.
+ * Process wiring shared by `davecode start`, `chat` (in-process gateway) and `run`:
+ * engine + project brain + autonomous runner + gateway.
  */
 
 // ---------------------------------------------------------------------------
@@ -60,25 +56,32 @@ export async function detectProjectRoot(
 }
 
 // ---------------------------------------------------------------------------
-// BrainSource adapter
+// Project brain + runner
 // ---------------------------------------------------------------------------
 
-const EMPTY_GRAPH: TaskGraph = { version: 1, tasks: [] };
+export interface ProjectWiring {
+  brain: ProjectBrain;
+  /** Read-only view for `/api/tasks` and `/api/brain` (missing files read as empty). */
+  source: ProjectBrainSource;
+  /** The Phase 4 autonomous runner for this repository; satisfies `RunnerControl`. */
+  runner: AutonomousRunner;
+}
 
 /**
- * Adapts a {@link ProjectBrain} to the gateway's read-only `BrainSource`. A repository whose
- * brain has not been initialised (`davecode init`) reads as an empty graph and empty markdown
- * instead of failing; an invalid TASK_GRAPH.json still throws so the problem is visible.
+ * Open the project brain of `root` on the engine's event bus and build its autonomous runner.
+ * The runner is created even before `davecode init`: `start()`/`runOnce()` then reject with a
+ * `RunnerError` (`no_brain`, `not_a_repo`...) that the CLI and the dashboard explain.
  */
-export function createBrainSource(brain: ProjectBrain, name = basename(brain.root)): BrainSource {
-  const info: ProjectInfo = { root: brain.root, name };
-  const ifExists = async <T>(path: string, read: () => Promise<T>, fallback: T): Promise<T> =>
-    (await exists(path)) ? read() : fallback;
+export function wireProject(
+  engine: Engine,
+  root: string,
+  options: { env?: NodeJS.ProcessEnv; name?: string } = {},
+): ProjectWiring {
+  const brain = new ProjectBrain(root, { events: engine.events });
   return {
-    project: () => info,
-    graph: () => ifExists(brain.paths.taskGraph, () => brain.readGraph(), EMPTY_GRAPH),
-    state: () => ifExists(brain.paths.state, () => brain.readState(), ''),
-    architecture: () => ifExists(brain.paths.architecture, () => brain.readArchitecture(), ''),
+    brain,
+    source: new ProjectBrainSource(brain, options.name),
+    runner: createRunner(engine, { brain, ...(options.env ? { env: options.env } : {}) }),
   };
 }
 
@@ -130,7 +133,7 @@ export interface RuntimeOptions {
   cwd: string;
   /** Repository to serve the project brain for (default: detected from `cwd`). */
   projectDir?: string;
-  /** Skip project detection entirely. */
+  /** Skip project detection entirely (no brain, no runner). */
   noProject?: boolean;
   host?: string;
   /** `0` picks a free port. */
@@ -148,25 +151,30 @@ export interface Runtime {
   engine: Engine;
   brain: ProjectBrain | undefined;
   project: ProjectInfo | undefined;
-  runner: RunnerControl | undefined;
+  runner: AutonomousRunner | undefined;
   /** Address to connect to, e.g. `http://127.0.0.1:4040`. */
   url: string;
   host: string;
   port: number;
   /** Absolute dashboard directory when it is being served. */
   dashboardDir: string | undefined;
+  /** Stop the runner (safely parking any task), the gateway and the engine. */
   close(): Promise<void>;
 }
 
-/** Create the engine, open the project brain and start the gateway. */
-export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
-  let projectRoot: string | undefined;
-  if (!options.noProject) {
-    projectRoot = options.projectDir
-      ? resolve(options.cwd, options.projectDir)
-      : await detectProjectRoot(options.cwd, options.home);
-  }
+/** Resolve the project root for `projectDir` (relative to `cwd`) or detect it from `cwd`. */
+export async function resolveProjectRoot(
+  options: Pick<RuntimeOptions, 'cwd' | 'home' | 'projectDir' | 'noProject'>,
+): Promise<string | undefined> {
+  if (options.noProject) return undefined;
+  return options.projectDir
+    ? resolve(options.cwd, options.projectDir)
+    : detectProjectRoot(options.cwd, options.home);
+}
 
+/** Create the engine, open the project brain and runner, and start the gateway. */
+export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
+  const projectRoot = await resolveProjectRoot(options);
   const engine =
     options.engine ??
     createEngine({
@@ -177,25 +185,16 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     });
 
   try {
-    const brain = projectRoot
-      ? new ProjectBrain(projectRoot, { events: engine.events })
+    const project = projectRoot
+      ? wireProject(engine, projectRoot, { env: options.env })
       : undefined;
-    const brainSource = brain ? createBrainSource(brain) : undefined;
-
-    // INTEGRATION(phase-4): construct the AutonomousRunner here and pass it to the gateway, e.g.
-    //   const runner = brain ? new AutonomousRunner({ engine, brain }) : undefined;
-    // It must satisfy `RunnerControl` from @davecode/server (status/start/pause/stop; start()
-    // resolves once running). `/api/runner*`, `davecode run` and the TUI pick it up from here.
-    const runner: RunnerControl | undefined = undefined;
-
     const wantDashboard = options.dashboard !== false && engine.config.server.dashboard;
     const dashboardDir = wantDashboard ? resolveDashboardDir(options.env) : undefined;
 
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
       ...(dashboardDir ? { dashboardDir } : {}),
-      ...(brainSource ? { brain: brainSource } : {}),
-      ...(runner ? { runner } : {}),
+      ...(project ? { brain: project.source, runner: project.runner } : {}),
       ...(options.host !== undefined ? { host: options.host } : {}),
       ...(options.port !== undefined ? { port: options.port } : {}),
     });
@@ -205,10 +204,11 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     const port = address?.port ?? options.port ?? engine.config.server.port;
 
     let closed = false;
+    const runner = project?.runner;
     return {
       engine,
-      brain,
-      project: brainSource?.project() ?? undefined,
+      brain: project?.brain,
+      project: project?.source.project(),
       runner,
       url: `http://${connectHost(host)}:${port}`,
       host,
@@ -218,6 +218,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
         if (closed) return;
         closed = true;
         try {
+          await runner?.stop();
           await app.close();
         } finally {
           engine.close();

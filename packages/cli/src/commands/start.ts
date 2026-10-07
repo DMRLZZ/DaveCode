@@ -142,6 +142,12 @@ export async function startCommand(
         ? theme.dim(` · ${done.counts.SUCCESS}/${done.total} tasks done`)
         : theme.dim(' · no brain yet (davecode init)');
       row('Project', `${runtime.project.name}${progress}`);
+      if (runtime.runner) {
+        row(
+          'Runner',
+          `${runtime.runner.status().state}${theme.dim(' · start it from the dashboard or with `davecode run`')}`,
+        );
+      }
     } else {
       row('Project', theme.dim('none (run inside a git repository)'));
     }
