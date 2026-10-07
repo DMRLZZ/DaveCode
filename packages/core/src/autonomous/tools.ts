@@ -266,6 +266,36 @@ function parseArgs<T>(schema: z.ZodType<T>, raw: string): T {
   return parsed.data;
 }
 
+/**
+ * Repair tool arguments a model JSON-escaped twice (`"a {\\n  b\\n}"` arrives as the literal
+ * characters backslash + n). Only `\n`/`\t` sequences **outside** string literals are turned into
+ * real newlines/tabs: outside quotes they are never valid code in mainstream languages, while
+ * inside quotes (`"line\n"`) they are legitimate escapes and are kept. Text that already contains a
+ * real newline is returned unchanged.
+ */
+export function repairDoubleEscaped(text: string): string {
+  if (text.includes('\n') || !/\\[nt]/.test(text)) return text;
+  let out = '';
+  let quote: string | null = null;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]!;
+    const next = text[i + 1];
+    if (char === '\\' && next !== undefined) {
+      if (quote === null && (next === 'n' || next === 't')) {
+        out += next === 'n' ? '\n' : '\t';
+      } else {
+        out += char + next;
+      }
+      i++;
+      continue;
+    }
+    if (quote === null && (char === '"' || char === "'" || char === '`')) quote = char;
+    else if (char === quote) quote = null;
+    out += char;
+  }
+  return out;
+}
+
 function countOccurrences(haystack: string, needle: string): number {
   let count = 0;
   let index = haystack.indexOf(needle);
@@ -378,18 +408,27 @@ export class WorkspaceTools {
   private async writeFile(args: z.infer<typeof writeFileArgs>): Promise<string> {
     const { abs, rel } = await resolveRepoPath(this.root, args.path, 'write');
     await mkdir(path.dirname(abs), { recursive: true });
-    await writeFile(abs, args.content, 'utf8');
+    const content = repairDoubleEscaped(args.content);
+    await writeFile(abs, content, 'utf8');
     this.changedFiles.add(rel);
     this.writeCount++;
-    return `Wrote ${Buffer.byteLength(args.content)} bytes to ${rel}`;
+    return `Wrote ${Buffer.byteLength(content)} bytes to ${rel}`;
   }
 
   private async editFile(args: z.infer<typeof editFileArgs>): Promise<string> {
     const { abs, rel } = await resolveRepoPath(this.root, args.path, 'write');
     const text = await readFile(abs, 'utf8');
     let oldString = args.old_string;
-    let newString = args.new_string;
+    let newString = repairDoubleEscaped(args.new_string);
     let count = countOccurrences(text, oldString);
+    if (count === 0) {
+      // Small models sometimes double-escape their arguments; try the repaired form.
+      const repaired = repairDoubleEscaped(oldString);
+      if (repaired !== oldString) {
+        oldString = repaired;
+        count = countOccurrences(text, oldString);
+      }
+    }
     if (count === 0 && text.includes('\r\n') && !oldString.includes('\r\n')) {
       // The model usually sends LF; retry against a CRLF file.
       oldString = oldString.replace(/\n/g, '\r\n');
