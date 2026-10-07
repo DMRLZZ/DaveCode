@@ -85,7 +85,7 @@ describe('resolveDashboardDir', () => {
 
   it('returns undefined when no build exists', () => {
     const fakeModule = pathToFileURL(join(tmp.path, 'a', 'b', 'index.js')).href;
-    expect(resolveDashboardDir({}, fakeModule)).toBeUndefined();
+    expect(resolveDashboardDir({}, fakeModule, false)).toBeUndefined();
   });
 
   it('finds the monorepo layout relative to the bundle', () => {
@@ -93,7 +93,7 @@ describe('resolveDashboardDir', () => {
     mkdirSync(ui, { recursive: true });
     writeFileSync(join(ui, 'index.html'), '<!doctype html>');
     const bundle = pathToFileURL(join(tmp.path, 'packages', 'cli', 'dist', 'index.js')).href;
-    expect(resolveDashboardDir({}, bundle)).toBe(ui);
+    expect(resolveDashboardDir({}, bundle, false)).toBe(ui);
   });
 });
 

@@ -94,18 +94,22 @@ function isDashboard(dir: string | undefined): dir is string {
 }
 
 /**
- * Locate the built dashboard (`index.html` inside), in order:
- * `DAVECODE_DASHBOARD_DIR`, an installed `@davecode/ui` package's `dist/`, a `dashboard/` folder
- * shipped next to this bundle, and the monorepo layout (`packages/ui/dist`), which resolves the
- * same from `packages/cli/dist/*.js` and `packages/cli/src/runtime.ts`.
+ * Locate the built dashboard (`index.html` inside), in order: `DAVECODE_DASHBOARD_DIR`, a
+ * `dashboard/` folder shipped next to this bundle, the monorepo layout (`packages/ui/dist`, which
+ * resolves the same from `packages/cli/dist/*.js` and `packages/cli/src/runtime.ts`) and finally
+ * an installed `@davecode/ui` package's `dist/` (`lookupPackage: false` skips that step).
  */
 export function resolveDashboardDir(
   env: NodeJS.ProcessEnv = process.env,
   moduleUrl: string = import.meta.url,
+  lookupPackage = true,
 ): string | undefined {
   const candidates: Array<() => string | undefined> = [
     () => (env.DAVECODE_DASHBOARD_DIR ? resolve(env.DAVECODE_DASHBOARD_DIR) : undefined),
+    () => fileURLToPath(new URL('./dashboard', moduleUrl)),
+    () => fileURLToPath(new URL('../../ui/dist', moduleUrl)),
     () => {
+      if (!lookupPackage) return undefined;
       try {
         const pkg = createRequire(moduleUrl).resolve('@davecode/ui/package.json');
         return join(dirname(pkg), 'dist');
@@ -113,8 +117,6 @@ export function resolveDashboardDir(
         return undefined;
       }
     },
-    () => fileURLToPath(new URL('./dashboard', moduleUrl)),
-    () => fileURLToPath(new URL('../../ui/dist', moduleUrl)),
   ];
   for (const candidate of candidates) {
     const dir = candidate();
