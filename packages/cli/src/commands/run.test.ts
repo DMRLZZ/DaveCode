@@ -9,20 +9,13 @@ import {
   RunnerError,
   type RunnerStatus,
   type RunOnceResult,
-  type TaskGraph,
 } from '@davecode/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GatewayError } from '../client';
 import { createContext } from '../context';
 import { CliError } from '../errors';
 import { cli, type TempDir, tempDir, testEnv, testIO } from '../test-utils';
-import {
-  checkRequestedTask,
-  exitCodeFor,
-  explainRunnerError,
-  type RunDeps,
-  runCommand,
-} from './run';
+import { exitCodeFor, explainRunnerError, type RunDeps, runCommand } from './run';
 
 let tmp: TempDir;
 let home: string;
@@ -179,19 +172,52 @@ describe('explainRunnerError', () => {
 });
 
 describe('--task', () => {
-  const graph: TaskGraph = {
-    version: 1,
-    tasks: [
-      { id: 'a', title: 'A', status: 'PENDING', dependsOn: [], priority: 5 },
-      { id: 'b', title: 'B', status: 'PENDING', dependsOn: [] },
-      { id: 'c', title: 'C', status: 'PENDING', dependsOn: ['a'] },
-    ],
+  const done: RunOnceResult = {
+    outcome: 'success',
+    repairCycles: 0,
+    task: { id: 'b', title: 'B', status: 'SUCCESS', dependsOn: [] },
+    delivery: { mode: 'merge' },
   };
-  it('accepts the next task and explains why others are not next', () => {
-    expect(() => checkRequestedTask(graph, 'a')).not.toThrow();
-    expect(() => checkRequestedTask(graph, 'b')).toThrow(/"a" comes first by priority/);
-    expect(() => checkRequestedTask(graph, 'c')).toThrow(/waits on a/);
-    expect(() => checkRequestedTask(graph, 'zz')).toThrow(/Unknown task/);
+
+  it('--once --task hands the task id to the runner', async () => {
+    const { engine, runner, deps } = setup(done);
+    const ctx = createContext({}, testIO(), { env: testEnv(home), cwd: repo });
+    expect(await runCommand(ctx, { once: true, task: 'b' }, deps)).toBe(0);
+    engine.close();
+    expect(runner.runOnce).toHaveBeenCalledWith({ taskId: 'b' });
+  });
+
+  it('--task without --once starts the loop on that task first', async () => {
+    const { engine, runner, deps } = setup(done);
+    deps.interrupt = () => Promise.resolve();
+    const ctx = createContext({}, testIO(), { env: testEnv(home), cwd: repo });
+    await runCommand(ctx, { task: 'b' }, deps);
+    engine.close();
+    expect(runner.start).toHaveBeenCalledWith({ taskId: 'b' });
+  });
+
+  it('without --task the runner picks for itself', async () => {
+    const { engine, runner, deps } = setup(done);
+    const ctx = createContext({}, testIO(), { env: testEnv(home), cwd: repo });
+    await runCommand(ctx, { once: true }, deps);
+    engine.close();
+    expect(runner.runOnce).toHaveBeenCalledWith({});
+  });
+
+  it('explains blocked, non-runnable and unknown tasks', async () => {
+    for (const [code, hint] of [
+      ['task_blocked', 'Run its dependencies first'],
+      ['task_not_runnable', 'davecode tasks status <id> PENDING'],
+      ['task_not_found', 'davecode tasks'],
+    ] as const) {
+      const { engine, deps } = setup(new RunnerError(code, 'task "b" is not runnable'));
+      const ctx = createContext({}, testIO(), { env: testEnv(home), cwd: repo });
+      await expect(runCommand(ctx, { once: true, task: 'b' }, deps)).rejects.toMatchObject({
+        message: 'task "b" is not runnable',
+        hint: expect.stringContaining(hint),
+      });
+      engine.close();
+    }
   });
 });
 

@@ -2,13 +2,11 @@ import { existsSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 import {
   type AutonomousRunner,
-  blockedTasks,
   createEngine,
   type DaveConfig,
   type DaveEvent,
   type Engine,
   loadConfig,
-  nextTask,
   ProjectBrain,
   RunnerError,
   type RunnerErrorCode,
@@ -72,6 +70,15 @@ const HINTS: Record<RunnerErrorCode, (config: DaveConfig) => { message?: string;
   invalid_graph: () => ({
     hint: 'Fix .davecode/TASK_GRAPH.json; `davecode tasks` shows the problem.',
   }),
+  task_not_found: () => ({
+    hint: 'See `davecode tasks` for the task ids.',
+  }),
+  task_not_runnable: () => ({
+    hint: 'Only PENDING tasks can run: reopen it with `davecode tasks status <id> PENDING`.',
+  }),
+  task_blocked: () => ({
+    hint: 'Run its dependencies first (`davecode tasks` shows what each task waits on).',
+  }),
   busy: () => ({
     message: 'The runner is already running',
     hint: 'Stop it from the dashboard or the other `davecode run` first.',
@@ -133,30 +140,6 @@ function signalWaiter(): Waiter {
 
 function interruptFor(deps: RunDeps): Waiter {
   return deps.interrupt ? { promise: deps.interrupt(), dispose: () => {} } : signalWaiter();
-}
-
-/** `--task <id>` can only confirm the runner's own pick (it always takes the next ready task). */
-export function checkRequestedTask(graph: TaskGraph, id: string): void {
-  const task = graph.tasks.find((t) => t.id === id);
-  if (!task)
-    throw new CliError(`Unknown task ${JSON.stringify(id)}`, { hint: 'See `davecode tasks`.' });
-  const next = nextTask(graph);
-  if (next?.id === id) return;
-  const blocked = blockedTasks(graph).find((b) => b.task.id === id);
-  const why =
-    task.status !== 'PENDING'
-      ? `it is ${task.status}`
-      : blocked
-        ? blocked.reason === 'failed-dependency'
-          ? `${blocked.blockedBy.join(', ')} failed`
-          : `it waits on ${blocked.blockedBy.join(', ')}`
-        : `"${next?.id}" comes first by priority`;
-  throw new CliError(`Task ${id} is not next: ${why}`, {
-    hint:
-      task.status === 'PENDING' && !blocked
-        ? `Raise its priority in .davecode/TASK_GRAPH.json, or run without --task to do ${next?.id} first.`
-        : 'The runner always takes the next ready task; see `davecode tasks`.',
-  });
 }
 
 export function describeResult(ctx: CliContext, result: RunOnceResult): string[] {
@@ -247,13 +230,6 @@ export async function runCommand(
   const config =
     deps.engine?.config ?? loadConfig({ home: ctx.home, env: ctx.env, projectRoot: root });
 
-  if (opts.task) {
-    const brain = new ProjectBrain(root);
-    if (!(await brain.isInitialised()))
-      throw explainRunnerError(new RunnerError('no_brain', 'no project brain'), config);
-    checkRequestedTask(await brain.readGraph(), opts.task);
-  }
-
   // A gateway (davecode start) may already own a runner for this repository.
   const gateway = deps.noGateway ? undefined : await findGateway(config).catch(() => undefined);
   if (gateway) {
@@ -266,7 +242,7 @@ export async function runCommand(
         hint: `Watch it in the dashboard at ${gateway.client.baseUrl}/ or stop it there first.`,
       });
     }
-    if (!opts.once) return driveGateway(ctx, gateway.client, config, root);
+    if (!opts.once) return driveGateway(ctx, gateway.client, config, root, opts.task);
   }
 
   const engine = deps.engine ?? createEngine({ home: ctx.home, env: ctx.env, projectRoot: root });
@@ -276,8 +252,17 @@ export async function runCommand(
       .readGraph()
       .catch(() => ({ version: 1 as const, tasks: [] }));
     return opts.once
-      ? await runOnce(ctx, engine, runner, config, deps)
-      : await runContinuous(ctx, engine, runner, config, basename(root), graph.tasks, deps);
+      ? await runOnce(ctx, engine, runner, config, deps, opts.task)
+      : await runContinuous(
+          ctx,
+          engine,
+          runner,
+          config,
+          basename(root),
+          graph.tasks,
+          deps,
+          opts.task,
+        );
   } finally {
     if (!deps.engine) engine.close();
   }
@@ -291,6 +276,7 @@ async function runOnce(
   runner: RunnerLike,
   config: DaveConfig,
   deps: RunDeps,
+  taskId?: string,
 ): Promise<number> {
   const unsubscribe = engine.events.subscribe((event) => printEvent(ctx, event, ctx.json));
   let interrupted = false;
@@ -303,7 +289,7 @@ async function runOnce(
   const started = Date.now();
   let result: RunOnceResult;
   try {
-    result = await runner.runOnce();
+    result = await runner.runOnce(taskId === undefined ? {} : { taskId });
   } catch (err) {
     throw explainRunnerError(err, config);
   } finally {
@@ -328,12 +314,13 @@ async function runContinuous(
   projectName: string,
   tasks: TaskNode[],
   deps: RunDeps,
+  taskId?: string,
 ): Promise<number> {
   // Buffer events emitted before the view mounts so the first log lines are not lost.
   const early: DaveEvent[] = [];
   const unsubscribeEarly = engine.events.subscribe((e) => early.push(e));
   try {
-    await runner.start();
+    await runner.start(taskId === undefined ? {} : { taskId });
   } catch (err) {
     unsubscribeEarly();
     throw explainRunnerError(err, config);
@@ -399,9 +386,10 @@ async function driveGateway(
   client: GatewayClient,
   config: DaveConfig,
   root: string,
+  taskId?: string,
 ): Promise<number> {
   try {
-    await client.post('/api/runner/start');
+    await client.post('/api/runner/start', taskId === undefined ? undefined : { taskId });
   } catch (err) {
     if (err instanceof GatewayError && err.status === 501) {
       throw new CliError('The running gateway has no project brain to work on', {
