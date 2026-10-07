@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Dashboard: New task and edit sheets (dependency multi-select that cannot pick the task itself or
+  create a cycle), status actions (Start, Mark done, Mark failed, Reopen), Run now, confirmed delete,
+  and a Routes editor (add, remove, rename, reorder targets, pin accounts, default route). Both work
+  in mock mode.
 - `PUT /api/routes`: replace the route list and default route. Persisted to the global
   `config.json` (other keys preserved, atomic, locked) and applied to the live engine config
   immediately (`Engine.updateRouting`, `writeGlobalRouting`).

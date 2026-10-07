@@ -245,7 +245,7 @@ docs/         architecture, API contract, original spec
 - [x] **v0.1.0:** first tagged release (run from source)
 - [ ] Standalone `davecode` package on npm (`npx davecode`)
 - [ ] Verified Codex CLI event format and more provider live tests
-- [ ] Editing routes and the task graph from the dashboard
+- [x] Editing routes and the task graph from the dashboard
 - [x] Targeting a specific task with `davecode run --task <id>`
 
 ## Contributing
