@@ -25,7 +25,8 @@ export interface BrainSource {
  */
 export interface RunnerControl {
   status(): RunnerStatus;
-  start(): void | Promise<void>;
+  /** With `taskId`, work on that task first instead of the runner's own pick. */
+  start(opts?: { taskId?: string }): void | Promise<void>;
   pause(): void | Promise<void>;
   stop(): void | Promise<void>;
 }

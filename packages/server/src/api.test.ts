@@ -338,6 +338,93 @@ describe('brain and runner', () => {
     });
   });
 
+  describe('POST /api/runner/start body', () => {
+    const makeRunner = () => {
+      const start = vi.fn<(opts?: { taskId?: string }) => void>();
+      const runner: RunnerControl = {
+        status: () => ({ state: 'selecting' }),
+        start,
+        pause: () => {},
+        stop: () => {},
+      };
+      return Object.assign(runner, { start });
+    };
+
+    it('stays backward compatible: no body, empty JSON body and {} all start the loop', async () => {
+      const runner = makeRunner();
+      await setup(undefined, { runner });
+      expect((await app.inject({ method: 'POST', url: '/api/runner/start' })).statusCode).toBe(200);
+      const emptyJson = await app.inject({
+        method: 'POST',
+        url: '/api/runner/start',
+        headers: { 'content-type': 'application/json' },
+        payload: '',
+      });
+      expect(emptyJson.statusCode).toBe(200);
+      expect(
+        (await app.inject({ method: 'POST', url: '/api/runner/start', payload: {} })).statusCode,
+      ).toBe(200);
+      expect(runner.start.mock.calls).toEqual([[{}], [{}], [{}]]);
+    });
+
+    it('passes taskId through to the runner', async () => {
+      const runner = makeRunner();
+      await setup(undefined, { runner });
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/runner/start',
+        payload: { taskId: 'build-api' },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(runner.start).toHaveBeenCalledWith({ taskId: 'build-api' });
+    });
+
+    it('rejects a malformed body with 400 invalid_body', async () => {
+      const runner = makeRunner();
+      await setup(undefined, { runner });
+      for (const payload of [{ taskId: 5 }, { taskId: '' }, { other: true }]) {
+        const res = await app.inject({ method: 'POST', url: '/api/runner/start', payload });
+        expect(res.statusCode).toBe(400);
+        expect(res.json().error.code).toBe('invalid_body');
+      }
+      expect(runner.start).not.toHaveBeenCalled();
+    });
+
+    it('forwards runner refusals for a task: unknown 404, blocked 409', async () => {
+      const refusal = (code: string, status: number, message: string) =>
+        Object.assign(new Error(message), { statusCode: status, code });
+      const runner: RunnerControl = {
+        status: () => ({ state: 'idle' }),
+        start: (opts) => {
+          if (opts?.taskId === 'zzz') throw refusal('task_not_found', 404, 'unknown task "zzz"');
+          if (opts?.taskId === 'b') {
+            throw refusal('task_blocked', 409, 'task "b" is blocked by "a" (PENDING)');
+          }
+        },
+        pause: () => {},
+        stop: () => {},
+      };
+      await setup(undefined, { runner });
+      const missing = await app.inject({
+        method: 'POST',
+        url: '/api/runner/start',
+        payload: { taskId: 'zzz' },
+      });
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json().error.code).toBe('task_not_found');
+      const blocked = await app.inject({
+        method: 'POST',
+        url: '/api/runner/start',
+        payload: { taskId: 'b' },
+      });
+      expect(blocked.statusCode).toBe(409);
+      expect(blocked.json().error).toEqual({
+        code: 'task_blocked',
+        message: 'task "b" is blocked by "a" (PENDING)',
+      });
+    });
+  });
+
   it('delegates to injected brain and runner implementations', async () => {
     const graph: TaskGraph = {
       version: 1,

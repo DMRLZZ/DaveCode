@@ -30,7 +30,8 @@ by default.
 | 400 | Invalid body (zod validation message included, code `invalid_body`), or `experimental_disabled` |
 | 401 | Missing/invalid bearer token (`invalid_api_key` on `/v1`, `unauthorized` on `/api`) |
 | 404 | Unknown resource (`not_found`) or no account can serve the model (`model_not_found`) |
-| 409 | The autonomous runner refused to start; `code` is the `RunnerError` code: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`, `invalid_graph` or `busy` |
+| 404 | also `task_not_found`: `POST /api/runner/start` named a task id that does not exist |
+| 409 | The autonomous runner refused to start; `code` is the `RunnerError` code: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`, `invalid_graph`, `busy`, or for a targeted start `task_not_runnable` (the task is not `PENDING`) and `task_blocked` (it depends on unfinished tasks, which the message names) |
 | 429 | Every candidate account is saturated or cooling down (`no_capacity`), or every attempt was rate limited upstream (`rate_limited`) |
 | 501 | The autonomous runner is not available in this process (`runner_unavailable`) |
 | 502 | All failover targets failed upstream (`upstream_failed`), or upstream credentials were rejected (`upstream_auth_error`) |
@@ -208,6 +209,18 @@ the account is not cooled down, no failover happens and no `request.failed` even
 | `POST` | `/api/runner/pause` | `{ "status": RunnerStatus }` |
 | `POST` | `/api/runner/stop` | `{ "status": RunnerStatus }` |
 
+`POST /api/runner/start` takes an optional JSON body (an empty body or `{}` keeps the old
+behaviour):
+
+```json
+{ "taskId": "build-api" }
+```
+
+With `taskId` the loop starts on that task instead of the runner's own pick, then carries on
+with `nextTask` as usual. The task must exist (else `404 task_not_found`), be `PENDING` (else
+`409 task_not_runnable`) and have every dependency `SUCCESS` (else `409 task_blocked`). Unknown
+body fields are rejected with `400 invalid_body`.
+
 When the gateway runs without a project brain, `/api/tasks` returns `project: null` with an
 empty graph and `/api/brain` returns empty strings. Without a runner, `GET /api/runner` returns
 `{ "status": { "state": "idle" } }` and the control endpoints return `501 runner_unavailable`.
@@ -235,14 +248,16 @@ const engine = createEngine({ projectRoot });
 const brain = new ProjectBrain(projectRoot, { events: engine.events });
 const runner = createRunner(engine, { brain }); // executor and judge from runner.* config
 const result = await runner.runOnce(); // one task: RunOnceResult
-await runner.start(); // or run 24/7; pause(), stop(), status()
+await runner.runOnce({ taskId: 'build-api' }); // a specific task instead of the next one
+await runner.start(); // or run 24/7 (start({ taskId }) begins with that task); pause(), stop(), status()
 ```
 
 `RunOnceResult`: `{ outcome: 'success' | 'failed' | 'idle' | 'stopped' | 'error', task?,
 repairCycles, summary?, validation?: ValidationReport, verdict?: JudgeVerdict,
 delivery?: { mode: 'merge' | 'pr', url? }, branch?, error? }`. Preconditions reject with
 `RunnerError` (`code`: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`,
-`invalid_graph`, `busy`).
+`invalid_graph`, `busy`, and with `taskId` also `task_not_found`, `task_not_runnable`,
+`task_blocked`).
 
 Runner configuration (`runner.*`, all optional):
 

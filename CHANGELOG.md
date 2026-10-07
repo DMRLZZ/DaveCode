@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Targeted runs: `runOnce({ taskId })` and `start({ taskId })` on the autonomous runner,
+  `davecode run --task <id>` (replacing the "can only confirm the runner's pick" check) and an
+  optional `{ "taskId" }` body on `POST /api/runner/start`. A task that cannot run is refused with
+  `task_not_found` (404), `task_not_runnable` or `task_blocked` (409, naming the dependencies).
+
 ## [0.1.0] - 2026-10-06
 
 First release: every phase of the [specification](docs/SPEC.md) is implemented.

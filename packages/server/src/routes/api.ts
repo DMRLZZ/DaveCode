@@ -6,7 +6,7 @@ import {
   type TaskGraph,
   VERSION,
 } from '@davecode/core';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { sendApiError } from '../errors';
 import type { GatewayOptions, RunnerControl } from '../options';
@@ -14,6 +14,7 @@ import {
   accountCreateSchema,
   accountPatchSchema,
   limitQuerySchema,
+  runnerStartSchema,
   timeseriesQuerySchema,
 } from '../schemas';
 
@@ -183,7 +184,7 @@ export function registerApiRoutes(
   app.get('/api/runner', async () => ({ status: options.runner?.status() ?? IDLE }));
 
   const control = (action: keyof Omit<RunnerControl, 'status'>) =>
-    async function handler(_request: unknown, reply: FastifyReply) {
+    async function handler(request: FastifyRequest, reply: FastifyReply) {
       const { runner } = options;
       if (!runner) {
         return sendApiError(
@@ -193,8 +194,15 @@ export function registerApiRoutes(
           'The autonomous runner is not available',
         );
       }
+      let taskId: string | undefined;
+      if (action === 'start' && request.body !== undefined && request.body !== null) {
+        const parsed = runnerStartSchema.safeParse(request.body);
+        if (!parsed.success) return invalid(reply, parsed.error);
+        taskId = parsed.data.taskId;
+      }
       try {
-        await runner[action]();
+        if (action === 'start') await runner.start(taskId === undefined ? {} : { taskId });
+        else await runner[action]();
       } catch (error) {
         // Runner refusals (RunnerError: dirty_worktree, no_brain, busy…) carry an HTTP status
         // and a machine-readable code; forward both so clients don't have to parse messages.
@@ -204,7 +212,11 @@ export function registerApiRoutes(
         }
         throw error;
       }
-      audit.record({ actor: 'api', action: `runner.${action}` });
+      audit.record({
+        actor: 'api',
+        action: `runner.${action}`,
+        ...(taskId !== undefined ? { details: { taskId } } : {}),
+      });
       return { status: runner.status() };
     };
   app.post('/api/runner/start', control('start'));

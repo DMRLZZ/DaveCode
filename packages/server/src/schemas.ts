@@ -100,6 +100,9 @@ export const accountPatchSchema = z
   .object({ ...accountFields, label: accountFields.label.optional() })
   .strict();
 
+/** `POST /api/runner/start` body: optional, `{}` or empty means "pick the next task". */
+export const runnerStartSchema = z.object({ taskId: z.string().min(1).optional() }).strict();
+
 export const timeseriesQuerySchema = z.object({
   minutes: z.coerce
     .number()

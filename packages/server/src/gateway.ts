@@ -106,6 +106,21 @@ export async function buildGateway(
     });
   }
 
+  // Accept `Content-Type: application/json` with an empty body (clients that always send the
+  // header, e.g. `POST /api/runner/start` or `DELETE`): the body is simply undefined.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_request, body, done) => {
+    const text = typeof body === 'string' ? body : body.toString('utf8');
+    if (text.trim() === '') return done(null, undefined);
+    try {
+      done(null, JSON.parse(text));
+    } catch (err) {
+      const error = Object.assign(err instanceof Error ? err : new Error('Invalid JSON'), {
+        statusCode: 400,
+      });
+      done(error, undefined);
+    }
+  });
+
   app.setErrorHandler((error, request, reply) => {
     const status =
       typeof (error as { statusCode?: unknown }).statusCode === 'number'
