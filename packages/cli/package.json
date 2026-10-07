@@ -38,6 +38,13 @@
   "dependencies": {
     "@davecode/core": "workspace:*",
     "@davecode/server": "workspace:*",
-    "commander": "^15.0.0"
+    "commander": "^15.0.0",
+    "ink": "^8.0.0",
+    "react": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "ink-testing-library": "^4.0.0"
   }
 }
