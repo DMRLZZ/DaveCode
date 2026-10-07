@@ -1,4 +1,5 @@
-import type { DaveConfig } from '@davecode/core';
+import type { ChatCompletionChunk, ChatRequest, DaveConfig, DaveEvent } from '@davecode/core';
+import { chatChunks, daveEvents, readSSE } from './sse';
 
 /**
  * Thin HTTP client for a running DaveCode gateway (`/api/*`, `/v1/*`). Used by `status`,
@@ -166,6 +167,61 @@ export class GatewayClient {
       return undefined;
     }
   }
+  /**
+   * `POST /v1/chat/completions` with `stream: true`. Resolves once the gateway answered (after
+   * routing and any failover), so `meta` already names the serving account.
+   */
+  async chatStream(
+    request: ChatRequest,
+    signal?: AbortSignal,
+  ): Promise<{ meta: StreamMeta; chunks: AsyncIterable<ChatCompletionChunk> }> {
+    const res = await this.fetch(
+      '/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        body: JSON.stringify({ ...request, stream: true }),
+      },
+      signal ? { signal } : {},
+    );
+    if (!res.ok) throw await errorFrom(res);
+    return { meta: streamMeta(res.headers), chunks: chatChunks(readSSE(bodyOf(res))) };
+  }
+
+  /** Live `/api/events` (the server replays its recent buffer first). */
+  async *events(signal?: AbortSignal): AsyncGenerator<DaveEvent> {
+    const res = await this.fetch(
+      '/api/events',
+      { headers: { accept: 'text/event-stream' } },
+      signal ? { signal } : {},
+    );
+    if (!res.ok) throw await errorFrom(res);
+    yield* daveEvents(readSSE(bodyOf(res)));
+  }
+}
+
+/** Routing details the gateway reports in `x-davecode-*` response headers. */
+export interface StreamMeta {
+  requestId?: string;
+  accountId?: string;
+  provider?: string;
+  failovers: number;
+}
+
+export function streamMeta(headers: Headers): StreamMeta {
+  const meta: StreamMeta = { failovers: Number(headers.get('x-davecode-failovers') ?? 0) || 0 };
+  const requestId = headers.get('x-davecode-request-id');
+  const accountId = headers.get('x-davecode-account');
+  const provider = headers.get('x-davecode-provider');
+  if (requestId) meta.requestId = requestId;
+  if (accountId) meta.accountId = accountId;
+  if (provider) meta.provider = provider;
+  return meta;
+}
+
+function bodyOf(res: Response): AsyncIterable<Uint8Array> {
+  if (!res.body) throw new GatewayError(res.status, 'empty_body', 'The gateway sent no body');
+  return res.body as unknown as AsyncIterable<Uint8Array>;
 }
 
 /** A client for the configured gateway if one is answering `/api/health`, else `undefined`. */
