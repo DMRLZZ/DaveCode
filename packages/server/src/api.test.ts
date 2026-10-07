@@ -319,6 +319,25 @@ describe('brain and runner', () => {
     }
   });
 
+  it('forwards runner refusal codes instead of a generic bad_request', async () => {
+    const refusal = Object.assign(new Error('Working tree has uncommitted changes'), {
+      statusCode: 409,
+      code: 'dirty_worktree',
+    });
+    const runner: RunnerControl = {
+      status: () => ({ state: 'idle' }),
+      start: () => Promise.reject(refusal),
+      pause: () => {},
+      stop: () => {},
+    };
+    await setup(undefined, { runner });
+    const res = await app.inject({ method: 'POST', url: '/api/runner/start' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({
+      error: { code: 'dirty_worktree', message: 'Working tree has uncommitted changes' },
+    });
+  });
+
   it('delegates to injected brain and runner implementations', async () => {
     const graph: TaskGraph = {
       version: 1,

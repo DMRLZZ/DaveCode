@@ -1,6 +1,6 @@
 {
   "name": "@davecode/ui",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "DaveCode web dashboard: live token burn, accounts, traffic, task graph and runner control.",
   "license": "MIT",

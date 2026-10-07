@@ -12,86 +12,151 @@
       "id": "p1-storage",
       "title": "SQLite storage (WAL), migrations and repositories",
       "description": "accounts, secrets, sessions, token_usage and audit_logs tables with typed repositories.",
-      "status": "PENDING",
-      "dependsOn": ["foundation"],
-      "priority": 90
+      "status": "SUCCESS",
+      "dependsOn": [
+        "foundation"
+      ],
+      "priority": 90,
+      "attempts": 1,
+      "notes": "Merged in PR #9",
+      "updatedAt": "2026-10-07T02:52:50.088Z"
     },
     {
       "id": "p1-identity",
       "title": "Encrypted keyring, sandbox manager and Chromium profile manager",
-      "status": "PENDING",
-      "dependsOn": ["p1-storage"],
-      "priority": 90
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p1-storage"
+      ],
+      "priority": 90,
+      "attempts": 1,
+      "notes": "Merged in PR #9",
+      "updatedAt": "2026-10-07T02:52:52.319Z"
     },
     {
       "id": "p1-config",
       "title": "Layered config loader (defaults, global, project, env)",
-      "status": "PENDING",
-      "dependsOn": ["foundation"],
-      "priority": 90
+      "status": "SUCCESS",
+      "dependsOn": [
+        "foundation"
+      ],
+      "priority": 90,
+      "attempts": 1,
+      "notes": "Merged in PR #9",
+      "updatedAt": "2026-10-07T02:52:51.281Z"
     },
     {
       "id": "p2-quota",
       "title": "Sliding-window quota engine (1m, 5h, 24h) and SQLite-backed tracker",
-      "status": "PENDING",
-      "dependsOn": ["p1-storage"],
-      "priority": 80
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p1-storage"
+      ],
+      "priority": 80,
+      "attempts": 1,
+      "notes": "Merged in PR #10",
+      "updatedAt": "2026-10-07T02:52:53.779Z"
     },
     {
       "id": "p2-providers",
       "title": "Provider adapters: anthropic, openai, gemini, openai-compatible, claude-cli, codex-cli, gemini-web (experimental)",
-      "status": "PENDING",
-      "dependsOn": ["p1-identity"],
-      "priority": 80
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p1-identity"
+      ],
+      "priority": 80,
+      "attempts": 1,
+      "notes": "Merged in PR #7",
+      "updatedAt": "2026-10-07T02:52:54.916Z"
     },
     {
       "id": "p2-router",
       "title": "Router with balancing, backpressure, cooldowns and hot failover",
-      "status": "PENDING",
-      "dependsOn": ["p2-quota", "p2-providers", "p1-config"],
-      "priority": 80
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p2-quota",
+        "p2-providers",
+        "p1-config"
+      ],
+      "priority": 80,
+      "attempts": 1,
+      "notes": "Merged in PR #10",
+      "updatedAt": "2026-10-07T02:52:55.927Z"
     },
     {
       "id": "p1-gateway",
       "title": "Fastify gateway: /v1 OpenAI-compatible proxy, /api REST, SSE events",
-      "status": "PENDING",
-      "dependsOn": ["p2-router"],
-      "priority": 75
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p2-router"
+      ],
+      "priority": 75,
+      "attempts": 1,
+      "notes": "Merged in PR #10",
+      "updatedAt": "2026-10-07T02:52:57.131Z"
     },
     {
       "id": "p3-brain",
       "title": "Global and project brain managers, task graph DAG resolver with cycle detection",
-      "status": "PENDING",
-      "dependsOn": ["foundation"],
-      "priority": 70
+      "status": "SUCCESS",
+      "dependsOn": [
+        "foundation"
+      ],
+      "priority": 70,
+      "attempts": 1,
+      "notes": "Merged in PR #6",
+      "updatedAt": "2026-10-07T02:52:58.240Z"
     },
     {
       "id": "p4-runner",
       "title": "Autonomous runner: state machine, executor, validator, repair cycles, git flow, optional judge",
-      "status": "PENDING",
-      "dependsOn": ["p2-router", "p3-brain"],
-      "priority": 60
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p2-router",
+        "p3-brain"
+      ],
+      "priority": 60,
+      "attempts": 1,
+      "notes": "Merged in PR #13",
+      "updatedAt": "2026-10-07T02:52:59.406Z"
     },
     {
       "id": "p5-dashboard",
       "title": "Web dashboard (Vite + React + Tailwind) against docs/API.md",
-      "status": "PENDING",
-      "dependsOn": ["foundation"],
-      "priority": 50
+      "status": "SUCCESS",
+      "dependsOn": [
+        "foundation"
+      ],
+      "priority": 50,
+      "attempts": 1,
+      "notes": "Merged in PR #11",
+      "updatedAt": "2026-10-07T02:53:00.517Z"
     },
     {
       "id": "p5-cli",
       "title": "CLI commands and Ink TUI",
-      "status": "PENDING",
-      "dependsOn": ["p1-gateway", "p4-runner"],
-      "priority": 40
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p1-gateway",
+        "p4-runner"
+      ],
+      "priority": 40,
+      "attempts": 1,
+      "notes": "Merged in PR #14",
+      "updatedAt": "2026-10-07T02:53:01.619Z"
     },
     {
       "id": "release-0.1.0",
       "title": "Integration tests, docs polish and v0.1.0 release",
-      "status": "PENDING",
-      "dependsOn": ["p5-cli", "p5-dashboard"],
-      "priority": 10
+      "status": "SUCCESS",
+      "dependsOn": [
+        "p5-cli",
+        "p5-dashboard"
+      ],
+      "priority": 10,
+      "attempts": 1,
+      "notes": "Released as v0.1.0 (PR #15)",
+      "updatedAt": "2026-10-07T02:58:54.206Z"
     }
   ]
 }

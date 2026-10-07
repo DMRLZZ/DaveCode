@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-06
+
+First release: every phase of the [specification](docs/SPEC.md) is implemented.
+
 ### Added
 
 - pnpm monorepo with `core`, `server` and `cli` packages, strict TypeScript, Biome and Vitest.
@@ -74,3 +78,6 @@ All notable changes to this project are documented here. The format follows
   none is running.
 - Live runner view for `davecode run`: state-machine position, current task, repair cycle
   x/max and a log tail, fed by the in-process event bus or a running gateway's `/api/events`.
+
+[Unreleased]: https://github.com/DMRLZZ/DaveCode/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/DMRLZZ/DaveCode/releases/tag/v0.1.0
