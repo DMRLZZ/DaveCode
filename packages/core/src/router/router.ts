@@ -365,6 +365,25 @@ export class Router {
     });
   }
 
+  /** The caller aborted: record the attempt as cancelled without touching cooldowns. */
+  private onCancelled(
+    candidate: Candidate,
+    requestId: string,
+    startedAt: number,
+    tokens: { prompt: number; completion: number } = { prompt: 0, completion: 0 },
+  ): void {
+    const latencyMs = Math.max(0, this.clock() - startedAt);
+    this.breaker.onCancel(candidate.account.id);
+    this.recordUsage(
+      candidate,
+      requestId,
+      'cancelled',
+      tokens.prompt,
+      tokens.completion,
+      latencyMs,
+    );
+  }
+
   private onFailure(
     candidate: Candidate,
     requestId: string,
@@ -475,8 +494,13 @@ export class Router {
         };
       } catch (err) {
         const error = toProviderError(err, account);
+        if (options.signal?.aborted) {
+          // The client went away: not the account's fault, so no cooldown and no failover.
+          this.onCancelled(candidate, requestId, startedAt);
+          throw error;
+        }
         this.onFailure(candidate, requestId, error, startedAt);
-        if (!error.failover || options.signal?.aborted) throw error;
+        if (!error.failover) throw error;
         errors.push(error);
         if (error.kind !== 'context_length') cooled.add(account.id);
         const next = attempts < maxAttempts ? plan.candidates.slice(i + 1).find(usable) : undefined;
@@ -544,7 +568,15 @@ export class Router {
     );
     return {
       meta,
-      chunks: this.relay(value.iterator, value.first, candidate, meta, startedAt, estimate),
+      chunks: this.relay(
+        value.iterator,
+        value.first,
+        candidate,
+        meta,
+        startedAt,
+        estimate,
+        options.signal,
+      ),
     };
   }
 
@@ -555,6 +587,7 @@ export class Router {
     meta: RoutingMeta,
     startedAt: number,
     estimate: number,
+    signal?: AbortSignal,
   ): AsyncGenerator<ChatCompletionChunk> {
     let text = '';
     let upstreamUsage: ChatCompletionChunk['usage'];
@@ -589,7 +622,12 @@ export class Router {
     } catch (err) {
       failed = true;
       const error = toProviderError(err, candidate.account);
-      this.onFailure(candidate, meta.requestId, error, startedAt, tokens());
+      if (signal?.aborted) {
+        // Client disconnect or Esc in the TUI mid-stream: record what was used, blame no one.
+        this.onCancelled(candidate, meta.requestId, startedAt, tokens());
+      } else {
+        this.onFailure(candidate, meta.requestId, error, startedAt, tokens());
+      }
       throw error;
     } finally {
       if (!done && !failed) {
