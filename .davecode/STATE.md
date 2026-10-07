@@ -4,7 +4,7 @@ _Last updated: 2026-10-06_
 
 ## Current focus
 
-Releasing **v0.1.0**: all five phases of the specification are merged. Next up is npm
+**v0.1.0 is released**: all five phases of the specification are merged. Next up is npm
 packaging (bundle `@davecode/core`/`server` into the published `davecode` CLI) and real-world
 dogfooding of the autonomous runner on this repository.
 
@@ -48,3 +48,4 @@ None.
 ## Activity log
 
 - 2026-10-06: v0.1.0 release prepared; task graph updated through `davecode tasks status`.
+- 2026-10-06: v0.1.0 tagged and published as a GitHub release.

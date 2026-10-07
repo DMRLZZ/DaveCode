@@ -148,14 +148,15 @@
     {
       "id": "release-0.1.0",
       "title": "Integration tests, docs polish and v0.1.0 release",
-      "status": "IN_PROGRESS",
+      "status": "SUCCESS",
       "dependsOn": [
         "p5-cli",
         "p5-dashboard"
       ],
       "priority": 10,
       "attempts": 1,
-      "updatedAt": "2026-10-07T02:53:02.149Z"
+      "notes": "Released as v0.1.0 (PR #15)",
+      "updatedAt": "2026-10-07T02:58:54.206Z"
     }
   ]
 }
