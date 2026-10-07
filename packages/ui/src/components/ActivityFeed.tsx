@@ -90,6 +90,14 @@ export function toFeedItem(e: DaveEvent, accounts: Map<string, Account>): FeedIt
         text: `${e.task.id} → ${e.task.status.toLowerCase().replace('_', ' ')}`,
         detail: e.task.title,
       };
+    case 'task.removed':
+      return {
+        key,
+        ts: e.ts,
+        icon: CircleX,
+        tone: 'neutral',
+        text: `${e.taskId} removed`,
+      };
     case 'runner.status':
       return {
         key,

@@ -213,6 +213,7 @@ export type DaveEvent =
   | { type: 'account.removed'; accountId: string; ts: number }
   | { type: 'quota.updated'; usage: AccountUsage; ts: number }
   | { type: 'task.updated'; task: TaskNode; ts: number }
+  | { type: 'task.removed'; taskId: string; ts: number }
   | { type: 'runner.status'; status: RunnerStatus; ts: number }
   | { type: 'runner.log'; level: LogLevel; message: string; taskId?: string; ts: number }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };

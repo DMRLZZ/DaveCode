@@ -13,16 +13,21 @@ export {
   sanitizeNoteName,
 } from './brain/global';
 export {
+  addTask,
   type BlockedTask,
   blockedTasks,
+  type ClearableTaskField,
   canTransition,
   checkRunnable,
+  dependentsOf,
   findCycles,
   type GraphSummary,
+  type NewTask,
   nextTask,
   parseTaskGraph,
   type RunnableCheck,
   readyTasks,
+  removeTask,
   setTaskStatus,
   summarize,
   TASK_STATUSES,
@@ -31,6 +36,7 @@ export {
   type TaskGraphIssueCode,
   type TaskPatch,
   taskGraphSchema,
+  taskIdSchema,
   topologicalOrder,
   type UpdateOptions,
   updateTask,
@@ -39,6 +45,7 @@ export {
 export { type LockOptions, LockTimeoutError, withFileLock } from './brain/lock';
 export {
   findProjectRoot,
+  MissingBrainError,
   ProjectBrain,
   type ProjectBrainInitOptions,
   type ProjectBrainOptions,
