@@ -250,11 +250,13 @@ describe('updaters', () => {
 });
 
 describe('repository task graph', () => {
-  it('parses .davecode/TASK_GRAPH.json and has a next task', () => {
+  it('parses .davecode/TASK_GRAPH.json into a resolvable DAG', () => {
     const file = fileURLToPath(new URL('../../../../.davecode/TASK_GRAPH.json', import.meta.url));
     const graph = parseTaskGraph(readFileSync(file, 'utf8'));
     expect(graph.tasks.length).toBeGreaterThan(0);
-    expect(nextTask(graph)).toBeDefined();
     expect(topologicalOrder(graph)).toHaveLength(graph.tasks.length);
+    // The live graph changes as work lands; whatever its state, any next task must be ready.
+    const next = nextTask(graph);
+    if (next) expect(readyTasks(graph).map((t) => t.id)).toContain(next.id);
   });
 });
