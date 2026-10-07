@@ -6,7 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-06
+
+First version validated end to end against a real (local, free) model: the autonomous runner
+implemented, tested and merged a task on its own with `qwen3:8b` through Ollama.
+
 ### Added
+
+- `davecode` is a standalone npm package: `@davecode/core` and `@davecode/server` are bundled in
+  and the dashboard ships inside `dist/dashboard`.
 
 - Dashboard: New task and edit sheets (dependency multi-select that cannot pick the task itself or
   create a cycle), status actions (Start, Mark done, Mark failed, Reopen), Run now, confirmed delete,
@@ -23,6 +31,16 @@ All notable changes to this project are documented here. The format follows
   `davecode run --task <id>` (replacing the "can only confirm the runner's pick" check) and an
   optional `{ "taskId" }` body on `POST /api/runner/start`. A task that cannot run is refused with
   `task_not_found` (404), `task_not_runnable` or `task_blocked` (409, naming the dependencies).
+
+### Fixed
+
+- Client cancellations (closed connection, Esc in the TUI) no longer put the account in cooldown;
+  they are recorded with the new `cancelled` usage status.
+- The builtin executor rejects a `finish` without any file written (once per pass) and logs why
+  a tool call failed.
+- `run_command` accepts a whole command line such as `node --test` in `command`.
+- `write_file`/`edit_file` repair double-escaped newlines sent by small models.
+- `/api/runner/*` forwards `RunnerError` codes in 409 responses.
 
 ## [0.1.0] - 2026-10-06
 
@@ -97,5 +115,6 @@ First release: every phase of the [specification](docs/SPEC.md) is implemented.
 - Live runner view for `davecode run`: state-machine position, current task, repair cycle
   x/max and a log tail, fed by the in-process event bus or a running gateway's `/api/events`.
 
-[Unreleased]: https://github.com/DMRLZZ/DaveCode/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/DMRLZZ/DaveCode/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DMRLZZ/DaveCode/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/DMRLZZ/DaveCode/releases/tag/v0.1.0

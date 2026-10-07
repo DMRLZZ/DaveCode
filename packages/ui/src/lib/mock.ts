@@ -202,7 +202,7 @@ export class MockEngine implements DaveClient {
   health(): Promise<HealthResponse> {
     return this.respond(() => ({
       status: 'ok',
-      version: '0.1.0',
+      version: '0.2.0',
       uptimeSec: Math.round((this.clock() - this.t0) / 1000) + 3 * 3600 + 17 * 60,
       experimental: { geminiWeb: this.opts.geminiWeb, multiAccountRotation: false },
     }));
