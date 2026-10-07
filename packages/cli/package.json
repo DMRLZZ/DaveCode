@@ -1,6 +1,6 @@
 {
   "name": "davecode",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DaveCode CLI & TUI: run the gateway, manage accounts and drive the autonomous engine from your terminal.",
   "license": "MIT",
   "type": "module",

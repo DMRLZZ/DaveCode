@@ -68,15 +68,35 @@ Read the full design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the HTT
 
 ## Quick start
 
-> Requires **Node.js 22.12+** and **pnpm 10+**. A standalone npm package is on the
-> [roadmap](#roadmap); for now, run from source.
+> Requires **Node.js 22.12+**. The `davecode` package is standalone: it bundles the engine, the
+> gateway and the dashboard. Until it is published to npm, install it from a release tarball or
+> from source.
 
 ```bash
 git clone https://github.com/DMRLZZ/DaveCode.git
 cd DaveCode
 pnpm install
 pnpm build
+cd packages/cli && pnpm pack && npm install -g ./davecode-*.tgz   # puts `davecode` on your PATH
 ```
+
+### Try it for free with Ollama
+
+No API keys needed: everything runs on your machine.
+
+```bash
+ollama pull qwen3:8b          # good tool calling, fits in ~6 GB of VRAM
+ollama pull llama3.1:8b       # fast chat
+
+davecode accounts add --provider openai-compatible --label ollama   --base-url http://localhost:11434/v1 --model qwen3:8b --model llama3.1:8b --yes
+davecode start                # dashboard at http://localhost:4040/
+davecode                      # chat in your terminal
+```
+
+For the autonomous runner (`davecode run`), use a model with reliable tool calling. On a free
+local setup, `qwen3:8b` completed a real implement → test → merge loop in our testing, while
+`llama3.1:8b` tends to hallucinate edit arguments. Frontier models (Claude, GPT, Gemini) are much
+faster and more reliable; set `runner.route` to a route that targets them.
 
 `pnpm build` also builds the CLI. Put `davecode` on your PATH (or run
 `node packages/cli/bin/davecode.js`; `pnpm --filter davecode dev <command>` runs from source):
@@ -243,7 +263,8 @@ docs/         architecture, API contract, original spec
 - [x] **Phase 4, autonomous loop:** runner state machine, validator, repair cycles, git flow, judge
 - [x] **Phase 5, interfaces:** web dashboard, CLI and TUI
 - [x] **v0.1.0:** first tagged release (run from source)
-- [ ] Standalone `davecode` package on npm (`npx davecode`)
+- [x] Standalone `davecode` package (bundled engine, gateway and dashboard)
+- [ ] Publish `davecode` to npm (`npx davecode`)
 - [ ] Verified Codex CLI event format and more provider live tests
 - [x] Editing routes and the task graph from the dashboard
 - [x] Targeting a specific task with `davecode run --task <id>`
