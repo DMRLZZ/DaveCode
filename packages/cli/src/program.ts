@@ -168,6 +168,25 @@ function registerCommands(program: Command, run: Runner): void {
         return doctorCommand(ctx);
       }),
     );
+
+  program
+    .command('run')
+    .description('run the autonomous engine on the task graph (live view in a terminal)')
+    .option('--once', 'implement at most one ready task, print the result and exit')
+    .option('--task <id>', 'only run if <id> is the next ready task')
+    .option('--project <dir>', 'repository to work on (default: detected)')
+    .addHelpText(
+      'after',
+      `
+Exit codes with --once: 0 success or nothing to do, 1 failed or error, 130 stopped.
+Ctrl+C stops safely: partial work stays on the task branch and the task goes back to PENDING.`,
+    )
+    .action(
+      run(async (ctx, opts: import('./commands/run').RunOptions) => {
+        const { runCommand } = await import('./commands/run');
+        return runCommand(ctx, opts);
+      }),
+    );
 }
 
 function registerProject(program: Command, run: Runner): void {
