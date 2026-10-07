@@ -1,6 +1,7 @@
 import {
   type Account,
   type AccountUpdateInput,
+  ConfigError,
   type Engine,
   type RunnerStatus,
   type TaskGraph,
@@ -14,6 +15,7 @@ import {
   accountCreateSchema,
   accountPatchSchema,
   limitQuerySchema,
+  routesUpdateSchema,
   runnerStartSchema,
   timeseriesQuerySchema,
 } from '../schemas';
@@ -164,6 +166,50 @@ export function registerApiRoutes(
     defaultRoute: engine.config.routing.defaultRoute,
     routes: engine.config.routing.routes,
   }));
+
+  app.put('/api/routes', async (request, reply) => {
+    const parsed = routesUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return invalid(reply, parsed.error);
+    const { routes, defaultRoute } = parsed.data;
+    for (const route of routes) {
+      for (const target of route.targets) {
+        if (target.accountId !== undefined && !accounts.get(target.accountId)) {
+          return sendApiError(
+            reply,
+            400,
+            'unknown_account',
+            `route "${route.name}" pins unknown account "${target.accountId}"`,
+          );
+        }
+      }
+    }
+    let result: Awaited<ReturnType<Engine['updateRouting']>>;
+    try {
+      result = await engine.updateRouting({
+        routes,
+        ...(defaultRoute !== undefined ? { defaultRoute } : {}),
+      });
+    } catch (error) {
+      // The stored config.json is unreadable or invalid: it is never overwritten.
+      if (error instanceof ConfigError) {
+        return sendApiError(reply, 409, 'config_invalid', error.message);
+      }
+      throw error;
+    }
+    audit.record({
+      actor: 'api',
+      action: 'routes.update',
+      details: {
+        routes: routes.map((r) => r.name),
+        defaultRoute: engine.config.routing.defaultRoute,
+      },
+    });
+    return {
+      defaultRoute: engine.config.routing.defaultRoute,
+      routes: engine.config.routing.routes,
+      shadowedByProject: result.shadowedByProject,
+    };
+  });
 
   // --- project brain (Phase 3) -------------------------------------------------
 

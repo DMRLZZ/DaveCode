@@ -186,6 +186,34 @@ the account is not cooled down, no failover happens and no `request.failed` even
 { "defaultRoute": "auto", "routes": Route[] }
 ```
 
+`PUT /api/routes`
+
+```json
+{ "routes": [Route, ...], "defaultRoute": "auto" }
+```
+
+Replaces the whole route list (`Route` is the config schema's route shape: lowercase kebab-case
+`name`, optional `description`, one or more ordered `targets` of `{ provider, model,
+accountId? }`) and optionally the default route. `defaultRoute` is optional; when present it must
+be one of the submitted routes, and when omitted the stored value is left alone. Route names must
+be unique and a pinned `accountId` must exist. An empty list removes every route.
+
+The change is written to the **global** `~/.davecode/config.json` (`$DAVECODE_HOME/config.json`):
+the file is read, only `routing.routes` / `routing.defaultRoute` are replaced, every other key is
+preserved, and the result is written atomically under a lock file. The live engine config is
+updated as well, so the router uses the new routes for the very next request (no restart). The
+response is
+
+```json
+{ "defaultRoute": "auto", "routes": Route[], "shadowedByProject": false }
+```
+
+`shadowedByProject` is `true` when the project's `.davecode/config.json` also sets
+`routing.routes` or `routing.defaultRoute`: that layer wins over the global file after a restart,
+so edit it there too. Errors: `400 invalid_body` (schema, duplicate names, `defaultRoute` not in
+the list), `400 unknown_account`, and `409 config_invalid` when the existing global config file
+is malformed or invalid (it is never overwritten).
+
 ### Project brain & task graph
 
 `GET /api/tasks`

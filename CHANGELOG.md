@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `PUT /api/routes`: replace the route list and default route. Persisted to the global
+  `config.json` (other keys preserved, atomic, locked) and applied to the live engine config
+  immediately (`Engine.updateRouting`, `writeGlobalRouting`).
 - Task graph editing: `POST /api/tasks`, `PATCH /api/tasks/:id` and `DELETE /api/tasks/:id`
   through `ProjectBrain` (lock, validation, cycle paths in the `cycle` error, status
   transitions, `has_dependents` refusal), the `task.removed` event, optional write methods on

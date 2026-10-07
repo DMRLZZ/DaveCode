@@ -1,4 +1,10 @@
-import { PROVIDER_KINDS, type ProviderKind, TASK_STATUSES, taskIdSchema } from '@davecode/core';
+import {
+  PROVIDER_KINDS,
+  type ProviderKind,
+  routeSchema,
+  TASK_STATUSES,
+  taskIdSchema,
+} from '@davecode/core';
 import { z } from 'zod';
 
 const providerKind = z.enum(PROVIDER_KINDS as [ProviderKind, ...ProviderKind[]]);
@@ -99,6 +105,34 @@ export const accountCreateSchema = z.object({ provider: providerKind, ...account
 export const accountPatchSchema = z
   .object({ ...accountFields, label: accountFields.label.optional() })
   .strict();
+
+/**
+ * `PUT /api/routes` body: the complete route list (validated with the config schema's route
+ * shape) and optionally the default route, which must be one of those routes.
+ */
+export const routesUpdateSchema = z
+  .object({ routes: z.array(routeSchema).max(200), defaultRoute: z.string().min(1).optional() })
+  .strict()
+  .superRefine((body, ctx) => {
+    const seen = new Set<string>();
+    body.routes.forEach((route, index) => {
+      if (seen.has(route.name)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['routes', index, 'name'],
+          message: `duplicate route name "${route.name}"`,
+        });
+      }
+      seen.add(route.name);
+    });
+    if (body.defaultRoute !== undefined && !seen.has(body.defaultRoute)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['defaultRoute'],
+        message: `defaultRoute "${body.defaultRoute}" is not one of the routes`,
+      });
+    }
+  });
 
 const taskText = {
   title: z.string().trim().min(1).max(300),
