@@ -9,8 +9,14 @@
   },
   "files": [
     "bin",
-    "dist"
+    "dist",
+    "README.md",
+    "LICENSE"
   ],
+  "homepage": "https://github.com/DMRLZZ/DaveCode#readme",
+  "bugs": {
+    "url": "https://github.com/DMRLZZ/DaveCode/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DMRLZZ/DaveCode.git",
@@ -36,14 +42,28 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@davecode/core": "workspace:*",
-    "@davecode/server": "workspace:*",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/static": "^10.1.5",
+    "better-sqlite3": "^13.0.3",
     "commander": "^15.0.0",
+    "fastify": "^5.12.5",
     "ink": "^8.0.0",
+    "js-tiktoken": "^1.0.21",
     "react": "^19.3.0",
     "zod": "^4.6.5"
   },
+  "peerDependencies": {
+    "playwright-core": ">=1.50.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@davecode/core": "workspace:*",
+    "@davecode/server": "workspace:*",
+    "@davecode/ui": "workspace:*",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0"
   }

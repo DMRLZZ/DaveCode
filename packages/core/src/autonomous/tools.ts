@@ -9,7 +9,7 @@ import { mkdir, readdir, readFile, realpath, stat, writeFile } from 'node:fs/pro
 import path from 'node:path';
 import { z } from 'zod';
 import type { ToolDefinition } from '../types';
-import { projectEnv, runProcess, truncateHead, truncateTail } from './process';
+import { projectEnv, runProcess, splitCommand, truncateHead, truncateTail } from './process';
 
 /** Thrown (and reported to the model) when a path would leave the repository. */
 export class PathEscapeError extends Error {
@@ -288,6 +288,8 @@ export class WorkspaceTools {
   readonly allowedCommands: readonly string[];
   /** Repository-relative paths written or edited so far. */
   readonly changedFiles = new Set<string>();
+  /** Successful write_file/edit_file calls so far (grows even when a file is edited again). */
+  writeCount = 0;
   private readonly commandTimeoutMs: number;
   private readonly maxOutput: number;
   private readonly env: NodeJS.ProcessEnv | undefined;
@@ -378,6 +380,7 @@ export class WorkspaceTools {
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, args.content, 'utf8');
     this.changedFiles.add(rel);
+    this.writeCount++;
     return `Wrote ${Buffer.byteLength(args.content)} bytes to ${rel}`;
   }
 
@@ -403,6 +406,7 @@ export class WorkspaceTools {
     const next = text.slice(0, index) + newString + text.slice(index + oldString.length);
     await writeFile(abs, next, 'utf8');
     this.changedFiles.add(rel);
+    this.writeCount++;
     return `Edited ${rel}`;
   }
 
@@ -490,10 +494,21 @@ export class WorkspaceTools {
     args: z.infer<typeof runCommandArgs>,
     signal?: AbortSignal,
   ): Promise<ToolOutcome> {
-    this.assertCommandAllowed(args.command, args.args);
+    // Models often send the whole command line in `command` ("node --test"). Split it with the
+    // same quote-aware splitter the validator uses; it is still never run through a shell.
+    let command = args.command;
+    let argv = args.args;
+    if (argv.length === 0 && /\s/.test(command.trim())) {
+      const [head, ...rest] = splitCommand(command.trim());
+      if (head) {
+        command = head;
+        argv = rest;
+      }
+    }
+    this.assertCommandAllowed(command, argv);
     const result = await runProcess({
-      command: args.command,
-      args: args.args,
+      command,
+      args: argv,
       cwd: this.root,
       timeoutMs: this.commandTimeoutMs,
       env: projectEnv(this.root, this.env ?? process.env),
@@ -507,7 +522,7 @@ export class WorkspaceTools {
         ? 'aborted'
         : `exit code ${result.exitCode ?? 'none'}`;
     const output = [
-      `$ ${[args.command, ...args.args].join(' ')}`,
+      `$ ${[command, ...argv].join(' ')}`,
       `${status} (${result.durationMs} ms)`,
       '--- stdout ---',
       truncateTail(result.stdout, half) || '(empty)',

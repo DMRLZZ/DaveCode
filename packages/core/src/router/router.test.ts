@@ -605,6 +605,46 @@ describe('Router.stream', () => {
     expect(h.usage.recent()).toMatchObject([{ accountId: a.id, status: 'success' }]);
   });
 
+  it('treats a client abort mid-stream as cancelled, not as an account failure', async () => {
+    const h = harness();
+    const a = h.add({ provider: 'openai', label: 'a' });
+    h.fake('openai').script(a.id, {
+      type: 'stream',
+      chunks: ['one ', 'two '],
+      failAfter: 1,
+      error: providerError('timeout'),
+    });
+    const controller = new AbortController();
+    const { chunks } = await h.router.stream(chat('openai/gpt-x'), { signal: controller.signal });
+    await expect(
+      (async () => {
+        for await (const _chunk of chunks) controller.abort();
+      })(),
+    ).rejects.toMatchObject({ kind: 'timeout' });
+
+    expect(h.usage.recent()).toMatchObject([{ accountId: a.id, status: 'cancelled' }]);
+    expect(h.accounts.get(a.id)).toMatchObject({ status: 'active' });
+    expect(h.accounts.get(a.id)?.cooldownUntil).toBeUndefined();
+    expect(h.events.filter((e) => e.type === 'request.failed')).toHaveLength(0);
+  });
+
+  it('does not fail over or cool down when the client aborts before the first byte', async () => {
+    const h = harness();
+    const a = h.add({ provider: 'openai', label: 'a', priority: 1 });
+    const b = h.add({ provider: 'openai', label: 'b', priority: 2 });
+    h.fake('openai').script(a.id, { type: 'error', error: providerError('timeout') });
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      h.router.complete(chat('openai/gpt-x'), { signal: controller.signal }),
+    ).rejects.toMatchObject({ kind: 'timeout' });
+    expect(h.fake('openai').calls.map((c) => c.accountId)).toEqual([a.id]);
+    expect(h.accounts.get(a.id)).toMatchObject({ status: 'active' });
+    expect(h.usage.recent()).toMatchObject([{ accountId: a.id, status: 'cancelled' }]);
+    expect(b.status).toBe('active');
+  });
+
   it('treats an empty stream as success', async () => {
     const h = harness();
     const a = h.add({ provider: 'openai', label: 'a' });

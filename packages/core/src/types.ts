@@ -228,7 +228,8 @@ export interface AccountUsage {
   windows: Record<QuotaWindow, WindowUsage>;
 }
 
-export type UsageStatus = 'success' | 'error' | 'rate_limited';
+/** `cancelled`: the client aborted (disconnect, Esc in the TUI); never counts against the account. */
+export type UsageStatus = 'success' | 'error' | 'rate_limited' | 'cancelled';
 
 export interface UsageRecord {
   id: string;

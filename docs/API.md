@@ -173,6 +173,10 @@ three records sharing the same `requestId`, which is how clients rebuild failove
 upstream model that was called (not the `davecode/<route>` alias the client asked for). The
 same holds for `model` in `request.*` events.
 
+`status` is `success`, `error`, `rate_limited` or `cancelled`. `cancelled` means the client
+aborted (closed the connection, pressed Esc in the TUI): the tokens used so far are recorded, but
+the account is not cooled down, no failover happens and no `request.failed` event is emitted.
+
 ### Routes
 
 `GET /api/routes`

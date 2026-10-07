@@ -169,4 +169,13 @@ describe('WorkspaceTools', () => {
     expect(res.output).toContain('exit code 3');
     expect(res.output).toContain('hi && echo x');
   });
+
+  it('accepts a whole command line in `command` and still checks the allow-list', async () => {
+    const ok = await tools.call('run_command', args({ command: 'node -e "console.log(41 + 1)"' }));
+    expect(ok.ok).toBe(true);
+    expect(ok.output).toContain('42');
+    const denied = await tools.call('run_command', args({ command: 'curl https://example.com' }));
+    expect(denied.ok).toBe(false);
+    expect(denied.output).toMatch(/"curl" is not allowed/);
+  });
 });

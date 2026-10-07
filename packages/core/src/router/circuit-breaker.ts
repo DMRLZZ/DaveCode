@@ -66,6 +66,12 @@ export class CircuitBreaker {
     this.circuits.set(id, circuit);
   }
 
+  /** The caller cancelled the attempt: release a half-open probe without counting a failure. */
+  onCancel(id: string): void {
+    const circuit = this.circuits.get(id);
+    if (circuit) circuit.probing = false;
+  }
+
   /** Forget an account (e.g. after deletion or manual re-enable). */
   reset(id: string): void {
     this.circuits.delete(id);

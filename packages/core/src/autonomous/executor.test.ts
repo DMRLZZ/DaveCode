@@ -106,9 +106,11 @@ describe('BuiltinExecutor', () => {
   });
 
   it('continues the same conversation on repair with the failure report', async () => {
+    const edit = (from: string, to: string) =>
+      fakeToolCall('edit_file', { path: 'hello.txt', old_string: from, new_string: to });
     const { router, requests } = scriptedRouter([
-      { toolCalls: [fakeToolCall('finish', { summary: 'first' })] },
-      { toolCalls: [fakeToolCall('finish', { summary: 'fixed' })] },
+      { toolCalls: [edit('world', 'there'), fakeToolCall('finish', { summary: 'first' })] },
+      { toolCalls: [edit('there', 'DaveCode'), fakeToolCall('finish', { summary: 'fixed' })] },
     ]);
     const session = new BuiltinExecutor({ router, route: 'auto' }).createSession({
       task,
@@ -124,6 +126,43 @@ describe('BuiltinExecutor', () => {
     expect(last.at(-1)?.content).toContain('REPAIR CYCLE 1');
     expect(last.at(-1)?.content).toContain('test FAILED: expected 2');
     expect(repaired.totalTokens).toBeGreaterThan(repaired.tokens);
+  });
+
+  it('rejects a finish without changes once per pass, then accepts it', async () => {
+    const { router, requests } = scriptedRouter([
+      { toolCalls: [fakeToolCall('finish', { summary: 'nothing to do' })] },
+      { toolCalls: [fakeToolCall('finish', { summary: 'still nothing' })] },
+    ]);
+    const logs: string[] = [];
+    const session = new BuiltinExecutor({ router, route: 'auto' }).createSession({
+      task,
+      context: 'ctx',
+      root,
+      log: (_l, m) => logs.push(m),
+    });
+    const result = await session.run({ cycle: 0 });
+    expect(result).toMatchObject({ stopReason: 'finished', summary: 'still nothing' });
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.messages.at(-1)).toMatchObject({ role: 'user' });
+    expect(requests[1]?.messages.at(-1)?.content).toMatch(/no files were changed/);
+    expect(logs).toContain('finish rejected: no files were changed in this pass');
+  });
+
+  it('logs why a tool call failed', async () => {
+    const { router } = scriptedRouter([
+      {
+        toolCalls: [
+          fakeToolCall('edit_file', { path: 'hello.txt', old_string: 'absent', new_string: 'x' }),
+        ],
+      },
+      { toolCalls: [fakeToolCall('write_file', { path: 'out.txt', content: 'ok' })] },
+      { toolCalls: [fakeToolCall('finish', { summary: 'done' })] },
+    ]);
+    const logs: string[] = [];
+    await new BuiltinExecutor({ router, route: 'auto' })
+      .createSession({ task, context: 'ctx', root, log: (_l, m) => logs.push(m) })
+      .run({ cycle: 0 });
+    expect(logs).toContain('tool edit_file failed: Error: old_string not found in hello.txt');
   });
 
   it('nudges once, then stops when the model keeps answering without tools', async () => {
