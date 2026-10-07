@@ -2,7 +2,13 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { PathEscapeError, resolveRepoPath, TOOL_DEFINITIONS, WorkspaceTools } from './tools';
+import {
+  PathEscapeError,
+  repairDoubleEscaped,
+  resolveRepoPath,
+  TOOL_DEFINITIONS,
+  WorkspaceTools,
+} from './tools';
 
 let root: string;
 let outside: string;
@@ -75,6 +81,25 @@ describe('WorkspaceTools', () => {
       'run_command',
       'finish',
     ]);
+  });
+
+  it('repairs double-escaped edits from small models', async () => {
+    writeFileSync(
+      join(root, 'math.js'),
+      "export function add(a, b) {\n  throw new Error('no');\n}\n",
+    );
+    const res = await tools.call(
+      'edit_file',
+      args({
+        path: 'math.js',
+        old_string: String.raw`export function add(a, b) {\n  throw new Error('no');\n}`,
+        new_string: String.raw`export function add(a, b) {\n  return a + b;\n}`,
+      }),
+    );
+    expect(res.ok).toBe(true);
+    expect(readFileSync(join(root, 'math.js'), 'utf8')).toBe(
+      'export function add(a, b) {\n  return a + b;\n}\n',
+    );
   });
 
   it('lists, reads, writes and tracks changed files', async () => {
@@ -177,5 +202,27 @@ describe('WorkspaceTools', () => {
     const denied = await tools.call('run_command', args({ command: 'curl https://example.com' }));
     expect(denied.ok).toBe(false);
     expect(denied.output).toMatch(/"curl" is not allowed/);
+  });
+});
+
+describe('repairDoubleEscaped', () => {
+  it('turns escaped newlines outside string literals into real ones', () => {
+    expect(repairDoubleEscaped(String.raw`export function add(a, b) {\n  return a + b;\n}`)).toBe(
+      'export function add(a, b) {\n  return a + b;\n}',
+    );
+    expect(repairDoubleEscaped(String.raw`if (x) {\n\treturn;\n}`)).toBe('if (x) {\n\treturn;\n}');
+  });
+
+  it('keeps escapes inside string literals', () => {
+    const code = String.raw`console.log("a\nb");`;
+    expect(repairDoubleEscaped(code)).toBe(code);
+    expect(repairDoubleEscaped(String.raw`const s = 'x\n';\nlog(s);`)).toBe(
+      String.raw`const s = 'x\n';` + '\nlog(s);',
+    );
+  });
+
+  it('leaves text that already has real newlines untouched', () => {
+    const text = 'line one\n\nline two';
+    expect(repairDoubleEscaped(text)).toBe(text);
   });
 });
