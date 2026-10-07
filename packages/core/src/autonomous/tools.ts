@@ -288,6 +288,8 @@ export class WorkspaceTools {
   readonly allowedCommands: readonly string[];
   /** Repository-relative paths written or edited so far. */
   readonly changedFiles = new Set<string>();
+  /** Successful write_file/edit_file calls so far (grows even when a file is edited again). */
+  writeCount = 0;
   private readonly commandTimeoutMs: number;
   private readonly maxOutput: number;
   private readonly env: NodeJS.ProcessEnv | undefined;
@@ -378,6 +380,7 @@ export class WorkspaceTools {
     await mkdir(path.dirname(abs), { recursive: true });
     await writeFile(abs, args.content, 'utf8');
     this.changedFiles.add(rel);
+    this.writeCount++;
     return `Wrote ${Buffer.byteLength(args.content)} bytes to ${rel}`;
   }
 
@@ -403,6 +406,7 @@ export class WorkspaceTools {
     const next = text.slice(0, index) + newString + text.slice(index + oldString.length);
     await writeFile(abs, next, 'utf8');
     this.changedFiles.add(rel);
+    this.writeCount++;
     return `Edited ${rel}`;
   }
 

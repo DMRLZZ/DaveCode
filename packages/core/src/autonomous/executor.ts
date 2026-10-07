@@ -192,6 +192,9 @@ export class BuiltinExecutor implements Executor {
       let iterations = 0;
       let passTokens = 0;
       let nudged = false;
+      // Small models often call finish before editing anything; push back once per pass.
+      const writesAtStart = tools.writeCount;
+      let rejectedEmptyFinish = false;
       const result = (summary: string, stopReason: ExecutorStopReason): ExecutorResult => ({
         summary,
         stopReason,
@@ -267,7 +270,10 @@ export class BuiltinExecutor implements Executor {
           if (signal?.aborted) throw new ExecutorAbortedError();
           log('debug', `tool ${describeCall(call.function.name, call.function.arguments)}`);
           const outcome = await tools.call(call.function.name, call.function.arguments, signal);
-          if (!outcome.ok) log('debug', `tool ${call.function.name} failed`);
+          if (!outcome.ok) {
+            const reason = outcome.output.split('\n', 1)[0]?.slice(0, 200) ?? '';
+            log('debug', `tool ${call.function.name} failed: ${reason}`);
+          }
           if (outcome.finished) finished = outcome.finished.summary;
           messages.push({
             role: 'tool',
@@ -276,7 +282,21 @@ export class BuiltinExecutor implements Executor {
             content: outcome.output,
           });
         }
-        if (finished !== undefined) return result(finished, 'finished');
+        if (finished !== undefined) {
+          if (tools.writeCount === writesAtStart && !rejectedEmptyFinish) {
+            rejectedEmptyFinish = true;
+            log('debug', 'finish rejected: no files were changed in this pass');
+            messages.push({
+              role: 'user',
+              content:
+                'You called finish, but no files were changed in this pass, so the task cannot be ' +
+                'complete yet. Read the relevant files, change them with edit_file or write_file, ' +
+                'then call finish.',
+            });
+            continue;
+          }
+          return result(finished, 'finished');
+        }
       }
       log('warn', `iteration limit of ${maxIterations} reached`);
       return result('Stopped: iteration limit reached.', 'max_iterations');
