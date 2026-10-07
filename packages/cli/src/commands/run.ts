@@ -93,7 +93,11 @@ export function explainRunnerError(err: unknown, config: DaveConfig): unknown {
   let code: RunnerErrorCode | undefined;
   if (err instanceof RunnerError) code = err.code;
   else if (err instanceof GatewayError && err.status === 409) {
-    code = CODE_PATTERNS.find(([, re]) => re.test(message))?.[0];
+    // The gateway forwards RunnerError codes; fall back to message matching for older gateways.
+    code =
+      err.code in HINTS
+        ? (err.code as RunnerErrorCode)
+        : CODE_PATTERNS.find(([, re]) => re.test(message))?.[0];
   }
   if (!code) return err;
   const friendly = HINTS[code](config);

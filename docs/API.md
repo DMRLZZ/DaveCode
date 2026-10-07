@@ -30,7 +30,7 @@ by default.
 | 400 | Invalid body (zod validation message included, code `invalid_body`), or `experimental_disabled` |
 | 401 | Missing/invalid bearer token (`invalid_api_key` on `/v1`, `unauthorized` on `/api`) |
 | 404 | Unknown resource (`not_found`) or no account can serve the model (`model_not_found`) |
-| 409 | The autonomous runner refused to start (dirty working tree, no git repository, no brain…) |
+| 409 | The autonomous runner refused to start; `code` is the `RunnerError` code: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`, `invalid_graph` or `busy` |
 | 429 | Every candidate account is saturated or cooling down (`no_capacity`), or every attempt was rate limited upstream (`rate_limited`) |
 | 501 | The autonomous runner is not available in this process (`runner_unavailable`) |
 | 502 | All failover targets failed upstream (`upstream_failed`), or upstream credentials were rejected (`upstream_auth_error`) |

@@ -193,7 +193,17 @@ export function registerApiRoutes(
           'The autonomous runner is not available',
         );
       }
-      await runner[action]();
+      try {
+        await runner[action]();
+      } catch (error) {
+        // Runner refusals (RunnerError: dirty_worktree, no_brain, busy…) carry an HTTP status
+        // and a machine-readable code; forward both so clients don't have to parse messages.
+        const { statusCode, code } = error as { statusCode?: unknown; code?: unknown };
+        if (typeof statusCode === 'number' && statusCode < 500 && typeof code === 'string') {
+          return sendApiError(reply, statusCode, code, (error as Error).message);
+        }
+        throw error;
+      }
       audit.record({ actor: 'api', action: `runner.${action}` });
       return { status: runner.status() };
     };
