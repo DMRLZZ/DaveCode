@@ -75,8 +75,67 @@ export const configSchema = z.object({
       branchPrefix: z.string().default('davecode/task-'),
       /** Branch that successful tasks are merged into. */
       baseBranch: z.string().default('main'),
-      /** Route the runner uses for implementation calls. */
+      /**
+       * Route (`auto` → `davecode/auto`) or model id (`openai/gpt-5`) the runner uses for
+       * implementation calls with the built-in executor.
+       */
       route: z.string().default('auto'),
+      /**
+       * `builtin`: DaveCode's own tool loop over the router (default).
+       * `claude-cli`: delegate each task to the Claude Code CLI of a `claude-cli` account.
+       */
+      executor: z.enum(['builtin', 'claude-cli']).default('builtin'),
+      /**
+       * Push the task branch and open a pull request with `gh` instead of merging locally.
+       * Falls back to a local merge (with a warning) when `gh` or a remote is unavailable.
+       */
+      pullRequests: z.boolean().default(false),
+      /** Commit STATE.md / TASK_GRAPH.json changes on the base branch after every task. */
+      commitBrain: z.boolean().default(true),
+      /** Timeout for each validation command and each `run_command` tool call. */
+      commandTimeoutMs: z.number().int().min(1_000).default(600_000),
+      /** How long the continuous loop sleeps when no task is ready. */
+      idlePollMs: z.number().int().min(100).default(30_000),
+      /** Model round-trips allowed per implementation or repair pass (built-in executor). */
+      maxIterations: z.number().int().min(1).max(500).default(40),
+      /** Total prompt + completion tokens one task may consume across all passes. */
+      maxTaskTokens: z.number().int().min(1_000).default(1_500_000),
+      /**
+       * Executables the `run_command` tool may start (bare names, no paths). `git` is always
+       * restricted to read-only subcommands.
+       */
+      allowedCommands: z
+        .array(z.string().regex(/^[A-Za-z0-9][\w.-]*$/, 'bare executable names only'))
+        .default(['pnpm', 'npm', 'npx', 'node', 'git', 'tsc', 'biome', 'vitest']),
+      claudeCli: z
+        .object({
+          /** `claude-cli` account whose sandbox is used; defaults to the first enabled one. */
+          accountId: z.string().optional(),
+          /** Model alias passed as `--model` (e.g. `sonnet`). */
+          model: z.string().optional(),
+          /** Claude Code tools pre-approved with `--allowedTools`. */
+          allowedTools: z
+            .array(z.string().min(1))
+            .default([
+              'Read',
+              'Edit',
+              'Write',
+              'MultiEdit',
+              'Glob',
+              'Grep',
+              'LS',
+              'Bash(pnpm:*)',
+              'Bash(npm:*)',
+              'Bash(npx:*)',
+              'Bash(node:*)',
+              'Bash(git status:*)',
+              'Bash(git diff:*)',
+              'Bash(git log:*)',
+            ]),
+          /** Hard timeout for one CLI invocation. */
+          timeoutMs: z.number().int().min(1_000).default(1_800_000),
+        })
+        .prefault({}),
       validate: z
         .object({
           lint: z.string().optional(),
@@ -88,12 +147,15 @@ export const configSchema = z.object({
         .object({
           /**
            * `none`: deterministic checks only (free, default).
-           * `jev`: ask TypeSafe Jev (paid, via any OpenAI-compatible gateway) whether
-           * acceptance criteria are met, with calibrated confidence.
+           * `jev`: ask TypeSafe Jev through the OpenRouter Decisions API (paid) whether the
+           * acceptance criteria are met, with calibrated confidence. The API key is read from
+           * the `OPENROUTER_API_KEY` or `JEV_API_KEY` environment variable, never from config.
            * `llm`: use one of your own routes as the judge.
            */
           kind: z.enum(['none', 'jev', 'llm']).default('none'),
+          /** `jev`: model id (default `typesafe/jev-1.13`). `llm`: route or model id. */
           model: z.string().optional(),
+          /** `jev`: Decisions API base URL (default `https://openrouter.ai/api/alpha`). */
           baseUrl: z.string().url().optional(),
           /** Minimum confidence (0..1) required for the judge to pass a task. */
           threshold: z.number().min(0).max(1).default(0.7),

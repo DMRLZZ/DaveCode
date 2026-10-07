@@ -9,6 +9,19 @@ describe('configSchema', () => {
     expect(config.routing.quotaShiftThreshold).toBe(0.9);
     expect(config.runner.maxRepairCycles).toBe(3);
     expect(config.runner.judge.kind).toBe('none');
+    expect(config.runner).toMatchObject({
+      executor: 'builtin',
+      pullRequests: false,
+      commitBrain: true,
+      maxIterations: 40,
+    });
+    expect(config.runner.allowedCommands).toContain('pnpm');
+    expect(config.runner.claudeCli.allowedTools).toContain('Read');
+  });
+
+  it('rejects allowed commands that are paths', () => {
+    const result = configSchema.safeParse({ runner: { allowedCommands: ['/bin/sh'] } });
+    expect(result.success).toBe(false);
   });
 
   it('keeps ToS-sensitive features off by default', () => {

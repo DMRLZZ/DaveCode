@@ -41,3 +41,19 @@ All notable changes to this project are documented here. The format follows
 - Typed client for every `/api` endpoint plus an `/api/events` stream with backoff reconnects,
   and a realistic in-browser mock mode (`?mock=1`, `VITE_DAVECODE_MOCK=1`, or automatic when the
   gateway is unreachable).
+- Autonomous runner (`AutonomousRunner`, `createRunner`): selects the next ready task, works on
+  an isolated `davecode/task-<id>` branch, validates with the configured lint/typecheck/test
+  commands, self-repairs up to `runner.maxRepairCycles` with the exact failure output, runs an
+  optional judge, then commits (Conventional Commits) and merges `--no-ff` or opens a PR with
+  `gh`, updating TASK_GRAPH.json and STATE.md. 24/7 mode with idle polling or `runOnce()`;
+  refuses a dirty tree; pause/stop at step boundaries with `AbortSignal` cancellation.
+- Executors: the default `builtin` OpenAI tool-calling loop over the router (`list_dir`,
+  `read_file`, `write_file`, `edit_file`, `search`, `run_command`, `finish`) with repo path
+  confinement and a command allow-list, and opt-in `claude-cli` delegation using the account's
+  sandboxed `CLAUDE_CONFIG_DIR`.
+- Judges: `none` (default), TypeSafe Jev via the OpenRouter Decisions API (key from
+  `OPENROUTER_API_KEY` / `JEV_API_KEY`) and `llm` over your own routes with a zod-validated
+  verdict.
+- `ProjectBrainSource` adapter for the gateway; `pnpm dev` exposes the project brain and runner.
+- `runner.*` config: `executor`, `pullRequests`, `commitBrain`, `commandTimeoutMs`,
+  `idlePollMs`, `maxIterations`, `maxTaskTokens`, `allowedCommands` and `claudeCli`.

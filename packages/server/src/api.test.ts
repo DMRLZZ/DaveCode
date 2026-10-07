@@ -1,5 +1,14 @@
-import { existsSync } from 'node:fs';
-import type { DaveEvent, RunnerStatus, TaskGraph } from '@davecode/core';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  createRunner,
+  type DaveEvent,
+  ProjectBrain,
+  ProjectBrainSource,
+  type RunnerStatus,
+  type TaskGraph,
+} from '@davecode/core';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { buildGateway } from './gateway';
@@ -357,6 +366,34 @@ describe('brain and runner', () => {
     expect((await app.inject({ method: 'GET', url: '/api/runner' })).json().status.state).toBe(
       'stopped',
     );
+  });
+
+  it('serves the core ProjectBrainSource and AutonomousRunner', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'davecode-api-brain-'));
+    try {
+      t = makeTestEngine();
+      const project = await ProjectBrain.init(root, { events: t.engine.events, name: 'demo' });
+      const runner = createRunner(t.engine, { brain: project, global: false });
+      app = await buildGateway(t.engine, { brain: new ProjectBrainSource(project), runner });
+
+      const tasks = (await app.inject({ method: 'GET', url: '/api/tasks' })).json();
+      expect(tasks.project.root).toBe(root);
+      expect(tasks.graph).toEqual({ version: 1, tasks: [] });
+      expect((await app.inject({ method: 'GET', url: '/api/brain' })).json().state).toContain(
+        '# demo: project state',
+      );
+
+      // Not a git repository: the runner refuses to start and the API reports why.
+      const start = await app.inject({ method: 'POST', url: '/api/runner/start' });
+      expect(start.statusCode).toBe(409);
+      expect(start.json().error.message).toMatch(/not inside a git repository/);
+      const status = (await app.inject({ method: 'GET', url: '/api/runner' })).json().status;
+      expect(status.state).toBe('error');
+      const stop = await app.inject({ method: 'POST', url: '/api/runner/stop' });
+      expect(stop.json().status.state).toBe('stopped');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

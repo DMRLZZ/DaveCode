@@ -30,6 +30,7 @@ by default.
 | 400 | Invalid body (zod validation message included, code `invalid_body`), or `experimental_disabled` |
 | 401 | Missing/invalid bearer token (`invalid_api_key` on `/v1`, `unauthorized` on `/api`) |
 | 404 | Unknown resource (`not_found`) or no account can serve the model (`model_not_found`) |
+| 409 | The autonomous runner refused to start (dirty working tree, no git repository, no brain…) |
 | 429 | Every candidate account is saturated or cooling down (`no_capacity`), or every attempt was rate limited upstream (`rate_limited`) |
 | 501 | The autonomous runner is not available in this process (`runner_unavailable`) |
 | 502 | All failover targets failed upstream (`upstream_failed`), or upstream credentials were rejected (`upstream_auth_error`) |
@@ -206,6 +207,58 @@ same holds for `model` in `request.*` events.
 When the gateway runs without a project brain, `/api/tasks` returns `project: null` with an
 empty graph and `/api/brain` returns empty strings. Without a runner, `GET /api/runner` returns
 `{ "status": { "state": "idle" } }` and the control endpoints return `501 runner_unavailable`.
+
+With the core `AutonomousRunner` (wired by `pnpm dev` inside an initialised project):
+
+- `start` resolves as soon as the loop is running (it does not wait for tasks) and resumes a
+  paused runner. If a precondition fails (not a git repository, no brain, missing base branch,
+  uncommitted changes outside `.davecode/`, invalid task graph) it returns `409` with the
+  reason in `error.message`, and `status` becomes `{ "state": "error", "lastError": … }`.
+- `pause` takes effect at the next step boundary: the status reads `paused` immediately while
+  an in-flight model call or check finishes.
+- `stop` aborts the in-flight model call or command, keeps partial work on the task branch,
+  sets the task back to `PENDING` and returns once the runner is `stopped`.
+
+Progress is streamed on `/api/events` as `runner.status` (every transition, with `taskId` and
+`repairCycle`), `runner.log` (`{ level, message, taskId? }`) and `task.updated`.
+
+### Runner library API (`@davecode/core`)
+
+The CLI drives the same runner in-process:
+
+```ts
+const engine = createEngine({ projectRoot });
+const brain = new ProjectBrain(projectRoot, { events: engine.events });
+const runner = createRunner(engine, { brain }); // executor and judge from runner.* config
+const result = await runner.runOnce(); // one task: RunOnceResult
+await runner.start(); // or run 24/7; pause(), stop(), status()
+```
+
+`RunOnceResult`: `{ outcome: 'success' | 'failed' | 'idle' | 'stopped' | 'error', task?,
+repairCycles, summary?, validation?: ValidationReport, verdict?: JudgeVerdict,
+delivery?: { mode: 'merge' | 'pr', url? }, branch?, error? }`. Preconditions reject with
+`RunnerError` (`code`: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`,
+`invalid_graph`, `busy`).
+
+Runner configuration (`runner.*`, all optional):
+
+| Key | Default | Meaning |
+| :-- | :------ | :------ |
+| `maxRepairCycles` | `3` | Repair passes after the first implementation before the task is `FAILED` |
+| `branchPrefix` / `baseBranch` | `davecode/task-` / `main` | Task branches and merge target |
+| `route` | `auto` | Route (`davecode/<route>`) or model id for the `builtin` executor |
+| `executor` | `builtin` | `builtin` tool loop or `claude-cli` delegation |
+| `pullRequests` | `false` | Push and `gh pr create` instead of merging locally (falls back to merge) |
+| `commitBrain` | `true` | Commit STATE.md / TASK_GRAPH.json on the base branch after each task |
+| `commandTimeoutMs` | `600000` | Timeout per validation command and per `run_command` |
+| `idlePollMs` | `30000` | Sleep between polls when no task is ready |
+| `maxIterations` | `40` | Model round-trips per implementation or repair pass |
+| `maxTaskTokens` | `1500000` | Token budget per task across passes |
+| `allowedCommands` | `pnpm npm npx node git tsc biome vitest` | Executables `run_command` may start |
+| `claudeCli.accountId` / `model` / `allowedTools` / `timeoutMs` | first enabled account / CLI default / file tools + common `Bash(...)` / `1800000` | `claude-cli` executor settings |
+| `validate.lint` / `typecheck` / `test` | unset | Quality-gate commands (split into argv, run without a shell) |
+| `judge.kind` | `none` | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |
+| `judge.model` / `baseUrl` / `threshold` | `typesafe/jev-1.13` or `runner.route` / `https://openrouter.ai/api/alpha` / `0.7` | Judge model, Decisions API base URL, minimum confidence |
 
 ### Live events
 
