@@ -57,3 +57,20 @@ All notable changes to this project are documented here. The format follows
 - `ProjectBrainSource` adapter for the gateway; `pnpm dev` exposes the project brain and runner.
 - `runner.*` config: `executor`, `pullRequests`, `commitBrain`, `commandTimeoutMs`,
   `idlePollMs`, `maxIterations`, `maxTaskTokens`, `allowedCommands` and `claudeCli`.
+- `davecode` CLI (commander, lazy-loaded commands): `start` (gateway, dashboard, project brain
+  and autonomous runner, with a compact banner, live activity log and clean SIGINT/SIGTERM
+  shutdown), `status` (live from `/api/*` or local state, 1m/5h/24h quota bars), `accounts
+  list|add|remove|enable|disable|login` plus `add-account` (interactive Ink prompts with masked
+  secrets or a flag form for scripts; gemini-web and multi-account rotation gated behind their
+  experimental flags with the ToS warning; `login` runs the real `claude`/`codex` in the
+  account's isolated config dir), `init` (brain scaffold and `runner.validate` detected from
+  package.json), `tasks list|next|add|status`, `config path|show|get` (secrets redacted),
+  `doctor` (environment checks with fixes) and `run [--once] [--task <id>]`. Global `--home`,
+  `--json`, `--no-color`/`NO_COLOR` and `--version`.
+- Chat TUI (`davecode chat`, or bare `davecode` in a terminal) built with Ink 8: streaming
+  replies over SSE, multiline input, slash commands (`/model`, `/route`, `/accounts`, `/tasks`,
+  `/status`, `/clear`, `/help`, `/exit`), Esc to cancel, Ctrl+C twice to exit and a status line
+  with the serving account, failovers, tokens and 5 h quota; starts an in-process gateway when
+  none is running.
+- Live runner view for `davecode run`: state-machine position, current task, repair cycle
+  x/max and a log tail, fed by the in-process event bus or a running gateway's `/api/events`.

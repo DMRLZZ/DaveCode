@@ -78,7 +78,51 @@ pnpm install
 pnpm build
 ```
 
-Then use any OpenAI-compatible client:
+`pnpm build` also builds the CLI. Put `davecode` on your PATH (or run
+`node packages/cli/bin/davecode.js`; `pnpm --filter davecode dev <command>` runs from source):
+
+```bash
+alias davecode="node $PWD/packages/cli/bin/davecode.js"   # or: cd packages/cli && npm link
+
+davecode doctor                     # checks Node, SQLite, ports, git/claude/codex/gh, Ollama
+davecode accounts add               # interactive: provider, label, priority, masked API key
+davecode start                      # gateway on :4040 + dashboard at http://localhost:4040/
+davecode status                     # health, accounts and 1m/5h/24h quota bars (--json too)
+davecode                            # chat TUI in your terminal (same as `davecode chat`)
+```
+
+Scripts can skip the prompts:
+
+```bash
+davecode accounts add --provider anthropic --label work --secret-env ANTHROPIC_API_KEY --yes
+davecode accounts add --provider openai-compatible --label ollama \
+  --base-url http://localhost:11434/v1 --model qwen3:32b --yes
+davecode accounts add --provider claude-cli --label "Claude Pro" --yes
+davecode accounts login <id>        # logs that account in inside its own CLAUDE_CONFIG_DIR
+```
+
+Point DaveCode at a repository and let it work through the task graph:
+
+```bash
+cd ~/code/my-app
+davecode init                       # .davecode/ brain + runner.validate from package.json
+davecode tasks add api "Add the /health endpoint" --acceptance "GET /health returns 200"
+davecode tasks                      # task tree with status glyphs and blocked reasons
+davecode run --once                 # implement the next task, validate, repair, merge
+davecode run                        # 24/7 loop with a live runner view; Ctrl+C stops safely
+```
+
+Other commands: `davecode config show|path|get <key>` (secrets redacted), `davecode tasks next`,
+`davecode tasks status <id> <STATUS>`, `davecode accounts list|enable|disable|remove`. Global
+flags: `--home <dir>` (sets `DAVECODE_HOME`), `--json`, `--no-color` (and `NO_COLOR`).
+
+In the chat TUI, Enter sends, Shift+Enter or Ctrl+J adds a line, Esc cancels a reply and
+Ctrl+C twice exits. Slash commands: `/model`, `/route`, `/accounts`, `/tasks`, `/status`,
+`/clear`, `/help`, `/exit`. The status line shows the model, the account that served the last
+reply, failovers, tokens and the 5 h quota. Without a running gateway the TUI starts one
+in-process.
+
+Any OpenAI-compatible client works against the gateway:
 
 ```ts
 import OpenAI from 'openai';
