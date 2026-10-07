@@ -4,9 +4,10 @@ _Last updated: 2026-10-06_
 
 ## Current focus
 
-**v0.1.0 is released**: all five phases of the specification are merged. Next up is npm
-packaging (bundle `@davecode/core`/`server` into the published `davecode` CLI) and real-world
-dogfooding of the autonomous runner on this repository.
+**v0.2.0 is released**: `davecode` is a standalone package, the dashboard can edit tasks and
+routes, and the runner completed a real implement → test → merge loop on a free local model
+(`qwen3:8b` via Ollama). Next up: publishing to npm and dogfooding the runner on this repository
+with a frontier model.
 
 ## Done
 
@@ -21,6 +22,8 @@ dogfooding of the autonomous runner on this repository.
   repair cycles, git flow and optional judge (none / TypeSafe Jev / LLM).
 - **Phase 5** (#11, #14): web dashboard and the `davecode` CLI with the chat TUI and runner view.
 - **Contract hardening** (#12): SSE ids with `Last-Event-ID` resume, `Account.hasSecret`.
+- **v0.2.0** (#16–#18): standalone package, task/route editing, targeted runs, and fixes found by
+  running against real Ollama models (cancellations, empty finishes, double-escaped edits).
 
 ## Blockers
 
@@ -28,11 +31,12 @@ None.
 
 ## Known limitations
 
-- The `davecode` package is not yet standalone on npm (workspace packages stay external).
+- `davecode` is not published to npm yet (install from a tarball or source).
+- Small local models: `llama3.1:8b` hallucinates edit arguments; use `qwen3:8b` or a frontier model
+  for `davecode run`.
 - The `codex-cli` adapter's event parser has not been verified against a real Codex install.
 - The TUIs are covered by `ink-testing-library` tests; they still need manual passes in
   Windows Terminal, iTerm2 and common Linux terminals.
-- `davecode run --task <id>` can only confirm the runner's own pick.
 
 ## Decisions log
 
@@ -49,3 +53,4 @@ None.
 
 - 2026-10-06: v0.1.0 release prepared; task graph updated through `davecode tasks status`.
 - 2026-10-06: v0.1.0 tagged and published as a GitHub release.
+- 2026-10-06: first autonomous success on a free local model (qwen3:8b); v0.2.0 released.
