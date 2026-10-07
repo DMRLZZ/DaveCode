@@ -1,12 +1,13 @@
 import {
   type Account,
   type AccountUpdateInput,
+  ConfigError,
   type Engine,
   type RunnerStatus,
   type TaskGraph,
   VERSION,
 } from '@davecode/core';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { sendApiError } from '../errors';
 import type { GatewayOptions, RunnerControl } from '../options';
@@ -14,8 +15,11 @@ import {
   accountCreateSchema,
   accountPatchSchema,
   limitQuerySchema,
+  routesUpdateSchema,
+  runnerStartSchema,
   timeseriesQuerySchema,
 } from '../schemas';
+import { registerTaskRoutes } from './tasks';
 
 const EMPTY_GRAPH: TaskGraph = { version: 1, tasks: [] };
 const IDLE: RunnerStatus = { state: 'idle' };
@@ -163,6 +167,50 @@ export function registerApiRoutes(
     routes: engine.config.routing.routes,
   }));
 
+  app.put('/api/routes', async (request, reply) => {
+    const parsed = routesUpdateSchema.safeParse(request.body);
+    if (!parsed.success) return invalid(reply, parsed.error);
+    const { routes, defaultRoute } = parsed.data;
+    for (const route of routes) {
+      for (const target of route.targets) {
+        if (target.accountId !== undefined && !accounts.get(target.accountId)) {
+          return sendApiError(
+            reply,
+            400,
+            'unknown_account',
+            `route "${route.name}" pins unknown account "${target.accountId}"`,
+          );
+        }
+      }
+    }
+    let result: Awaited<ReturnType<Engine['updateRouting']>>;
+    try {
+      result = await engine.updateRouting({
+        routes,
+        ...(defaultRoute !== undefined ? { defaultRoute } : {}),
+      });
+    } catch (error) {
+      // The stored config.json is unreadable or invalid: it is never overwritten.
+      if (error instanceof ConfigError) {
+        return sendApiError(reply, 409, 'config_invalid', error.message);
+      }
+      throw error;
+    }
+    audit.record({
+      actor: 'api',
+      action: 'routes.update',
+      details: {
+        routes: routes.map((r) => r.name),
+        defaultRoute: engine.config.routing.defaultRoute,
+      },
+    });
+    return {
+      defaultRoute: engine.config.routing.defaultRoute,
+      routes: engine.config.routing.routes,
+      shadowedByProject: result.shadowedByProject,
+    };
+  });
+
   // --- project brain (Phase 3) -------------------------------------------------
 
   app.get('/api/tasks', async () => {
@@ -170,6 +218,8 @@ export function registerApiRoutes(
     if (!brain) return { project: null, graph: EMPTY_GRAPH };
     return { project: brain.project(), graph: await brain.graph() };
   });
+
+  registerTaskRoutes(app, engine, options);
 
   app.get('/api/brain', async () => {
     const { brain } = options;
@@ -183,7 +233,7 @@ export function registerApiRoutes(
   app.get('/api/runner', async () => ({ status: options.runner?.status() ?? IDLE }));
 
   const control = (action: keyof Omit<RunnerControl, 'status'>) =>
-    async function handler(_request: unknown, reply: FastifyReply) {
+    async function handler(request: FastifyRequest, reply: FastifyReply) {
       const { runner } = options;
       if (!runner) {
         return sendApiError(
@@ -193,8 +243,15 @@ export function registerApiRoutes(
           'The autonomous runner is not available',
         );
       }
+      let taskId: string | undefined;
+      if (action === 'start' && request.body !== undefined && request.body !== null) {
+        const parsed = runnerStartSchema.safeParse(request.body);
+        if (!parsed.success) return invalid(reply, parsed.error);
+        taskId = parsed.data.taskId;
+      }
       try {
-        await runner[action]();
+        if (action === 'start') await runner.start(taskId === undefined ? {} : { taskId });
+        else await runner[action]();
       } catch (error) {
         // Runner refusals (RunnerError: dirty_worktree, no_brain, busy…) carry an HTTP status
         // and a machine-readable code; forward both so clients don't have to parse messages.
@@ -204,7 +261,11 @@ export function registerApiRoutes(
         }
         throw error;
       }
-      audit.record({ actor: 'api', action: `runner.${action}` });
+      audit.record({
+        actor: 'api',
+        action: `runner.${action}`,
+        ...(taskId !== undefined ? { details: { taskId } } : {}),
+      });
       return { status: runner.status() };
     };
   app.post('/api/runner/start', control('start'));

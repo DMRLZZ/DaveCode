@@ -162,6 +162,68 @@ describe('AutonomousRunner', { timeout: 60_000 }, () => {
     expect(readFileSync(brain.paths.state, 'utf8')).toMatch(/Task `a` SUCCESS/);
   });
 
+  it('runOnce({ taskId }) runs that task instead of the highest priority one', async () => {
+    const executor = new ScriptedExecutor([write({ 'b.txt': 'b\n' })]);
+    const { brain, runner } = await setup(tasks({ id: 'a', priority: 10 }, { id: 'b' }), {
+      executor,
+    });
+    const result = await runner.runOnce({ taskId: 'b' });
+    expect(result).toMatchObject({ outcome: 'success', task: { id: 'b' } });
+    const graph = await graphOf(brain);
+    expect(graph.b?.status).toBe('SUCCESS');
+    expect(graph.a?.status).toBe('PENDING');
+  });
+
+  it('runOnce({ taskId }) explains why a task is not runnable', async () => {
+    const { brain, runner } = await setup(
+      tasks(
+        { id: 'a', status: 'FAILED' },
+        { id: 'b', dependsOn: ['a'] },
+        { id: 'c', status: 'SUCCESS' },
+        { id: 'd', dependsOn: ['b', 'c'] },
+      ),
+      { executor: new ScriptedExecutor([]) },
+    );
+    await expect(runner.runOnce({ taskId: 'nope' })).rejects.toMatchObject({
+      code: 'task_not_found',
+      statusCode: 404,
+    });
+    await expect(runner.runOnce({ taskId: 'c' })).rejects.toMatchObject({
+      code: 'task_not_runnable',
+      statusCode: 409,
+      message: expect.stringContaining('SUCCESS'),
+    });
+    const blocked = await runner.runOnce({ taskId: 'd' }).catch((e: unknown) => e);
+    expect(blocked).toMatchObject({ code: 'task_blocked' });
+    expect((blocked as Error).message).toContain('"b" (PENDING)');
+    expect((blocked as Error).message).not.toContain('"c"');
+    // A refusal does not leave the runner in an error state or mutate the graph.
+    expect(runner.status().state).not.toBe('error');
+    expect(runner.running).toBe(false);
+    expect((await graphOf(brain)).a?.status).toBe('FAILED');
+  });
+
+  it('start({ taskId }) refuses an unrunnable task and otherwise runs it first', async () => {
+    const executor = new ScriptedExecutor([write({ 'b.txt': 'b\n' }), write({ 'a.txt': 'a\n' })]);
+    const { brain, runner, events } = await setup(tasks({ id: 'a', priority: 10 }, { id: 'b' }), {
+      executor,
+    });
+    await expect(runner.start({ taskId: 'zzz' })).rejects.toMatchObject({
+      code: 'task_not_found',
+    });
+    expect(runner.running).toBe(false);
+    await runner.start({ taskId: 'b' });
+    await waitFor(async () => {
+      const g = await graphOf(brain);
+      return g.a?.status === 'SUCCESS' && g.b?.status === 'SUCCESS';
+    }, 40_000);
+    await runner.stop();
+    const started = events
+      .recent()
+      .flatMap((e) => (e.type === 'runner.log' && /^task \S+: /.test(e.message) ? [e.taskId] : []));
+    expect(started.slice(0, 2)).toEqual(['b', 'a']);
+  });
+
   it('returns idle when no task is ready', async () => {
     const { runner } = await setup(tasks({ id: 'a', status: 'SUCCESS' }), {
       executor: new ScriptedExecutor([]),

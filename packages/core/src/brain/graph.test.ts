@@ -3,11 +3,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { TaskGraph, TaskNode, TaskStatus } from '../types';
 import {
+  addTask,
   blockedTasks,
+  checkRunnable,
+  dependentsOf,
   findCycles,
   nextTask,
   parseTaskGraph,
   readyTasks,
+  removeTask,
   setTaskStatus,
   summarize,
   TaskGraphError,
@@ -258,5 +262,86 @@ describe('repository task graph', () => {
     // The live graph changes as work lands; whatever its state, any next task must be ready.
     const next = nextTask(graph);
     if (next) expect(readyTasks(graph).map((t) => t.id)).toContain(next.id);
+  });
+});
+
+describe('addTask / removeTask / clear', () => {
+  const now = new Date('2026-01-02T03:04:05.000Z');
+
+  it('appends a PENDING task and validates it', () => {
+    const g = graphOf(task('a'));
+    const created = addTask(
+      g,
+      { id: 'b', title: 'B', dependsOn: ['a'], priority: 3, acceptance: ['works'] },
+      { now },
+    );
+    expect(created.tasks[1]).toEqual({
+      id: 'b',
+      title: 'B',
+      status: 'PENDING',
+      dependsOn: ['a'],
+      priority: 3,
+      acceptance: ['works'],
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+    expect(g.tasks).toHaveLength(1);
+    expect(() => addTask(g, { id: 'a', title: 'dup' })).toThrow(/duplicate task id "a"/);
+    expect(() => addTask(g, { id: 'c', title: 'C', dependsOn: ['ghost'] })).toThrow(
+      /unknown task "ghost"/,
+    );
+    expect(() => addTask(g, { id: 'c', title: 'C', dependsOn: ['c'] })).toThrow(
+      /depends on itself/,
+    );
+  });
+
+  it('removes a task nobody depends on, and refuses otherwise', () => {
+    const g = graphOf(task('a'), task('b', ['a']), task('c', [], 'IN_PROGRESS'));
+    expect(removeTask(g, 'b').tasks.map((t) => t.id)).toEqual(['a', 'c']);
+    expect(dependentsOf(g, 'a')).toEqual(['b']);
+    const err = (() => {
+      try {
+        removeTask(g, 'a');
+      } catch (e) {
+        return e as TaskGraphError;
+      }
+    })();
+    expect(err?.issues[0]).toMatchObject({ code: 'has_dependents', dependents: ['b'] });
+    expect(() => removeTask(g, 'c')).toThrow(/IN_PROGRESS/);
+    expect(() => removeTask(g, 'zz')).toThrow(/unknown task/);
+  });
+
+  it('clears optional fields through updateTask({ clear })', () => {
+    const g = graphOf({ ...task('a', [], 'PENDING', 4), description: 'd', notes: 'n' });
+    const out = updateTask(g, 'a', { title: 'T' }, { now, clear: ['description', 'priority'] });
+    expect(out.tasks[0]).not.toHaveProperty('description');
+    expect(out.tasks[0]).not.toHaveProperty('priority');
+    expect(out.tasks[0]).toMatchObject({ title: 'T', notes: 'n' });
+  });
+});
+
+describe('checkRunnable', () => {
+  const g = graphOf(
+    task('done', [], 'SUCCESS'),
+    task('bad', [], 'FAILED'),
+    task('ready', ['done']),
+    task('waiting', ['ready', 'done']),
+    task('stuck', ['bad']),
+    task('busy', [], 'IN_PROGRESS'),
+  );
+
+  it('accepts a PENDING task whose dependencies are done, regardless of priority order', () => {
+    expect(checkRunnable(g, 'ready')).toMatchObject({ ok: true, task: { id: 'ready' } });
+  });
+
+  it('explains every refusal', () => {
+    expect(checkRunnable(g, 'nope')).toMatchObject({ ok: false, reason: 'unknown_task' });
+    expect(checkRunnable(g, 'done')).toMatchObject({ ok: false, reason: 'wrong_status' });
+    expect(checkRunnable(g, 'busy')).toMatchObject({ ok: false, reason: 'wrong_status' });
+    const waiting = checkRunnable(g, 'waiting');
+    expect(waiting).toMatchObject({ ok: false, reason: 'blocked', blockedBy: ['ready'] });
+    expect(!waiting.ok && waiting.message).toContain('"ready" (PENDING)');
+    const stuck = checkRunnable(g, 'stuck');
+    expect(!stuck.ok && stuck.message).toContain('"bad" (FAILED)');
   });
 });

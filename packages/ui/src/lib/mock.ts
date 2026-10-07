@@ -9,6 +9,8 @@ import {
   mockTasks,
   ROUTE_MIX,
 } from './mock-data';
+import { ROUTE_NAME_PATTERN } from './route-edit';
+import { canTransition, findCyclePath, TASK_ID_PATTERN } from './task-edit';
 import type {
   Account,
   AccountCreate,
@@ -21,10 +23,15 @@ import type {
   ModelInfo,
   ProviderErrorKind,
   QuotaWindow,
+  Route,
+  RoutesUpdate,
+  RoutesUpdateResponse,
   RouteTarget,
   RunnerState,
   RunnerStatus,
+  TaskCreate,
   TaskNode,
+  TaskPatch,
   TasksResponse,
   TimeseriesBucket,
   UsageRecord,
@@ -142,6 +149,8 @@ export class MockEngine implements DaveClient {
   private accounts: Account[] = [];
   private records: UsageRecord[] = [];
   private taskList: TaskNode[];
+  private routeList: Route[] = structuredClone(MOCK_ROUTES);
+  private defaultRoute = 'auto';
   private runnerStatus: RunnerStatus;
   private readonly buffer: DaveEvent[] = [];
   private readonly subscribers = new Set<StreamHandlers>();
@@ -287,7 +296,65 @@ export class MockEngine implements DaveClient {
   }
 
   routes() {
-    return this.respond(() => ({ defaultRoute: 'auto', routes: MOCK_ROUTES }));
+    return this.respond(() => ({ defaultRoute: this.defaultRoute, routes: this.routeList }));
+  }
+
+  updateRoutes(body: RoutesUpdate): Promise<RoutesUpdateResponse> {
+    return this.respond(() => {
+      const names = new Set<string>();
+      body.routes.forEach((route, i) => {
+        const at = `routes.${i}`;
+        if (!ROUTE_NAME_PATTERN.test(route.name)) {
+          throw new ApiError(
+            400,
+            'invalid_body',
+            `${at}.name: route names are lowercase kebab-case`,
+          );
+        }
+        if (names.has(route.name)) {
+          throw new ApiError(
+            400,
+            'invalid_body',
+            `${at}.name: duplicate route name "${route.name}"`,
+          );
+        }
+        names.add(route.name);
+        if (route.targets.length === 0) {
+          throw new ApiError(400, 'invalid_body', `${at}.targets: at least one target is required`);
+        }
+        route.targets.forEach((target, j) => {
+          if (!target.model.trim()) {
+            throw new ApiError(400, 'invalid_body', `${at}.targets.${j}.model: required`);
+          }
+          if (target.accountId && !this.accounts.some((a) => a.id === target.accountId)) {
+            throw new ApiError(
+              400,
+              'unknown_account',
+              `route "${route.name}" pins unknown account "${target.accountId}"`,
+            );
+          }
+        });
+      });
+      if (body.defaultRoute !== undefined && !names.has(body.defaultRoute)) {
+        throw new ApiError(
+          400,
+          'invalid_body',
+          `defaultRoute: "${body.defaultRoute}" is not one of the routes`,
+        );
+      }
+      this.routeList = structuredClone(body.routes);
+      if (body.defaultRoute !== undefined) this.defaultRoute = body.defaultRoute;
+      this.log(
+        'info',
+        'config',
+        `Routes updated (${this.routeList.length}); saved to ~/.davecode/config.json`,
+      );
+      return {
+        defaultRoute: this.defaultRoute,
+        routes: this.routeList,
+        shadowedByProject: false,
+      };
+    });
   }
 
   tasks(): Promise<TasksResponse> {
@@ -295,6 +362,109 @@ export class MockEngine implements DaveClient {
       project: { root: 'C:/Users/dev/code/DaveCode', name: 'DaveCode' },
       graph: { version: 1 as const, tasks: this.taskList },
     }));
+  }
+
+  createTask(body: TaskCreate): Promise<TaskNode> {
+    return this.respond(() => {
+      if (!TASK_ID_PATTERN.test(body.id)) {
+        throw new ApiError(400, 'invalid_body', 'id: must be lowercase kebab-case or snake_case');
+      }
+      if (!body.title.trim()) throw new ApiError(400, 'invalid_body', 'title: required');
+      if (this.taskList.some((t) => t.id === body.id)) {
+        throw new ApiError(409, 'duplicate_id', `duplicate task id "${body.id}"`);
+      }
+      this.assertDependencies(body.id, body.dependsOn ?? []);
+      const stamp = new Date(this.clock()).toISOString();
+      const task: TaskNode = {
+        id: body.id,
+        title: body.title.trim(),
+        status: 'PENDING',
+        dependsOn: [...(body.dependsOn ?? [])],
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.priority !== undefined && { priority: body.priority }),
+        ...(body.acceptance !== undefined && { acceptance: body.acceptance }),
+        createdAt: stamp,
+        updatedAt: stamp,
+      };
+      this.taskList = [...this.taskList, task];
+      this.emit({ type: 'task.updated', task });
+      return task;
+    });
+  }
+
+  updateTask(id: string, patch: TaskPatch): Promise<TaskNode> {
+    return this.respond(() => {
+      const current = this.taskList.find((t) => t.id === id);
+      if (!current) throw new ApiError(404, 'not_found', `unknown task "${id}"`);
+      const next: TaskNode = { ...current };
+      if (patch.title !== undefined) next.title = patch.title.trim();
+      if (patch.dependsOn !== undefined) {
+        this.assertDependencies(id, patch.dependsOn);
+        next.dependsOn = [...patch.dependsOn];
+      }
+      for (const key of ['description', 'priority', 'acceptance', 'notes'] as const) {
+        const value = patch[key];
+        if (value === null) delete next[key];
+        else if (value !== undefined) Object.assign(next, { [key]: value });
+      }
+      if (patch.status !== undefined && patch.status !== current.status) {
+        if (!canTransition(current.status, patch.status)) {
+          throw new ApiError(
+            409,
+            'invalid_transition',
+            `task "${id}": cannot move ${current.status} → ${patch.status}`,
+          );
+        }
+        next.status = patch.status;
+        if (patch.status === 'IN_PROGRESS') next.attempts = (current.attempts ?? 0) + 1;
+      }
+      this.commitTask(next);
+      return this.taskList.find((t) => t.id === id) as TaskNode;
+    });
+  }
+
+  deleteTask(id: string): Promise<void> {
+    return this.respond(() => {
+      const task = this.taskList.find((t) => t.id === id);
+      if (!task) throw new ApiError(404, 'not_found', `unknown task "${id}"`);
+      const dependents = this.taskList.filter((t) => t.dependsOn.includes(id)).map((t) => t.id);
+      if (dependents.length > 0) {
+        throw new ApiError(
+          409,
+          'has_dependents',
+          `cannot delete "${id}": ${dependents.map((d) => `"${d}"`).join(', ')} depend on it`,
+          { dependents },
+        );
+      }
+      if (task.status === 'IN_PROGRESS') {
+        throw new ApiError(
+          409,
+          'task_in_progress',
+          `cannot delete "${id}" while it is IN_PROGRESS; reopen it first`,
+        );
+      }
+      this.taskList = this.taskList.filter((t) => t.id !== id);
+      this.emit({ type: 'task.removed', taskId: id });
+    });
+  }
+
+  private assertDependencies(id: string, dependsOn: readonly string[]): void {
+    for (const dep of dependsOn) {
+      if (dep === id) {
+        throw new ApiError(400, 'self_dependency', `task "${id}" depends on itself`);
+      }
+      if (!this.taskList.some((t) => t.id === dep)) {
+        throw new ApiError(
+          400,
+          'unknown_dependency',
+          `task "${id}" depends on unknown task "${dep}"`,
+        );
+      }
+    }
+    const cycle = findCyclePath(this.taskList, id, dependsOn);
+    if (cycle) {
+      throw new ApiError(400, 'cycle', `dependency cycle: ${cycle.join(' → ')}`, { cycle });
+    }
   }
 
   brain(): Promise<BrainResponse> {
@@ -311,10 +481,13 @@ export class MockEngine implements DaveClient {
     });
   }
 
-  runnerAction(action: RunnerAction): Promise<RunnerStatus> {
+  runnerAction(action: RunnerAction, opts: { taskId?: string } = {}): Promise<RunnerStatus> {
     return this.respond(() => {
       this.assertRunner();
       const s = this.runnerStatus.state;
+      if (action === 'start' && opts.taskId !== undefined && s !== 'paused') {
+        this.assertRunnable(opts.taskId);
+      }
       if (action === 'pause') {
         if (s !== 'paused' && s !== 'idle' && s !== 'stopped') {
           this.pausedFrom = s;
@@ -331,7 +504,7 @@ export class MockEngine implements DaveClient {
         } else if (s === 'idle' || s === 'stopped' || s === 'error') {
           this.runnerLog('info', 'Runner started.');
           this.runnerQueue = [];
-          this.enqueueSelect(0);
+          this.enqueueSelect(0, opts.taskId);
           this.pumpRunner();
         }
       } else if (action === 'stop') {
@@ -341,7 +514,7 @@ export class MockEngine implements DaveClient {
         if (taskId) {
           const task = this.taskList.find((t) => t.id === taskId);
           if (task && task.status === 'IN_PROGRESS') {
-            this.updateTask({
+            this.commitTask({
               ...task,
               status: 'PENDING',
               notes: 'Run stopped by user; branch kept.',
@@ -373,7 +546,7 @@ export class MockEngine implements DaveClient {
           });
         }
       }
-      for (const r of MOCK_ROUTES) {
+      for (const r of this.routeList) {
         out.push({ id: `davecode/${r.name}`, object: 'model', created, owned_by: 'davecode' });
       }
       return out;
@@ -558,7 +731,7 @@ export class MockEngine implements DaveClient {
     ts: number,
     live: boolean,
   ): { model: string; candidates: { account: Account; target: RouteTarget }[] } | null {
-    const route = MOCK_ROUTES.find((r) => r.name === this.pickRoute()) ?? MOCK_ROUTES[0];
+    const route = this.routeList.find((r) => r.name === this.pickRoute()) ?? this.routeList[0];
     if (!route) return null;
     const options: { account: Account; target: RouteTarget; weight: number }[] = [];
     route.targets.forEach((target, i) => {
@@ -934,7 +1107,7 @@ export class MockEngine implements DaveClient {
     this.runnerQueue.push({ delay, run });
   }
 
-  private updateTask(task: TaskNode): void {
+  private commitTask(task: TaskNode): void {
     const next = { ...task, updatedAt: new Date(this.clock()).toISOString() };
     this.taskList = this.taskList.map((t) => (t.id === task.id ? next : t));
     this.emit({ type: 'task.updated', task: next });
@@ -947,13 +1120,42 @@ export class MockEngine implements DaveClient {
       .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))[0];
   }
 
-  private enqueueSelect(delay: number): void {
+  /** Same refusals as the real runner for a targeted start. */
+  private assertRunnable(taskId: string): void {
+    const task = this.taskList.find((t) => t.id === taskId);
+    if (!task) throw new ApiError(404, 'task_not_found', `unknown task "${taskId}"`);
+    if (task.status !== 'PENDING') {
+      throw new ApiError(
+        409,
+        'task_not_runnable',
+        `task "${taskId}" is ${task.status}; only PENDING tasks can run`,
+      );
+    }
+    const blockedBy = task.dependsOn.filter(
+      (d) => this.taskList.find((t) => t.id === d)?.status !== 'SUCCESS',
+    );
+    if (blockedBy.length > 0) {
+      throw new ApiError(
+        409,
+        'task_blocked',
+        `task "${taskId}" is blocked by unfinished dependencies: ${blockedBy.map((d) => `"${d}"`).join(', ')}`,
+      );
+    }
+  }
+
+  private enqueueSelect(delay: number, preferredId?: string): void {
     this.q(delay, () => {
       this.setRunner({ state: 'selecting', startedAt: new Date(this.clock()).toISOString() });
       this.runnerLog('info', 'Scanning TASK_GRAPH.json for unblocked tasks…');
     });
     this.q(1100, () => {
-      const task = this.nextTask();
+      const preferred = this.taskList.find(
+        (t) =>
+          t.id === preferredId &&
+          t.status === 'PENDING' &&
+          t.dependsOn.every((d) => this.taskList.find((x) => x.id === d)?.status === 'SUCCESS'),
+      );
+      const task = preferred ?? this.nextTask();
       if (!task) {
         const blocked = this.taskList.filter((t) => t.status === 'PENDING').length;
         this.runnerLog(
@@ -965,7 +1167,7 @@ export class MockEngine implements DaveClient {
         this.setRunner({ state: 'idle' });
         return;
       }
-      this.updateTask({ ...task, status: 'IN_PROGRESS', attempts: (task.attempts ?? 0) + 1 });
+      this.commitTask({ ...task, status: 'IN_PROGRESS', attempts: (task.attempts ?? 0) + 1 });
       this.setRunner({
         state: 'preparing',
         taskId: task.id,
@@ -1035,7 +1237,7 @@ export class MockEngine implements DaveClient {
         this.q(900, () => {
           const task = this.taskList.find((t) => t.id === taskId);
           if (task)
-            this.updateTask({ ...task, status: 'FAILED', notes: 'Failed after 3 repair cycles.' });
+            this.commitTask({ ...task, status: 'FAILED', notes: 'Failed after 3 repair cycles.' });
           this.runnerLog(
             'error',
             `${taskId} FAILED after 3 repair cycles; branch kept for review.`,
@@ -1066,7 +1268,7 @@ export class MockEngine implements DaveClient {
     });
     this.q(1400, () => {
       const task = this.taskList.find((t) => t.id === taskId);
-      if (task) this.updateTask({ ...task, status: 'SUCCESS', notes: undefined });
+      if (task) this.commitTask({ ...task, status: 'SUCCESS', notes: undefined });
       this.runnerLog('info', `✓ ${taskId} merged. STATE.md updated.`);
     });
     this.enqueueSelect(2500);

@@ -173,7 +173,10 @@ function registerCommands(program: Command, run: Runner): void {
     .command('run')
     .description('run the autonomous engine on the task graph (live view in a terminal)')
     .option('--once', 'implement at most one ready task, print the result and exit')
-    .option('--task <id>', 'only run if <id> is the next ready task')
+    .option(
+      '--task <id>',
+      "run this task instead of the runner's pick (it must be PENDING and unblocked)",
+    )
     .option('--project <dir>', 'repository to work on (default: detected)')
     .addHelpText(
       'after',

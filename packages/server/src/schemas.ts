@@ -1,4 +1,10 @@
-import { PROVIDER_KINDS, type ProviderKind } from '@davecode/core';
+import {
+  PROVIDER_KINDS,
+  type ProviderKind,
+  routeSchema,
+  TASK_STATUSES,
+  taskIdSchema,
+} from '@davecode/core';
 import { z } from 'zod';
 
 const providerKind = z.enum(PROVIDER_KINDS as [ProviderKind, ...ProviderKind[]]);
@@ -99,6 +105,77 @@ export const accountCreateSchema = z.object({ provider: providerKind, ...account
 export const accountPatchSchema = z
   .object({ ...accountFields, label: accountFields.label.optional() })
   .strict();
+
+/**
+ * `PUT /api/routes` body: the complete route list (validated with the config schema's route
+ * shape) and optionally the default route, which must be one of those routes.
+ */
+export const routesUpdateSchema = z
+  .object({ routes: z.array(routeSchema).max(200), defaultRoute: z.string().min(1).optional() })
+  .strict()
+  .superRefine((body, ctx) => {
+    const seen = new Set<string>();
+    body.routes.forEach((route, index) => {
+      if (seen.has(route.name)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['routes', index, 'name'],
+          message: `duplicate route name "${route.name}"`,
+        });
+      }
+      seen.add(route.name);
+    });
+    if (body.defaultRoute !== undefined && !seen.has(body.defaultRoute)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['defaultRoute'],
+        message: `defaultRoute "${body.defaultRoute}" is not one of the routes`,
+      });
+    }
+  });
+
+const taskText = {
+  title: z.string().trim().min(1).max(300),
+  description: z.string().max(50_000),
+  acceptance: z.array(z.string().trim().min(1).max(2_000)).max(100),
+  notes: z.string().max(50_000),
+  dependsOn: z.array(z.string().min(1)).max(500),
+  priority: z.number().finite(),
+};
+
+/** `POST /api/tasks` body. The task always starts PENDING. */
+export const taskCreateSchema = z
+  .object({
+    id: taskIdSchema,
+    title: taskText.title,
+    description: taskText.description.optional(),
+    dependsOn: taskText.dependsOn.optional(),
+    priority: taskText.priority.optional(),
+    acceptance: taskText.acceptance.optional(),
+  })
+  .strict();
+
+/**
+ * `PATCH /api/tasks/:id` body. `null` clears an optional field (`description`, `priority`,
+ * `acceptance`, `notes`).
+ */
+export const taskPatchSchema = z
+  .object({
+    title: taskText.title.optional(),
+    description: taskText.description.nullable().optional(),
+    dependsOn: taskText.dependsOn.optional(),
+    priority: taskText.priority.nullable().optional(),
+    acceptance: taskText.acceptance.nullable().optional(),
+    notes: taskText.notes.nullable().optional(),
+    status: z.enum(TASK_STATUSES).optional(),
+  })
+  .strict()
+  .refine((patch) => Object.values(patch).some((v) => v !== undefined), {
+    message: 'send at least one field to change',
+  });
+
+/** `POST /api/runner/start` body: optional, `{}` or empty means "pick the next task". */
+export const runnerStartSchema = z.object({ taskId: z.string().min(1).optional() }).strict();
 
 export const timeseriesQuerySchema = z.object({
   minutes: z.coerce

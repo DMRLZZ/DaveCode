@@ -30,7 +30,8 @@ by default.
 | 400 | Invalid body (zod validation message included, code `invalid_body`), or `experimental_disabled` |
 | 401 | Missing/invalid bearer token (`invalid_api_key` on `/v1`, `unauthorized` on `/api`) |
 | 404 | Unknown resource (`not_found`) or no account can serve the model (`model_not_found`) |
-| 409 | The autonomous runner refused to start; `code` is the `RunnerError` code: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`, `invalid_graph` or `busy` |
+| 404 | also `task_not_found`: `POST /api/runner/start` named a task id that does not exist |
+| 409 | The autonomous runner refused to start; `code` is the `RunnerError` code: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`, `invalid_graph`, `busy`, or for a targeted start `task_not_runnable` (the task is not `PENDING`) and `task_blocked` (it depends on unfinished tasks, which the message names) |
 | 429 | Every candidate account is saturated or cooling down (`no_capacity`), or every attempt was rate limited upstream (`rate_limited`) |
 | 501 | The autonomous runner is not available in this process (`runner_unavailable`) |
 | 502 | All failover targets failed upstream (`upstream_failed`), or upstream credentials were rejected (`upstream_auth_error`) |
@@ -185,6 +186,34 @@ the account is not cooled down, no failover happens and no `request.failed` even
 { "defaultRoute": "auto", "routes": Route[] }
 ```
 
+`PUT /api/routes`
+
+```json
+{ "routes": [Route, ...], "defaultRoute": "auto" }
+```
+
+Replaces the whole route list (`Route` is the config schema's route shape: lowercase kebab-case
+`name`, optional `description`, one or more ordered `targets` of `{ provider, model,
+accountId? }`) and optionally the default route. `defaultRoute` is optional; when present it must
+be one of the submitted routes, and when omitted the stored value is left alone. Route names must
+be unique and a pinned `accountId` must exist. An empty list removes every route.
+
+The change is written to the **global** `~/.davecode/config.json` (`$DAVECODE_HOME/config.json`):
+the file is read, only `routing.routes` / `routing.defaultRoute` are replaced, every other key is
+preserved, and the result is written atomically under a lock file. The live engine config is
+updated as well, so the router uses the new routes for the very next request (no restart). The
+response is
+
+```json
+{ "defaultRoute": "auto", "routes": Route[], "shadowedByProject": false }
+```
+
+`shadowedByProject` is `true` when the project's `.davecode/config.json` also sets
+`routing.routes` or `routing.defaultRoute`: that layer wins over the global file after a restart,
+so edit it there too. Errors: `400 invalid_body` (schema, duplicate names, `defaultRoute` not in
+the list), `400 unknown_account`, and `409 config_invalid` when the existing global config file
+is malformed or invalid (it is never overwritten).
+
 ### Project brain & task graph
 
 `GET /api/tasks`
@@ -192,6 +221,58 @@ the account is not cooled down, no failover happens and no `request.failed` even
 ```json
 { "project": { "root": "/path/to/repo", "name": "repo" } | null, "graph": TaskGraph }
 ```
+
+#### Editing the task graph
+
+| Method | Path | Body | Response |
+| :----- | :--- | :--- | :------- |
+| `POST` | `/api/tasks` | `TaskCreate` | `201 { "task": TaskNode }` |
+| `PATCH` | `/api/tasks/:id` | `TaskPatch` | `{ "task": TaskNode }` |
+| `DELETE` | `/api/tasks/:id` | none | `204` |
+
+```ts
+interface TaskCreate {
+  id: string;               // lowercase kebab-case / snake_case, letters, digits and - _ .
+  title: string;            // 1..300 chars (trimmed)
+  description?: string;
+  dependsOn?: string[];     // ids of existing tasks
+  priority?: number;
+  acceptance?: string[];
+}
+interface TaskPatch {       // at least one field; unknown fields are rejected
+  title?: string;
+  description?: string | null;   // null removes the field
+  dependsOn?: string[];          // replaces the list
+  priority?: number | null;
+  acceptance?: string[] | null;
+  notes?: string | null;
+  status?: TaskStatus;           // must follow the allowed transitions
+}
+```
+
+Created tasks are always `PENDING`. Every write goes through the project brain: it takes the
+`.davecode/.lock` file, re-validates the whole graph, writes `TASK_GRAPH.json` atomically and
+emits `task.updated` (`task.removed` with `{ taskId }` for a delete) on `/api/events`.
+
+Status transitions (`canTransition`): `PENDING → IN_PROGRESS`; `IN_PROGRESS → SUCCESS | FAILED |
+PENDING`; `FAILED | SUCCESS → PENDING`. Moving to `IN_PROGRESS` increments `attempts`.
+
+| Status | `code` | When |
+| :----- | :------- | :--- |
+| 400 | `invalid_body` | The body does not match the schema above |
+| 400 | `cycle` | The change would create a dependency cycle. `error.cycle` is the path, first id repeated at the end (`["a","b","a"]`) |
+| 400 | `unknown_dependency`, `self_dependency` | `dependsOn` names a missing task, or the task itself |
+| 404 | `not_found` | Unknown task id |
+| 409 | `duplicate_id` | `POST` with an id that already exists |
+| 409 | `invalid_transition` | The status change is not allowed from the current status |
+| 409 | `has_dependents` | `DELETE` of a task other tasks depend on. `error.dependents` lists them; remove or re-point them first |
+| 409 | `task_in_progress` | `DELETE` of an `IN_PROGRESS` task (reopen it first) |
+| 409 | `no_brain` | The gateway has no project brain, or the project was never initialised |
+| 501 | `brain_read_only` | The gateway's `BrainSource` has no write methods |
+
+In code, `BrainSource` gains the optional methods `createTask`, `updateTask` and `removeTask`
+(core's `ProjectBrainSource` provides them when wrapping a `ProjectBrain`); a source without them
+stays read-only.
 
 `GET /api/brain`
 
@@ -207,6 +288,18 @@ the account is not cooled down, no failover happens and no `request.failed` even
 | `POST` | `/api/runner/start` | `{ "status": RunnerStatus }` |
 | `POST` | `/api/runner/pause` | `{ "status": RunnerStatus }` |
 | `POST` | `/api/runner/stop` | `{ "status": RunnerStatus }` |
+
+`POST /api/runner/start` takes an optional JSON body (an empty body or `{}` keeps the old
+behaviour):
+
+```json
+{ "taskId": "build-api" }
+```
+
+With `taskId` the loop starts on that task instead of the runner's own pick, then carries on
+with `nextTask` as usual. The task must exist (else `404 task_not_found`), be `PENDING` (else
+`409 task_not_runnable`) and have every dependency `SUCCESS` (else `409 task_blocked`). Unknown
+body fields are rejected with `400 invalid_body`.
 
 When the gateway runs without a project brain, `/api/tasks` returns `project: null` with an
 empty graph and `/api/brain` returns empty strings. Without a runner, `GET /api/runner` returns
@@ -224,7 +317,7 @@ With the core `AutonomousRunner` (wired by `pnpm dev` inside an initialised proj
   sets the task back to `PENDING` and returns once the runner is `stopped`.
 
 Progress is streamed on `/api/events` as `runner.status` (every transition, with `taskId` and
-`repairCycle`), `runner.log` (`{ level, message, taskId? }`) and `task.updated`.
+`repairCycle`), `runner.log` (`{ level, message, taskId? }`), `task.updated` and `task.removed`.
 
 ### Runner library API (`@davecode/core`)
 
@@ -235,14 +328,16 @@ const engine = createEngine({ projectRoot });
 const brain = new ProjectBrain(projectRoot, { events: engine.events });
 const runner = createRunner(engine, { brain }); // executor and judge from runner.* config
 const result = await runner.runOnce(); // one task: RunOnceResult
-await runner.start(); // or run 24/7; pause(), stop(), status()
+await runner.runOnce({ taskId: 'build-api' }); // a specific task instead of the next one
+await runner.start(); // or run 24/7 (start({ taskId }) begins with that task); pause(), stop(), status()
 ```
 
 `RunOnceResult`: `{ outcome: 'success' | 'failed' | 'idle' | 'stopped' | 'error', task?,
 repairCycles, summary?, validation?: ValidationReport, verdict?: JudgeVerdict,
 delivery?: { mode: 'merge' | 'pr', url? }, branch?, error? }`. Preconditions reject with
 `RunnerError` (`code`: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`,
-`invalid_graph`, `busy`).
+`invalid_graph`, `busy`, and with `taskId` also `task_not_found`, `task_not_runnable`,
+`task_blocked`).
 
 Runner configuration (`runner.*`, all optional):
 

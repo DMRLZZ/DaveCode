@@ -213,6 +213,7 @@ export type DaveEvent =
   | { type: 'account.removed'; accountId: string; ts: number }
   | { type: 'quota.updated'; usage: AccountUsage; ts: number }
   | { type: 'task.updated'; task: TaskNode; ts: number }
+  | { type: 'task.removed'; taskId: string; ts: number }
   | { type: 'runner.status'; status: RunnerStatus; ts: number }
   | { type: 'runner.log'; level: LogLevel; message: string; taskId?: string; ts: number }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };
@@ -260,11 +261,50 @@ export interface TasksResponse {
   graph: TaskGraph;
 }
 
+/** `POST /api/tasks` body. The task always starts PENDING. */
+export interface TaskCreate {
+  id: string;
+  title: string;
+  description?: string;
+  dependsOn?: string[];
+  priority?: number;
+  acceptance?: string[];
+}
+
+/** `PATCH /api/tasks/:id` body. `null` clears an optional field. */
+export interface TaskPatch {
+  title?: string;
+  description?: string | null;
+  dependsOn?: string[];
+  priority?: number | null;
+  acceptance?: string[] | null;
+  notes?: string | null;
+  status?: TaskStatus;
+}
+
+/** `PUT /api/routes` body. `defaultRoute` must be one of `routes`. */
+export interface RoutesUpdate {
+  routes: Route[];
+  defaultRoute?: string;
+}
+
+export interface RoutesUpdateResponse extends RoutesResponse {
+  /** The project's own config also sets routes, so it wins after a restart. */
+  shadowedByProject: boolean;
+}
+
 export interface BrainResponse {
   state: string;
   architecture: string;
 }
 
 export interface ApiErrorBody {
-  error: { message: string; code: string };
+  error: {
+    message: string;
+    code: string;
+    /** `cycle` errors: the dependency path, first id repeated at the end. */
+    cycle?: string[];
+    /** `has_dependents` errors: the tasks that still depend on the one being deleted. */
+    dependents?: string[];
+  };
 }

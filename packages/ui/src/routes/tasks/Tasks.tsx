@@ -1,8 +1,9 @@
-import { FileText, GitBranch, Kanban, List, Network } from 'lucide-react';
+import { FileText, GitBranch, Kanban, List, Network, Plus } from 'lucide-react';
 import { useMemo } from 'react';
 import { TASK_LABEL, TaskStatusBadge, TaskStatusDot } from '../../components/domain';
 import { Markdown } from '../../components/Markdown';
 import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 import { Callout } from '../../components/ui/Callout';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { PageHeader, Panel, PanelHeader } from '../../components/ui/Panel';
@@ -16,6 +17,7 @@ import { setParam, useLocation } from '../../lib/router';
 import type { TaskNode, TaskStatus } from '../../lib/types';
 import { TaskDetail } from './TaskDetail';
 import { TaskGraphView } from './TaskGraphView';
+import { TaskSheet } from './TaskSheet';
 
 type View = 'graph' | 'board' | 'list';
 type SidePanel = 'task' | 'state' | 'architecture';
@@ -31,10 +33,13 @@ export function Tasks() {
   ) as View;
   const selectedId = params.get('task');
   const panelParam = params.get('panel') as SidePanel | null;
+  const creating = params.get('new') === '1';
+  const editId = params.get('edit');
 
   const tasks = tasksQ.data?.graph.tasks ?? [];
   const ready = useMemo(() => readiness(tasks), [tasks]);
   const selected = tasks.find((t) => t.id === selectedId);
+  const editing = tasks.find((t) => t.id === editId);
   const panel: SidePanel = panelParam ?? (selected ? 'task' : 'state');
   const layout = useMemo(() => layoutDag(tasks), [tasks]);
 
@@ -69,16 +74,21 @@ export function Tasks() {
           )
         }
         actions={
-          <Segmented
-            label="Task view"
-            value={view}
-            onChange={(v) => setParam('view', v === 'graph' ? null : v)}
-            options={[
-              { value: 'graph', label: 'Graph', icon: Network },
-              { value: 'board', label: 'Board', icon: Kanban },
-              { value: 'list', label: 'List', icon: List },
-            ]}
-          />
+          <>
+            <Button variant="primary" icon={Plus} onClick={() => setParam('new', '1')}>
+              New task
+            </Button>
+            <Segmented
+              label="Task view"
+              value={view}
+              onChange={(v) => setParam('view', v === 'graph' ? null : v)}
+              options={[
+                { value: 'graph', label: 'Graph', icon: Network },
+                { value: 'board', label: 'Board', icon: Kanban },
+                { value: 'list', label: 'List', icon: List },
+              ]}
+            />
+          </>
         }
       />
 
@@ -130,8 +140,13 @@ export function Tasks() {
             <EmptyState
               icon={GitBranch}
               title="No task graph yet"
-              description="Describe the work as a DAG of tasks in .davecode/TASK_GRAPH.json and the runner will pick them up in dependency order."
+              description="Describe the work as a DAG of tasks and the runner will pick them up in dependency order. You can also edit .davecode/TASK_GRAPH.json by hand."
               command="davecode run"
+              action={
+                <Button variant="primary" icon={Plus} onClick={() => setParam('new', '1')}>
+                  New task
+                </Button>
+              }
               className="py-20"
             />
           ) : view === 'graph' ? (
@@ -166,6 +181,7 @@ export function Tasks() {
                 tasks={tasks}
                 readiness={ready.get(selected.id)}
                 onSelect={select}
+                onEdit={() => setParam('edit', selected.id)}
                 onClose={() => {
                   setParam('task', null);
                   setParam('panel', null);
@@ -187,6 +203,14 @@ export function Tasks() {
           </div>
         </Panel>
       </div>
+
+      <TaskSheet open={creating} tasks={tasks} onClose={() => setParam('new', null)} />
+      <TaskSheet
+        open={Boolean(editing)}
+        task={editing}
+        tasks={tasks}
+        onClose={() => setParam('edit', null)}
+      />
     </div>
   );
 }

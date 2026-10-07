@@ -85,6 +85,150 @@ describe('MockEngine', () => {
     expect((err as ApiError).code).toBe('runner_unavailable');
   });
 
+  describe('editing the task graph', () => {
+    const catchApi = async (p: Promise<unknown>) => (await p.catch((x: unknown) => x)) as ApiError;
+
+    it('creates a PENDING task and emits task.updated', async () => {
+      const e = engine();
+      const events: DaveEvent[] = [];
+      const stop = e.subscribe({ onEvent: (ev) => events.push(ev) });
+      const task = await e.createTask({
+        id: 'docs',
+        title: 'Write docs',
+        dependsOn: ['p3-brain'],
+        priority: 2,
+      });
+      expect(task).toMatchObject({ id: 'docs', status: 'PENDING', dependsOn: ['p3-brain'] });
+      expect((await e.tasks()).graph.tasks.some((t) => t.id === 'docs')).toBe(true);
+      expect(events.some((ev) => ev.type === 'task.updated' && ev.task.id === 'docs')).toBe(true);
+      stop();
+      e.stop();
+    });
+
+    it('rejects duplicates, unknown dependencies and cycles like the gateway', async () => {
+      const e = engine();
+      expect(await catchApi(e.createTask({ id: 'p1-storage', title: 'x' }))).toMatchObject({
+        status: 409,
+        code: 'duplicate_id',
+      });
+      expect(await catchApi(e.createTask({ id: 'Bad Id', title: 'x' }))).toMatchObject({
+        status: 400,
+        code: 'invalid_body',
+      });
+      expect(
+        await catchApi(e.createTask({ id: 'n', title: 'x', dependsOn: ['ghost'] })),
+      ).toMatchObject({ status: 400, code: 'unknown_dependency' });
+      const cycle = await catchApi(e.updateTask('p1-storage', { dependsOn: ['p1-identity'] }));
+      expect(cycle).toMatchObject({ status: 400, code: 'cycle' });
+      expect(cycle.cycle).toEqual(['p1-storage', 'p1-identity', 'p1-storage']);
+    });
+
+    it('updates fields, clears them with null and enforces transitions', async () => {
+      const e = engine();
+      const renamed = await e.updateTask('p1-gateway', { title: 'Gateway!', priority: null });
+      expect(renamed.title).toBe('Gateway!');
+      expect(renamed).not.toHaveProperty('priority');
+      expect(await catchApi(e.updateTask('p1-gateway', { status: 'SUCCESS' }))).toMatchObject({
+        status: 409,
+        code: 'invalid_transition',
+      });
+      const started = await e.updateTask('p1-gateway', { status: 'IN_PROGRESS' });
+      expect(started).toMatchObject({ status: 'IN_PROGRESS', attempts: 1 });
+      expect(await catchApi(e.updateTask('nope', { title: 'x' }))).toMatchObject({ status: 404 });
+    });
+
+    it('refuses to delete a task with dependents, then deletes a leaf and emits task.removed', async () => {
+      const e = engine();
+      const refused = await catchApi(e.deleteTask('p1-storage'));
+      expect(refused).toMatchObject({ status: 409, code: 'has_dependents' });
+      expect(refused.dependents).toEqual(expect.arrayContaining(['p1-identity', 'p2-quota']));
+      expect(await catchApi(e.deleteTask('p2-router'))).toMatchObject({ status: 409 });
+
+      const events: DaveEvent[] = [];
+      const stop = e.subscribe({ onEvent: (ev) => events.push(ev) });
+      await e.deleteTask('release-0.1.0');
+      expect((await e.tasks()).graph.tasks.some((t) => t.id === 'release-0.1.0')).toBe(false);
+      expect(events.some((ev) => ev.type === 'task.removed' && ev.taskId === 'release-0.1.0')).toBe(
+        true,
+      );
+      stop();
+      e.stop();
+    });
+
+    it('explains why a targeted runner start is refused', async () => {
+      const e = new MockEngine({ seed: 7, latency: false });
+      expect(
+        await catchApi(
+          e.runnerAction('stop').then(() => e.runnerAction('start', { taskId: 'zzz' })),
+        ),
+      ).toMatchObject({
+        status: 404,
+        code: 'task_not_found',
+      });
+      expect(await catchApi(e.runnerAction('start', { taskId: 'p1-storage' }))).toMatchObject({
+        status: 409,
+        code: 'task_not_runnable',
+      });
+      const blocked = await catchApi(e.runnerAction('start', { taskId: 'p5-cli' }));
+      expect(blocked).toMatchObject({ status: 409, code: 'task_blocked' });
+      expect(blocked.message).toContain('"p1-gateway"');
+      e.stop();
+    });
+  });
+
+  describe('editing routes', () => {
+    const catchApi = async (p: Promise<unknown>) => (await p.catch((x: unknown) => x)) as ApiError;
+
+    it('replaces the routes and default route, visible in routes() and models()', async () => {
+      const e = engine();
+      const res = await e.updateRoutes({
+        routes: [
+          { name: 'only', targets: [{ provider: 'openai', model: 'gpt-5.5' }] },
+          { name: 'second', targets: [{ provider: 'anthropic', model: 'claude-haiku-5' }] },
+        ],
+        defaultRoute: 'second',
+      });
+      expect(res).toMatchObject({ defaultRoute: 'second', shadowedByProject: false });
+      expect(await e.routes()).toEqual({
+        defaultRoute: 'second',
+        routes: res.routes,
+      });
+      const ids = (await e.models()).filter((m) => m.owned_by === 'davecode').map((m) => m.id);
+      expect(ids).toEqual(['davecode/only', 'davecode/second']);
+    });
+
+    it('validates like the gateway', async () => {
+      const e = engine();
+      const target = { provider: 'openai' as const, model: 'm' };
+      for (const body of [
+        { routes: [{ name: 'Bad', targets: [target] }] },
+        { routes: [{ name: 'a', targets: [] }] },
+        {
+          routes: [
+            { name: 'a', targets: [target] },
+            { name: 'a', targets: [target] },
+          ],
+        },
+        { routes: [{ name: 'a', targets: [target] }], defaultRoute: 'missing' },
+        { routes: [{ name: 'a', targets: [{ ...target, model: ' ' }] }] },
+      ]) {
+        expect(await catchApi(e.updateRoutes(body))).toMatchObject({
+          status: 400,
+          code: 'invalid_body',
+        });
+      }
+      expect(
+        await catchApi(
+          e.updateRoutes({
+            routes: [{ name: 'a', targets: [{ ...target, accountId: 'acc_nope' }] }],
+          }),
+        ),
+      ).toMatchObject({ status: 400, code: 'unknown_account' });
+      // Nothing was applied.
+      expect((await e.routes()).routes.map((r) => r.name)).toContain('auto');
+    });
+  });
+
   describe('live simulation', () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());

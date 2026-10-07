@@ -10,7 +10,12 @@ import type {
   HealthResponse,
   ModelInfo,
   RoutesResponse,
+  RoutesUpdate,
+  RoutesUpdateResponse,
   RunnerStatus,
+  TaskCreate,
+  TaskNode,
+  TaskPatch,
   TasksResponse,
   TimeseriesBucket,
   UsageRecord,
@@ -22,12 +27,22 @@ export class ApiError extends Error {
   readonly status: number;
   /** `/api` error code (e.g. `experimental_disabled`, `runner_unavailable`) or a transport code. */
   readonly code: string;
+  /** Extra structured details some errors carry (`cycle`, `dependents`). */
+  readonly cycle?: string[];
+  readonly dependents?: string[];
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    extra: { cycle?: string[]; dependents?: string[] } = {},
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    if (extra.cycle) this.cycle = extra.cycle;
+    if (extra.dependents) this.dependents = extra.dependents;
   }
 
   /** True when the DaveCode gateway itself answered (even with an error). */
@@ -60,10 +75,16 @@ export interface DaveClient {
   timeseries(minutes?: number, bucketSec?: number): Promise<TimeseriesBucket[]>;
   requests(limit?: number): Promise<UsageRecord[]>;
   routes(): Promise<RoutesResponse>;
+  /** `PUT /api/routes`: replace the route list (and default route); persisted by the gateway. */
+  updateRoutes(body: RoutesUpdate): Promise<RoutesUpdateResponse>;
   tasks(): Promise<TasksResponse>;
+  createTask(body: TaskCreate): Promise<TaskNode>;
+  updateTask(id: string, patch: TaskPatch): Promise<TaskNode>;
+  deleteTask(id: string): Promise<void>;
   brain(): Promise<BrainResponse>;
   runner(): Promise<RunnerStatus>;
-  runnerAction(action: RunnerAction): Promise<RunnerStatus>;
+  /** `start` may name a task to run first (`POST /api/runner/start { taskId }`). */
+  runnerAction(action: RunnerAction, opts?: { taskId?: string }): Promise<RunnerStatus>;
   logs(limit?: number): Promise<DaveEvent[]>;
   /** `GET /v1/models`: every model of every enabled account plus `davecode/<route>` aliases. */
   models(): Promise<ModelInfo[]>;
@@ -128,6 +149,10 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
         res.status,
         err?.code ?? `http_${res.status}`,
         err?.message ?? `${method} ${path} failed with ${res.status}`,
+        {
+          ...(err?.cycle && { cycle: err.cycle }),
+          ...(err?.dependents && { dependents: err.dependents }),
+        },
       );
     }
     return json as T;
@@ -160,11 +185,24 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
     requests: async (limit = 100) =>
       (await get<{ requests: UsageRecord[] }>(`/api/requests?limit=${limit}`)).requests,
     routes: () => get<RoutesResponse>('/api/routes'),
+    updateRoutes: (body) => request<RoutesUpdateResponse>('PUT', '/api/routes', body),
     tasks: () => get<TasksResponse>('/api/tasks'),
+    createTask: async (body) =>
+      (await request<{ task: TaskNode }>('POST', '/api/tasks', body)).task,
+    updateTask: async (id, patch) =>
+      (await request<{ task: TaskNode }>('PATCH', `/api/tasks/${encodeURIComponent(id)}`, patch))
+        .task,
+    deleteTask: (id) => request<void>('DELETE', `/api/tasks/${encodeURIComponent(id)}`),
     brain: () => get<BrainResponse>('/api/brain'),
     runner: async () => (await get<{ status: RunnerStatus }>('/api/runner')).status,
-    runnerAction: async (action) =>
-      (await request<{ status: RunnerStatus }>('POST', `/api/runner/${action}`)).status,
+    runnerAction: async (action, opts) =>
+      (
+        await request<{ status: RunnerStatus }>(
+          'POST',
+          `/api/runner/${action}`,
+          action === 'start' && opts?.taskId ? { taskId: opts.taskId } : undefined,
+        )
+      ).status,
     logs: async (limit = 200) =>
       (await get<{ events: DaveEvent[] }>(`/api/logs?limit=${limit}`)).events,
     models: async () => (await get<{ data: ModelInfo[] }>('/v1/models')).data,

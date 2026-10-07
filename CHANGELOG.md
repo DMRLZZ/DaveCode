@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard: New task and edit sheets (dependency multi-select that cannot pick the task itself or
+  create a cycle), status actions (Start, Mark done, Mark failed, Reopen), Run now, confirmed delete,
+  and a Routes editor (add, remove, rename, reorder targets, pin accounts, default route). Both work
+  in mock mode.
+- `PUT /api/routes`: replace the route list and default route. Persisted to the global
+  `config.json` (other keys preserved, atomic, locked) and applied to the live engine config
+  immediately (`Engine.updateRouting`, `writeGlobalRouting`).
+- Task graph editing: `POST /api/tasks`, `PATCH /api/tasks/:id` and `DELETE /api/tasks/:id`
+  through `ProjectBrain` (lock, validation, cycle paths in the `cycle` error, status
+  transitions, `has_dependents` refusal), the `task.removed` event, optional write methods on
+  `BrainSource` (`501 brain_read_only` without them) and `ProjectBrain.createTask/removeTask`.
+- Targeted runs: `runOnce({ taskId })` and `start({ taskId })` on the autonomous runner,
+  `davecode run --task <id>` (replacing the "can only confirm the runner's pick" check) and an
+  optional `{ "taskId" }` body on `POST /api/runner/start`. A task that cannot run is refused with
+  `task_not_found` (404), `task_not_runnable` or `task_blocked` (409, naming the dependencies).
+
 ## [0.1.0] - 2026-10-06
 
 First release: every phase of the [specification](docs/SPEC.md) is implemented.

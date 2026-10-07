@@ -13,7 +13,11 @@ export type TaskGraphIssueCode =
   | 'self_dependency'
   | 'cycle'
   | 'unknown_task'
-  | 'invalid_transition';
+  | 'invalid_transition'
+  /** Deleting a task that other tasks still depend on. */
+  | 'has_dependents'
+  /** Deleting a task the runner is working on. */
+  | 'task_in_progress';
 
 export interface TaskGraphIssue {
   code: TaskGraphIssueCode;
@@ -21,6 +25,8 @@ export interface TaskGraphIssue {
   taskId?: string;
   /** For `cycle`: the ids along the cycle, first id repeated at the end. */
   cycle?: string[];
+  /** For `has_dependents`: ids of the tasks that depend on `taskId`. */
+  dependents?: string[];
 }
 
 /** Thrown when a task graph is malformed or an update is not allowed. */
@@ -282,6 +288,44 @@ export function blockedTasks(graph: TaskGraph): BlockedTask[] {
   return result;
 }
 
+export type RunnableCheck =
+  | { ok: true; task: TaskNode }
+  | {
+      ok: false;
+      reason: 'unknown_task' | 'wrong_status' | 'blocked';
+      message: string;
+      /** For `blocked`: the direct dependencies that are not SUCCESS yet. */
+      blockedBy?: string[];
+    };
+
+/** Explains whether task `id` could be picked by the runner right now (PENDING and unblocked). */
+export function checkRunnable(graph: TaskGraph, id: string): RunnableCheck {
+  const byId = indexById(graph);
+  const task = byId.get(id);
+  if (!task) return { ok: false, reason: 'unknown_task', message: `unknown task "${id}"` };
+  if (task.status !== 'PENDING') {
+    return {
+      ok: false,
+      reason: 'wrong_status',
+      message: `task "${id}" is ${task.status}; only PENDING tasks can run${
+        task.status === 'IN_PROGRESS' ? '' : ' (reopen it first)'
+      }`,
+    };
+  }
+  const blockedBy = task.dependsOn.filter((dep) => byId.get(dep)?.status !== 'SUCCESS');
+  if (blockedBy.length > 0) {
+    return {
+      ok: false,
+      reason: 'blocked',
+      blockedBy,
+      message: `task "${id}" is blocked by unfinished dependencies: ${blockedBy
+        .map((dep) => `"${dep}" (${byId.get(dep)?.status ?? 'missing'})`)
+        .join(', ')}`,
+    };
+  }
+  return { ok: true, task };
+}
+
 export interface GraphSummary {
   total: number;
   counts: Record<TaskStatus, number>;
@@ -314,9 +358,14 @@ export function canTransition(from: TaskStatus, to: TaskStatus): boolean {
 
 export type TaskPatch = Partial<Omit<TaskNode, 'id'>>;
 
+/** Optional fields of a task that an edit may remove again. */
+export type ClearableTaskField = 'description' | 'priority' | 'acceptance' | 'notes';
+
 export interface UpdateOptions {
   /** Timestamp to stamp into `updatedAt` (defaults to now). */
   now?: Date;
+  /** Optional fields to remove from the task (applied after the patch). */
+  clear?: readonly ClearableTaskField[];
 }
 
 /**
@@ -351,6 +400,7 @@ export function updateTask(
     }
     if (patch.status === 'IN_PROGRESS') next.attempts = (current.attempts ?? 0) + 1;
   }
+  for (const field of opts.clear ?? []) delete next[field];
   next.updatedAt = (opts.now ?? new Date()).toISOString();
 
   const tasks = graph.tasks.map((t, i) => (i === index ? next : t));
@@ -358,6 +408,77 @@ export function updateTask(
   const issues = validateTaskGraph(updated);
   if (issues.length > 0) throw new TaskGraphError(issues);
   return updated;
+}
+
+/** What it takes to create a task; it always starts PENDING. */
+export interface NewTask {
+  id: string;
+  title: string;
+  description?: string;
+  dependsOn?: string[];
+  priority?: number;
+  acceptance?: string[];
+  notes?: string;
+}
+
+/** Returns a new graph with a PENDING task appended. Re-validated: duplicates, unknown ids, cycles. */
+export function addTask(graph: TaskGraph, input: NewTask, opts: UpdateOptions = {}): TaskGraph {
+  const stamp = (opts.now ?? new Date()).toISOString();
+  const task: TaskNode = {
+    id: input.id,
+    title: input.title,
+    status: 'PENDING',
+    dependsOn: [...(input.dependsOn ?? [])],
+    createdAt: stamp,
+    updatedAt: stamp,
+    ...(input.description !== undefined ? { description: input.description } : {}),
+    ...(input.priority !== undefined ? { priority: input.priority } : {}),
+    ...(input.acceptance !== undefined ? { acceptance: input.acceptance } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes } : {}),
+  };
+  const created: TaskGraph = { ...graph, tasks: [...graph.tasks, task] };
+  const issues = validateTaskGraph(created);
+  if (issues.length > 0) throw new TaskGraphError(issues);
+  return created;
+}
+
+/** Ids of the tasks that list `id` in their `dependsOn`. */
+export function dependentsOf(graph: TaskGraph, id: string): string[] {
+  return graph.tasks.filter((t) => t.dependsOn.includes(id)).map((t) => t.id);
+}
+
+/**
+ * Returns a new graph without task `id`. Refused (`has_dependents`) while other tasks depend on
+ * it, and (`task_in_progress`) while the task is IN_PROGRESS.
+ */
+export function removeTask(graph: TaskGraph, id: string): TaskGraph {
+  const task = graph.tasks.find((t) => t.id === id);
+  if (!task) {
+    throw new TaskGraphError([
+      { code: 'unknown_task', taskId: id, message: `unknown task "${id}"` },
+    ]);
+  }
+  const dependents = dependentsOf(graph, id);
+  if (dependents.length > 0) {
+    throw new TaskGraphError([
+      {
+        code: 'has_dependents',
+        taskId: id,
+        dependents,
+        message: `cannot delete "${id}": ${dependents.map((d) => `"${d}"`).join(', ')} depend on it`,
+      },
+    ]);
+  }
+  if (task.status === 'IN_PROGRESS') {
+    throw new TaskGraphError([
+      {
+        code: 'task_in_progress',
+        taskId: id,
+        message: `cannot delete "${id}" while it is IN_PROGRESS; reopen it first`,
+      },
+    ]);
+  }
+  return { ...graph, tasks: graph.tasks.filter((t) => t.id !== id) };
 }
 
 export function setTaskStatus(

@@ -1,7 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RunnerAction } from './api';
 import { qk, useData } from './data';
-import type { Account, AccountCreate, AccountPatch, RunnerStatus } from './types';
+import type {
+  Account,
+  AccountCreate,
+  AccountPatch,
+  RoutesUpdate,
+  RunnerStatus,
+  TaskCreate,
+  TaskNode,
+  TaskPatch,
+  TasksResponse,
+} from './types';
 
 /** TanStack Query hooks over the active DaveClient. Events keep most of these fresh. */
 
@@ -157,11 +167,95 @@ export function useDeleteAccount() {
   });
 }
 
+/** Patches the cached task list so the graph reflects a write before its event arrives. */
+function useTasksCache() {
+  const { sourceKey } = useData();
+  const qc = useQueryClient();
+  const key = qk(sourceKey, 'tasks');
+  return {
+    upsert: (task: TaskNode) =>
+      qc.setQueryData<TasksResponse>(key, (prev) => {
+        if (!prev) return prev;
+        const tasks = prev.graph.tasks.slice();
+        const i = tasks.findIndex((t) => t.id === task.id);
+        if (i === -1) tasks.push(task);
+        else tasks[i] = task;
+        return { ...prev, graph: { ...prev.graph, tasks } };
+      }),
+    remove: (id: string) =>
+      qc.setQueryData<TasksResponse>(key, (prev) =>
+        prev
+          ? {
+              ...prev,
+              graph: { ...prev.graph, tasks: prev.graph.tasks.filter((t) => t.id !== id) },
+            }
+          : prev,
+      ),
+    invalidate: () => {
+      qc.invalidateQueries({ queryKey: key });
+      qc.invalidateQueries({ queryKey: qk(sourceKey, 'brain') });
+    },
+  };
+}
+
+export function useCreateTask() {
+  const { client } = useData();
+  const cache = useTasksCache();
+  return useMutation({
+    mutationFn: (body: TaskCreate) => client.createTask(body),
+    onSuccess: (task) => cache.upsert(task),
+    onSettled: () => cache.invalidate(),
+  });
+}
+
+export function useUpdateTask() {
+  const { client } = useData();
+  const cache = useTasksCache();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: TaskPatch }) => client.updateTask(id, patch),
+    onSuccess: (task) => cache.upsert(task),
+    onSettled: () => cache.invalidate(),
+  });
+}
+
+export function useDeleteTask() {
+  const { client } = useData();
+  const cache = useTasksCache();
+  return useMutation({
+    mutationFn: (id: string) => client.deleteTask(id),
+    onSuccess: (_r, id) => cache.remove(id),
+    onSettled: () => cache.invalidate(),
+  });
+}
+
+export function useUpdateRoutes() {
+  const { client, sourceKey } = useData();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: RoutesUpdate) => client.updateRoutes(body),
+    onSuccess: ({ defaultRoute, routes }) => {
+      qc.setQueryData(qk(sourceKey, 'routes'), { defaultRoute, routes });
+      // The model list exposes one `davecode/<route>` entry per route.
+      qc.invalidateQueries({ queryKey: qk(sourceKey, 'models') });
+    },
+  });
+}
+
 export function useRunnerAction() {
   const { client, sourceKey } = useData();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (action: RunnerAction) => client.runnerAction(action),
+    onSuccess: (status: RunnerStatus) => qc.setQueryData(qk(sourceKey, 'runner'), status),
+  });
+}
+
+/** Start the runner on one specific task (`POST /api/runner/start { taskId }`). */
+export function useRunTask() {
+  const { client, sourceKey } = useData();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (taskId: string) => client.runnerAction('start', { taskId }),
     onSuccess: (status: RunnerStatus) => qc.setQueryData(qk(sourceKey, 'runner'), status),
   });
 }

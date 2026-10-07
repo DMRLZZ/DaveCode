@@ -187,3 +187,69 @@ describe('task updates', () => {
     await expect(brain.setTaskStatus('a', 'IN_PROGRESS')).resolves.toMatchObject({ id: 'a' });
   });
 });
+
+describe('ProjectBrain task creation and removal', () => {
+  it('creates a PENDING task under the lock and emits task.updated', async () => {
+    const events = new EventBus();
+    const brain = await ProjectBrain.init(tmp, {
+      events,
+      now: () => new Date('2026-02-03T00:00:00Z'),
+    });
+    await brain.writeGraph(sampleGraph);
+    const created = await brain.createTask({ id: 'c', title: 'C', dependsOn: ['b'], priority: 1 });
+    expect(created).toMatchObject({
+      id: 'c',
+      status: 'PENDING',
+      dependsOn: ['b'],
+      createdAt: '2026-02-03T00:00:00.000Z',
+    });
+    expect((await brain.readGraph()).tasks.map((t) => t.id)).toEqual(['a', 'b', 'c']);
+    expect(events.recent().at(-1)).toMatchObject({ type: 'task.updated', task: { id: 'c' } });
+  });
+
+  it('rejects duplicates, unknown dependencies and cycles without writing', async () => {
+    const events = new EventBus();
+    const brain = await ProjectBrain.init(tmp, { events });
+    await brain.writeGraph(sampleGraph);
+    await expect(brain.createTask({ id: 'a', title: 'again' })).rejects.toThrow(/duplicate/);
+    await expect(brain.createTask({ id: 'x', title: 'X', dependsOn: ['q'] })).rejects.toThrow(
+      /unknown task "q"/,
+    );
+    // a depends on b, which depends on a: the cycle path is reported.
+    await expect(brain.updateTask('a', { dependsOn: ['b'] })).rejects.toThrow(/a → b → a/);
+    expect((await brain.readGraph()).tasks).toHaveLength(2);
+    expect(events.recent()).toHaveLength(0);
+  });
+
+  it('removes a leaf task and emits task.removed; refuses one with dependents', async () => {
+    const events = new EventBus();
+    const brain = await ProjectBrain.init(tmp, { events });
+    await brain.writeGraph(sampleGraph);
+    await expect(brain.removeTask('a')).rejects.toMatchObject({
+      issues: [{ code: 'has_dependents', dependents: ['b'] }],
+    });
+    expect(events.recent()).toHaveLength(0);
+    await expect(brain.removeTask('b')).resolves.toMatchObject({ id: 'b' });
+    expect((await brain.readGraph()).tasks.map((t) => t.id)).toEqual(['a']);
+    expect(events.recent().at(-1)).toMatchObject({ type: 'task.removed', taskId: 'b' });
+    await expect(brain.removeTask('b')).rejects.toThrow(/unknown task/);
+  });
+
+  it('clears optional fields on update', async () => {
+    const brain = await ProjectBrain.init(tmp);
+    await brain.writeGraph({
+      version: 1,
+      tasks: [{ id: 'a', title: 'A', status: 'PENDING', dependsOn: [], description: 'old' }],
+    });
+    const task = await brain.updateTask('a', { title: 'A2' }, { clear: ['description'] });
+    expect(task.description).toBeUndefined();
+    expect((await brain.readGraph()).tasks[0]).not.toHaveProperty('description');
+  });
+
+  it('reports a missing brain with a machine-readable code', async () => {
+    await expect(new ProjectBrain(tmp).createTask({ id: 'a', title: 'A' })).rejects.toMatchObject({
+      code: 'no_brain',
+      statusCode: 409,
+    });
+  });
+});

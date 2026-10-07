@@ -5,7 +5,11 @@ import { type ProjectPaths, projectPaths } from '../paths';
 import type { TaskGraph, TaskNode, TaskStatus } from '../types';
 import { atomicWriteFile, readFileIfExists } from './fs-util';
 import {
+  addTask as addGraphTask,
+  type ClearableTaskField,
+  type NewTask,
   parseTaskGraph,
+  removeTask as removeGraphTask,
   setTaskStatus as setGraphTaskStatus,
   type TaskPatch,
   updateTask as updateGraphTask,
@@ -111,6 +115,18 @@ export interface ProjectBrainSnapshot {
   state: string;
   architecture: string;
   graph: TaskGraph;
+}
+
+/** A brain file is missing: the project was never initialised (`davecode init`). */
+export class MissingBrainError extends Error {
+  /** HTTP status hint and machine-readable code for the gateway's error handler. */
+  readonly statusCode = 409;
+  readonly code = 'no_brain';
+
+  constructor(path: string) {
+    super(`Missing project brain file: ${path} (run ProjectBrain.init first)`);
+    this.name = 'MissingBrainError';
+  }
 }
 
 /** Read/write access to `<repo>/.davecode/`: STATE.md, ARCHITECTURE.md and TASK_GRAPH.json. */
@@ -239,8 +255,37 @@ export class ProjectBrain {
   }
 
   /** Applies `patch` to a task, persists the graph and emits `task.updated`. */
-  async updateTask(id: string, patch: TaskPatch): Promise<TaskNode> {
-    return this.mutateGraph(id, (graph) => updateGraphTask(graph, id, patch, { now: this.now() }));
+  async updateTask(
+    id: string,
+    patch: TaskPatch,
+    opts: { clear?: readonly ClearableTaskField[] } = {},
+  ): Promise<TaskNode> {
+    return this.mutateGraph(id, (graph) =>
+      updateGraphTask(graph, id, patch, { now: this.now(), ...opts }),
+    );
+  }
+
+  /**
+   * Appends a PENDING task, persists the graph and emits `task.updated`. Throws
+   * `TaskGraphError` for a duplicate id, an unknown dependency or a cycle.
+   */
+  async createTask(input: NewTask): Promise<TaskNode> {
+    return this.mutateGraph(input.id, (graph) => addGraphTask(graph, input, { now: this.now() }));
+  }
+
+  /**
+   * Deletes a task, persists the graph and emits `task.removed`. Throws `TaskGraphError`
+   * (`has_dependents`, `task_in_progress`, `unknown_task`) when it must not be removed.
+   */
+  async removeTask(id: string): Promise<TaskNode> {
+    const removed = await this.withLock(async () => {
+      const graph = await this.readGraph();
+      const task = graph.tasks.find((t) => t.id === id);
+      await this.writeGraphUnlocked(removeGraphTask(graph, id));
+      return task as TaskNode;
+    });
+    this.events?.emit({ type: 'task.removed', taskId: id });
+    return removed;
   }
 
   /** Moves a task to `status` (transition rules apply), persists and emits `task.updated`. */
@@ -272,7 +317,7 @@ export class ProjectBrain {
   private async readText(path: string): Promise<string> {
     const content = await readFileIfExists(path);
     if (content === undefined) {
-      throw new Error(`Missing project brain file: ${path} (run ProjectBrain.init first)`);
+      throw new MissingBrainError(path);
     }
     return content;
   }

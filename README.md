@@ -110,6 +110,7 @@ davecode tasks add api "Add the /health endpoint" --acceptance "GET /health retu
 davecode tasks                      # task tree with status glyphs and blocked reasons
 davecode run --once                 # implement the next task, validate, repair, merge
 davecode run                        # 24/7 loop with a live runner view; Ctrl+C stops safely
+davecode run --task api --once      # run one specific task (must be PENDING and unblocked)
 ```
 
 Other commands: `davecode config show|path|get <key>` (secrets redacted), `davecode tasks next`,
@@ -244,8 +245,8 @@ docs/         architecture, API contract, original spec
 - [x] **v0.1.0:** first tagged release (run from source)
 - [ ] Standalone `davecode` package on npm (`npx davecode`)
 - [ ] Verified Codex CLI event format and more provider live tests
-- [ ] Editing routes and the task graph from the dashboard
-- [ ] Targeting a specific task with `davecode run --task <id>`
+- [x] Editing routes and the task graph from the dashboard
+- [x] Targeting a specific task with `davecode run --task <id>`
 
 ## Contributing
 

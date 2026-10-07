@@ -222,6 +222,16 @@ function patchQueryCache(qc: QueryClient, sourceKey: string, e: DaveEvent): void
         return { ...prev, graph: { ...prev.graph, tasks } };
       });
       break;
+    case 'task.removed':
+      qc.setQueryData<TasksResponse>(qk(sourceKey, 'tasks'), (prev) =>
+        prev
+          ? {
+              ...prev,
+              graph: { ...prev.graph, tasks: prev.graph.tasks.filter((t) => t.id !== e.taskId) },
+            }
+          : prev,
+      );
+      break;
     case 'runner.status':
       qc.setQueryData<RunnerStatus>(qk(sourceKey, 'runner'), e.status);
       break;

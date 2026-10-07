@@ -13,14 +13,21 @@ export {
   sanitizeNoteName,
 } from './brain/global';
 export {
+  addTask,
   type BlockedTask,
   blockedTasks,
+  type ClearableTaskField,
   canTransition,
+  checkRunnable,
+  dependentsOf,
   findCycles,
   type GraphSummary,
+  type NewTask,
   nextTask,
   parseTaskGraph,
+  type RunnableCheck,
   readyTasks,
+  removeTask,
   setTaskStatus,
   summarize,
   TASK_STATUSES,
@@ -29,6 +36,7 @@ export {
   type TaskGraphIssueCode,
   type TaskPatch,
   taskGraphSchema,
+  taskIdSchema,
   topologicalOrder,
   type UpdateOptions,
   updateTask,
@@ -37,12 +45,25 @@ export {
 export { type LockOptions, LockTimeoutError, withFileLock } from './brain/lock';
 export {
   findProjectRoot,
+  MissingBrainError,
   ProjectBrain,
   type ProjectBrainInitOptions,
   type ProjectBrainOptions,
   type ProjectBrainSnapshot,
 } from './brain/project';
-export { configSchema, type DaveConfig, type DaveConfigInput } from './config/schema';
+export {
+  configSchema,
+  type DaveConfig,
+  type DaveConfigInput,
+  routeSchema,
+  routeTargetSchema,
+} from './config/schema';
+export {
+  projectOverridesRouting,
+  type RoutingUpdate,
+  type RoutingUpdateResult,
+  writeGlobalRouting,
+} from './config/writer';
 export {
   errorKindFromStatus,
   isFailoverEligible,
@@ -239,6 +260,7 @@ export {
   type RunnerErrorCode,
   type RunOnceResult,
   type RunOutcome,
+  type RunTaskOptions,
 } from './autonomous/runner';
 export {
   DEFAULT_ALLOWED_COMMANDS,

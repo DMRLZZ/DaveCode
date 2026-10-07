@@ -213,7 +213,8 @@ One task, step by step:
 1. **Preflight** (`start()` / `runOnce()`): inside a git work tree, brain initialised, base branch
    exists, working tree clean (changes under `.davecode/` are ignored because the runner and the
    dashboard write there). Otherwise the runner refuses with `RunnerError` (gateway: `409`).
-2. **Select** `nextTask(graph)`, set it `IN_PROGRESS` (attempts + 1, `branch` recorded) and append
+2. **Select** `nextTask(graph)` (or the task named by `runOnce({ taskId })` / `start({ taskId })`,
+   which must be PENDING with all dependencies SUCCESS, checked by `checkRunnable`), set it `IN_PROGRESS` (attempts + 1, `branch` recorded) and append
    to the STATE.md activity log.
 3. **Prepare** `runner.branchPrefix + id` from `runner.baseBranch`. A branch left by an earlier
    failed attempt is renamed `…-attempt-<n>` first.

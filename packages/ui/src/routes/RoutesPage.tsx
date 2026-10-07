@@ -1,7 +1,8 @@
-import { Route as RouteIcon } from 'lucide-react';
+import { Pencil, Plus, Route as RouteIcon } from 'lucide-react';
 import { useMemo } from 'react';
 import { ACCOUNT_STATUS_TONE, ProviderIcon } from '../components/domain';
 import { Badge, Dot } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
 import { Callout } from '../components/ui/Callout';
 import { CopyButton } from '../components/ui/CopyButton';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -10,9 +11,10 @@ import { SkeletonRows } from '../components/ui/Skeleton';
 import { errorMessage } from '../lib/api';
 import { providerMeta } from '../lib/providers';
 import { useAccounts, useModels, useRoutes } from '../lib/queries';
-import { Link } from '../lib/router';
+import { Link, setParam, useLocation } from '../lib/router';
 import { useSettings } from '../lib/settings';
 import type { Account, RouteTarget } from '../lib/types';
+import { RoutesEditorSheet } from './RoutesEditor';
 
 /** Accounts that can serve a target, mirroring the router's candidate resolution. */
 function candidates(target: RouteTarget, accounts: Account[]): Account[] {
@@ -26,6 +28,8 @@ function candidates(target: RouteTarget, accounts: Account[]): Account[] {
 
 export function RoutesPage() {
   const routes = useRoutes();
+  const { params } = useLocation();
+  const editing = params.get('edit') === '1';
   const accounts = useAccounts();
   const models = useModels();
   const settings = useSettings();
@@ -55,11 +59,21 @@ export function RoutesPage() {
           </>
         }
         actions={
-          models.data && (
-            <Badge mono>
-              {exposed.total} models · {exposed.routes} routes on /v1/models
-            </Badge>
-          )
+          <>
+            {models.data && (
+              <Badge mono>
+                {exposed.total} models · {exposed.routes} routes on /v1/models
+              </Badge>
+            )}
+            <Button
+              variant="primary"
+              icon={Pencil}
+              disabled={!routes.data}
+              onClick={() => setParam('edit', '1')}
+            >
+              Edit routes
+            </Button>
+          </>
         }
       />
 
@@ -78,7 +92,12 @@ export function RoutesPage() {
           <EmptyState
             icon={RouteIcon}
             title="No routes configured"
-            description="Add routing.routes to ~/.davecode/config.json. Until then, clients can call provider/model ids directly."
+            description="Until you add one, clients can call provider/model ids directly. Routes are saved to ~/.davecode/config.json."
+            action={
+              <Button variant="primary" icon={Plus} onClick={() => setParam('edit', '1')}>
+                Add a route
+              </Button>
+            }
           />
         </Panel>
       ) : (
@@ -163,6 +182,13 @@ export function RoutesPage() {
           ))}
         </div>
       )}
+
+      <RoutesEditorSheet
+        open={editing && Boolean(routes.data)}
+        onClose={() => setParam('edit', null)}
+        routes={routes.data?.routes ?? []}
+        defaultRoute={defaultRoute}
+      />
 
       <Panel aria-labelledby="usage-title">
         <PanelHeader

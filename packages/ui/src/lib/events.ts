@@ -27,6 +27,7 @@ export const EVENT_TYPES: readonly DaveEventType[] = [
   'account.removed',
   'quota.updated',
   'task.updated',
+  'task.removed',
   'runner.status',
   'runner.log',
   'log',
