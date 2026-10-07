@@ -10,7 +10,7 @@
  */
 import { buildTaskContext } from '../brain/context';
 import type { GlobalBrain } from '../brain/global';
-import { nextTask } from '../brain/graph';
+import { checkRunnable, nextTask } from '../brain/graph';
 import type { ProjectBrain } from '../brain/project';
 import type { DaveConfig } from '../config/schema';
 import { EventBus } from '../events';
@@ -29,12 +29,18 @@ export type RunnerErrorCode =
   | 'no_base_branch'
   | 'dirty_worktree'
   | 'invalid_graph'
-  | 'busy';
+  | 'busy'
+  /** `taskId` does not exist in the task graph. */
+  | 'task_not_found'
+  /** `taskId` exists but is not PENDING. */
+  | 'task_not_runnable'
+  /** `taskId` is PENDING but depends on unfinished tasks. */
+  | 'task_blocked';
 
 /** A precondition failed: the runner refuses to start. */
 export class RunnerError extends Error {
-  /** HTTP status hint for the gateway's error handler. */
-  readonly statusCode = 409;
+  /** HTTP status hint for the gateway's error handler (404 for an unknown task, else 409). */
+  readonly statusCode: number;
 
   constructor(
     readonly code: RunnerErrorCode,
@@ -42,6 +48,7 @@ export class RunnerError extends Error {
   ) {
     super(message);
     this.name = 'RunnerError';
+    this.statusCode = code === 'task_not_found' ? 404 : 409;
   }
 }
 
@@ -71,6 +78,16 @@ export interface AutonomousRunnerOptions {
   events?: EventBus;
   /** Character budget for `buildTaskContext`. */
   contextBudgetChars?: number;
+}
+
+/** Options for {@link AutonomousRunner.runOnce} and {@link AutonomousRunner.start}. */
+export interface RunTaskOptions {
+  /**
+   * Run this task instead of the runner's own pick. It must exist, be PENDING and have every
+   * dependency SUCCESS, otherwise a {@link RunnerError} (`task_not_found`, `task_not_runnable`
+   * or `task_blocked`) is raised.
+   */
+  taskId?: string;
 }
 
 export type RunOutcome = 'success' | 'failed' | 'idle' | 'stopped' | 'error';
@@ -170,7 +187,7 @@ export class AutonomousRunner {
    * Starts the continuous (24/7) loop, or resumes it when paused. Resolves once the loop has
    * started. Rejects with {@link RunnerError} when a precondition fails (dirty tree, no brain…).
    */
-  async start(): Promise<void> {
+  async start(opts: RunTaskOptions = {}): Promise<void> {
     if (this.pauseRequested) {
       this.resume();
       return;
@@ -186,13 +203,14 @@ export class AutonomousRunner {
     this.active = (async () => {
       try {
         await this.preflightChecks();
+        if (opts.taskId !== undefined) await this.assertRunnable(opts.taskId);
         this.beginSession();
       } catch (err) {
         refused(err);
         return;
       }
       started();
-      await this.loop();
+      await this.loop(opts.taskId);
     })().finally(() => {
       this.active = undefined;
     });
@@ -200,8 +218,11 @@ export class AutonomousRunner {
     await ready;
   }
 
-  /** Implements at most one ready task, then returns. For the CLI (`davecode run`). */
-  async runOnce(): Promise<RunOnceResult> {
+  /**
+   * Implements at most one task, then returns. For the CLI (`davecode run`). With `taskId` that
+   * exact task is run (or a {@link RunnerError} explains why it cannot be).
+   */
+  async runOnce(opts: RunTaskOptions = {}): Promise<RunOnceResult> {
     if (this.active) throw new RunnerError('busy', 'the runner is already running');
     this.stopRequested = false;
     let resolveDone: () => void = () => undefined;
@@ -210,8 +231,9 @@ export class AutonomousRunner {
     });
     try {
       await this.preflightChecks();
+      if (opts.taskId !== undefined) await this.assertRunnable(opts.taskId);
       this.beginSession();
-      const result = await this.selectAndRun();
+      const result = await this.selectAndRun(opts.taskId);
       if (result.outcome !== 'error') {
         this.setState(this.stopRequested ? 'stopped' : 'idle', {});
       }
@@ -293,10 +315,12 @@ export class AutonomousRunner {
     this.pauseWaiters = [];
   }
 
-  private async loop(): Promise<void> {
+  private async loop(firstTaskId?: string): Promise<void> {
+    let target = firstTaskId;
     try {
       for (;;) {
-        const result = await this.selectAndRun();
+        const result = await this.selectAndRun(target);
+        target = undefined;
         if (result.outcome === 'error' || result.outcome === 'stopped') return;
         if (result.outcome === 'idle') {
           this.log('debug', `no ready task; polling again in ${this.config.idlePollMs} ms`);
@@ -311,10 +335,32 @@ export class AutonomousRunner {
     }
   }
 
-  private async selectAndRun(): Promise<RunOnceResult> {
+  /** Throws a {@link RunnerError} naming why `taskId` cannot be run now. */
+  private async assertRunnable(taskId: string): Promise<void> {
+    const check = checkRunnable(await this.brain.readGraph(), taskId);
+    if (check.ok) return;
+    const code: RunnerErrorCode =
+      check.reason === 'unknown_task'
+        ? 'task_not_found'
+        : check.reason === 'blocked'
+          ? 'task_blocked'
+          : 'task_not_runnable';
+    throw new RunnerError(code, check.message);
+  }
+
+  private async selectAndRun(taskId?: string): Promise<RunOnceResult> {
     await this.transition('selecting', {});
     const graph = await this.brain.readGraph();
-    const task = nextTask(graph);
+    let task = nextTask(graph);
+    if (taskId !== undefined) {
+      const check = checkRunnable(graph, taskId);
+      if (check.ok) {
+        task = check.task;
+      } else {
+        // Changed between the up-front check and now (e.g. edited from the dashboard).
+        this.log('warn', `requested task is no longer runnable: ${check.message}`, taskId);
+      }
+    }
     if (!task) {
       this.setState('idle', {});
       return { outcome: 'idle', repairCycles: 0 };

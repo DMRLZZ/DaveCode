@@ -16,10 +16,12 @@ export {
   type BlockedTask,
   blockedTasks,
   canTransition,
+  checkRunnable,
   findCycles,
   type GraphSummary,
   nextTask,
   parseTaskGraph,
+  type RunnableCheck,
   readyTasks,
   setTaskStatus,
   summarize,
@@ -239,6 +241,7 @@ export {
   type RunnerErrorCode,
   type RunOnceResult,
   type RunOutcome,
+  type RunTaskOptions,
 } from './autonomous/runner';
 export {
   DEFAULT_ALLOWED_COMMANDS,
