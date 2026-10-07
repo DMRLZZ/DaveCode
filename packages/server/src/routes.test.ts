@@ -19,7 +19,7 @@ afterEach(async () => {
   t?.cleanup();
 });
 
-const put = (payload: unknown) => app.inject({ method: 'PUT', url: '/api/routes', payload });
+const put = (payload: object) => app.inject({ method: 'PUT', url: '/api/routes', payload });
 const stored = () =>
   JSON.parse(readFileSync(join(t.home, 'config.json'), 'utf8')) as Record<string, unknown>;
 

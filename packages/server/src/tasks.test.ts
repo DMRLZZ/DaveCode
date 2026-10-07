@@ -44,8 +44,8 @@ afterEach(async () => {
   if (root) rmSync(root, { recursive: true, force: true });
 });
 
-const post = (payload: unknown) => app.inject({ method: 'POST', url: '/api/tasks', payload });
-const patch = (id: string, payload: unknown) =>
+const post = (payload: object) => app.inject({ method: 'POST', url: '/api/tasks', payload });
+const patch = (id: string, payload: object) =>
   app.inject({ method: 'PATCH', url: `/api/tasks/${id}`, payload });
 const del = (id: string) => app.inject({ method: 'DELETE', url: `/api/tasks/${id}` });
 
