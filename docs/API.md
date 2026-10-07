@@ -194,6 +194,58 @@ the account is not cooled down, no failover happens and no `request.failed` even
 { "project": { "root": "/path/to/repo", "name": "repo" } | null, "graph": TaskGraph }
 ```
 
+#### Editing the task graph
+
+| Method | Path | Body | Response |
+| :----- | :--- | :--- | :------- |
+| `POST` | `/api/tasks` | `TaskCreate` | `201 { "task": TaskNode }` |
+| `PATCH` | `/api/tasks/:id` | `TaskPatch` | `{ "task": TaskNode }` |
+| `DELETE` | `/api/tasks/:id` | none | `204` |
+
+```ts
+interface TaskCreate {
+  id: string;               // lowercase kebab-case / snake_case, letters, digits and - _ .
+  title: string;            // 1..300 chars (trimmed)
+  description?: string;
+  dependsOn?: string[];     // ids of existing tasks
+  priority?: number;
+  acceptance?: string[];
+}
+interface TaskPatch {       // at least one field; unknown fields are rejected
+  title?: string;
+  description?: string | null;   // null removes the field
+  dependsOn?: string[];          // replaces the list
+  priority?: number | null;
+  acceptance?: string[] | null;
+  notes?: string | null;
+  status?: TaskStatus;           // must follow the allowed transitions
+}
+```
+
+Created tasks are always `PENDING`. Every write goes through the project brain: it takes the
+`.davecode/.lock` file, re-validates the whole graph, writes `TASK_GRAPH.json` atomically and
+emits `task.updated` (`task.removed` with `{ taskId }` for a delete) on `/api/events`.
+
+Status transitions (`canTransition`): `PENDING → IN_PROGRESS`; `IN_PROGRESS → SUCCESS | FAILED |
+PENDING`; `FAILED | SUCCESS → PENDING`. Moving to `IN_PROGRESS` increments `attempts`.
+
+| Status | `code` | When |
+| :----- | :------- | :--- |
+| 400 | `invalid_body` | The body does not match the schema above |
+| 400 | `cycle` | The change would create a dependency cycle. `error.cycle` is the path, first id repeated at the end (`["a","b","a"]`) |
+| 400 | `unknown_dependency`, `self_dependency` | `dependsOn` names a missing task, or the task itself |
+| 404 | `not_found` | Unknown task id |
+| 409 | `duplicate_id` | `POST` with an id that already exists |
+| 409 | `invalid_transition` | The status change is not allowed from the current status |
+| 409 | `has_dependents` | `DELETE` of a task other tasks depend on. `error.dependents` lists them; remove or re-point them first |
+| 409 | `task_in_progress` | `DELETE` of an `IN_PROGRESS` task (reopen it first) |
+| 409 | `no_brain` | The gateway has no project brain, or the project was never initialised |
+| 501 | `brain_read_only` | The gateway's `BrainSource` has no write methods |
+
+In code, `BrainSource` gains the optional methods `createTask`, `updateTask` and `removeTask`
+(core's `ProjectBrainSource` provides them when wrapping a `ProjectBrain`); a source without them
+stays read-only.
+
 `GET /api/brain`
 
 ```json
@@ -237,7 +289,7 @@ With the core `AutonomousRunner` (wired by `pnpm dev` inside an initialised proj
   sets the task back to `PENDING` and returns once the runner is `stopped`.
 
 Progress is streamed on `/api/events` as `runner.status` (every transition, with `taskId` and
-`repairCycle`), `runner.log` (`{ level, message, taskId? }`) and `task.updated`.
+`repairCycle`), `runner.log` (`{ level, message, taskId? }`), `task.updated` and `task.removed`.
 
 ### Runner library API (`@davecode/core`)
 

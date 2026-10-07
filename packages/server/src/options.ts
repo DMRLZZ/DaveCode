@@ -1,4 +1,11 @@
-import type { RunnerStatus, TaskGraph } from '@davecode/core';
+import type {
+  ClearableTaskField,
+  NewTask,
+  RunnerStatus,
+  TaskGraph,
+  TaskNode,
+  TaskPatch,
+} from '@davecode/core';
 
 /** Repository the project brain belongs to. */
 export interface ProjectInfo {
@@ -17,6 +24,18 @@ export interface BrainSource {
   state(): Promise<string>;
   /** `<repo>/.davecode/ARCHITECTURE.md` markdown. */
   architecture(): Promise<string>;
+  /**
+   * Task graph writes (`POST/PATCH/DELETE /api/tasks`). Optional: a source without them is
+   * read-only and the endpoints answer `501 brain_read_only`. Implementations validate the graph
+   * and throw `TaskGraphError` (core's `ProjectBrain` does, under its lock).
+   */
+  createTask?(input: NewTask): Promise<TaskNode>;
+  updateTask?(
+    id: string,
+    patch: TaskPatch,
+    opts?: { clear?: readonly ClearableTaskField[] },
+  ): Promise<TaskNode>;
+  removeTask?(id: string): Promise<TaskNode>;
 }
 
 /**

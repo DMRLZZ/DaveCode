@@ -17,6 +17,7 @@ import {
   runnerStartSchema,
   timeseriesQuerySchema,
 } from '../schemas';
+import { registerTaskRoutes } from './tasks';
 
 const EMPTY_GRAPH: TaskGraph = { version: 1, tasks: [] };
 const IDLE: RunnerStatus = { state: 'idle' };
@@ -171,6 +172,8 @@ export function registerApiRoutes(
     if (!brain) return { project: null, graph: EMPTY_GRAPH };
     return { project: brain.project(), graph: await brain.graph() };
   });
+
+  registerTaskRoutes(app, engine, options);
 
   app.get('/api/brain', async () => {
     const { brain } = options;

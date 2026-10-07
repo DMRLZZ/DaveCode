@@ -7,8 +7,9 @@ export function sendApiError(
   status: number,
   code: string,
   message: string,
+  extra: Record<string, unknown> = {},
 ): FastifyReply {
-  return reply.code(status).send({ error: { message, code } });
+  return reply.code(status).send({ error: { message, code, ...extra } });
 }
 
 /** OpenAI-compatible error body used on `/v1/*` (also inside SSE error frames). */

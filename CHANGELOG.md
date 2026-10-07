@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Task graph editing: `POST /api/tasks`, `PATCH /api/tasks/:id` and `DELETE /api/tasks/:id`
+  through `ProjectBrain` (lock, validation, cycle paths in the `cycle` error, status
+  transitions, `has_dependents` refusal), the `task.removed` event, optional write methods on
+  `BrainSource` (`501 brain_read_only` without them) and `ProjectBrain.createTask/removeTask`.
 - Targeted runs: `runOnce({ taskId })` and `start({ taskId })` on the autonomous runner,
   `davecode run --task <id>` (replacing the "can only confirm the runner's pick" check) and an
   optional `{ "taskId" }` body on `POST /api/runner/start`. A task that cannot run is refused with
