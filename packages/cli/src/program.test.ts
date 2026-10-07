@@ -26,6 +26,12 @@ describe('global flags', () => {
     expect(res.stdout).toMatch(/^davecode \d+\.\d+\.\d+/);
   });
 
+  it('refuses to open the chat TUI without a terminal', async () => {
+    const res = await cli(['chat'], { home: home.path });
+    expect(res.code).toBe(1);
+    expect(res.stderr).toContain('interactive terminal');
+  });
+
   it('rejects unknown options with a usage error', async () => {
     const res = await cli(['--definitely-not-a-flag'], { home: home.path });
     expect(res.code).not.toBe(0);

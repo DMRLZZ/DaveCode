@@ -43,7 +43,7 @@ export interface StatusReport {
   accounts: AccountRow[];
 }
 
-function emptyUsage(accountId: string): AccountUsage {
+export function emptyUsage(accountId: string): AccountUsage {
   const windows = Object.fromEntries(
     QUOTA_WINDOWS.map((w) => [w, { window: w, tokens: 0, requests: 0, utilization: 0 }]),
   ) as Record<QuotaWindow, WindowUsage>;

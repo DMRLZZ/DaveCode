@@ -70,6 +70,10 @@ Docs: https://github.com/DMRLZZ/DaveCode#readme`,
         ctx.out(`davecode ${VERSION}`);
         return EXIT.ok;
       }
+      if (ctx.interactive) {
+        const { chatCommand } = await import('./commands/chat');
+        return chatCommand(ctx, {});
+      }
       program.outputHelp();
       return EXIT.ok;
     }),
@@ -137,6 +141,18 @@ function registerCommands(program: Command, run: Runner): void {
       run(async (ctx) => {
         const { statusCommand } = await import('./commands/status');
         return statusCommand(ctx);
+      }),
+    );
+
+  program
+    .command('chat')
+    .description('chat TUI (also what bare `davecode` opens in a terminal)')
+    .option('-m, --model <id>', 'model or route, e.g. davecode/auto or anthropic/claude-sonnet-5-5')
+    .option('--project <dir>', 'repository whose brain an in-process gateway serves')
+    .action(
+      run(async (ctx, opts: { model?: string; project?: string }) => {
+        const { chatCommand } = await import('./commands/chat');
+        return chatCommand(ctx, opts);
       }),
     );
 
