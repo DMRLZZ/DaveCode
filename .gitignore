@@ -35,3 +35,6 @@ pnpm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# packed npm tarballs
+*.tgz

@@ -29,18 +29,30 @@ importers:
 
   packages/cli:
     dependencies:
-      '@davecode/core':
-        specifier: workspace:*
-        version: link:../core
-      '@davecode/server':
-        specifier: workspace:*
-        version: link:../server
+      '@fastify/cors':
+        specifier: ^11.3.0
+        version: 11.3.0
+      '@fastify/static':
+        specifier: ^10.1.5
+        version: 10.1.5
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
       commander:
         specifier: ^15.0.0
         version: 15.0.0
+      fastify:
+        specifier: ^5.12.5
+        version: 5.12.5
       ink:
         specifier: ^8.0.0
         version: 8.0.0(@types/react@19.3.0)(react@19.3.0)
+      js-tiktoken:
+        specifier: ^1.0.21
+        version: 1.0.21
+      playwright-core:
+        specifier: '>=1.50.0'
+        version: 1.63.0
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -48,6 +60,15 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
     devDependencies:
+      '@davecode/core':
+        specifier: workspace:*
+        version: link:../core
+      '@davecode/server':
+        specifier: workspace:*
+        version: link:../server
+      '@davecode/ui':
+        specifier: workspace:*
+        version: link:../ui
       '@types/react':
         specifier: ^19.3.0
         version: 19.3.0
