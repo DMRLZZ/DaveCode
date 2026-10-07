@@ -1,6 +1,6 @@
 {
   "name": "@davecode/server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "DaveCode local gateway: OpenAI-compatible proxy on :4040, dashboard REST API and SSE event stream.",
   "license": "MIT",

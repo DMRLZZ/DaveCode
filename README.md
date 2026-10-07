@@ -68,8 +68,8 @@ Read the full design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the HTT
 
 ## Quick start
 
-> Requires **Node.js 22.12+** and **pnpm 10+**. Published npm packages arrive with `v0.1.0`; until
-> then, run from source.
+> Requires **Node.js 22.12+** and **pnpm 10+**. A standalone npm package is on the
+> [roadmap](#roadmap); for now, run from source.
 
 ```bash
 git clone https://github.com/DMRLZZ/DaveCode.git
@@ -235,13 +235,17 @@ docs/         architecture, API contract, original spec
 ## Roadmap
 
 - [x] **Foundation:** monorepo, shared contracts, config schema, CI
-- [ ] **Phase 1, gateway & identity:** SQLite storage, encrypted keyring, sandbox manager,
+- [x] **Phase 1, gateway & identity:** SQLite storage, encrypted keyring, sandbox manager,
   OpenAI-compatible gateway
-- [ ] **Phase 2, quotas & router:** sliding windows, provider adapters, hot failover
-- [ ] **Phase 3, dual brain:** global/project brain, task graph DAG with cycle detection
-- [ ] **Phase 4, autonomous loop:** runner state machine, validator, repair cycles, git flow, judge
-- [ ] **Phase 5, interfaces:** web dashboard, CLI and TUI
-- [ ] **v0.1.0:** npm release
+- [x] **Phase 2, quotas & router:** sliding windows, provider adapters, hot failover
+- [x] **Phase 3, dual brain:** global/project brain, task graph DAG with cycle detection
+- [x] **Phase 4, autonomous loop:** runner state machine, validator, repair cycles, git flow, judge
+- [x] **Phase 5, interfaces:** web dashboard, CLI and TUI
+- [x] **v0.1.0:** first tagged release (run from source)
+- [ ] Standalone `davecode` package on npm (`npx davecode`)
+- [ ] Verified Codex CLI event format and more provider live tests
+- [ ] Editing routes and the task graph from the dashboard
+- [ ] Targeting a specific task with `davecode run --task <id>`
 
 ## Contributing
 
