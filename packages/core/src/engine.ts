@@ -1,6 +1,12 @@
 import { mkdirSync } from 'node:fs';
 import { loadConfig } from './config/loader';
 import type { DaveConfig, DaveConfigInput } from './config/schema';
+import {
+  projectOverridesRouting,
+  type RoutingUpdate,
+  type RoutingUpdateResult,
+  writeGlobalRouting,
+} from './config/writer';
 import { EventBus } from './events';
 import { ChromiumProfileManager } from './identity/chromium';
 import { Keyring } from './identity/keyring';
@@ -53,6 +59,14 @@ export interface Engine {
   tracker: UsageTracker;
   router: Router;
   providers: Map<ProviderKind, Provider>;
+  /**
+   * Replaces the route list (and optionally the default route): persists it to the **global**
+   * `config.json` (other keys preserved, atomic write) and updates `config.routing` in place,
+   * so the router, which reads `config.routing` on every request, uses it immediately.
+   */
+  updateRouting(
+    update: RoutingUpdate,
+  ): Promise<RoutingUpdateResult & { shadowedByProject: boolean }>;
   /** Close the database. Safe to call more than once. */
   close(): void;
 }
@@ -123,6 +137,15 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       tracker,
       router,
       providers,
+      async updateRouting(update) {
+        const result = await writeGlobalRouting(home, update);
+        config.routing.routes = result.routes;
+        if (update.defaultRoute !== undefined) config.routing.defaultRoute = update.defaultRoute;
+        const shadowedByProject = options.projectRoot
+          ? await projectOverridesRouting(options.projectRoot)
+          : false;
+        return { ...result, shadowedByProject };
+      },
       close() {
         if (closed) return;
         closed = true;

@@ -51,7 +51,19 @@ export {
   type ProjectBrainOptions,
   type ProjectBrainSnapshot,
 } from './brain/project';
-export { configSchema, type DaveConfig, type DaveConfigInput } from './config/schema';
+export {
+  configSchema,
+  type DaveConfig,
+  type DaveConfigInput,
+  routeSchema,
+  routeTargetSchema,
+} from './config/schema';
+export {
+  projectOverridesRouting,
+  type RoutingUpdate,
+  type RoutingUpdateResult,
+  writeGlobalRouting,
+} from './config/writer';
 export {
   errorKindFromStatus,
   isFailoverEligible,

@@ -10,16 +10,16 @@ const providerKind = z.enum([
   'gemini-web',
 ]);
 
-const routeTarget = z.object({
+export const routeTargetSchema = z.object({
   provider: providerKind,
   model: z.string().min(1),
   accountId: z.string().optional(),
 });
 
-const route = z.object({
+export const routeSchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'route names are lowercase kebab-case'),
   description: z.string().optional(),
-  targets: z.array(routeTarget).min(1),
+  targets: z.array(routeTargetSchema).min(1),
 });
 
 /**
@@ -42,7 +42,7 @@ export const configSchema = z.object({
     .object({
       /** Route used when a client asks for `davecode/auto` or an unknown alias. */
       defaultRoute: z.string().default('auto'),
-      routes: z.array(route).default([]),
+      routes: z.array(routeSchema).default([]),
       /** Start smoothing traffic away from an account above this utilization (spec: 85%). */
       backpressureThreshold: z.number().min(0).max(1).default(0.85),
       /** Shift weight to alternate accounts above this 5h-quota utilization (spec: 90%). */
