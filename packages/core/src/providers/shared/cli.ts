@@ -1,4 +1,4 @@
-/** Child-process helpers shared by the `claude-cli` and `codex-cli` adapters. */
+/** Child-process helpers shared by the `claude-cli`, `codex-cli` and `gemini-cli` adapters. */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, statSync } from 'node:fs';
 import path from 'node:path';
@@ -272,7 +272,7 @@ export function classifyCliText(
     return { kind: 'rate_limit', retryAfterMs: parseResetMs(text, now) };
   }
   if (
-    /not logged in|please run \/login|\/login|codex login|invalid api key|unauthori[sz]ed|authentication|oauth token|token (has )?expired|login required|sign in|\b401\b/i.test(
+    /not logged in|please run \/login|\/login|codex login|auth method|invalid api key|unauthori[sz]ed|authentication|oauth token|token (has )?expired|login required|sign in|\b401\b/i.test(
       text,
     )
   ) {

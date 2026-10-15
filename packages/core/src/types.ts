@@ -110,6 +110,8 @@ export type ProviderKind =
   | 'claude-cli'
   /** Local Codex CLI, isolated per account via CODEX_HOME. */
   | 'codex-cli'
+  /** Local Gemini CLI ("Login with Google"), isolated per account via GEMINI_CLI_HOME. */
+  | 'gemini-cli'
   /** EXPERIMENTAL, opt-in: Gemini web session driven through a Chromium profile. */
   | 'gemini-web';
 
@@ -126,6 +128,7 @@ export const EXPERIMENTAL_PROVIDER_KINDS: readonly ProviderKind[] = ['gemini-web
 export const SUBSCRIPTION_PROVIDER_KINDS: readonly ProviderKind[] = [
   'claude-cli',
   'codex-cli',
+  'gemini-cli',
   'gemini-web',
 ];
 

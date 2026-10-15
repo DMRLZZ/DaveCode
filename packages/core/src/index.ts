@@ -93,9 +93,11 @@ export {
   CodexCliProvider,
   type CreateProvidersOptions,
   createProviders,
+  GeminiCliProvider,
   GeminiProvider,
   type GeminiWebDriver,
   GeminiWebProvider,
+  geminiCliEnv,
   OpenAICompatibleProvider,
   OpenAIProvider,
   type OpenAIProviderOptions,
@@ -123,7 +125,13 @@ export {
   ExperimentalDisabledError,
 } from './identity/chromium';
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
-export { accountDir, SandboxManager } from './identity/sandbox';
+export {
+  accountDir,
+  GEMINI_CLI_SETTINGS,
+  geminiHomeEnv,
+  SandboxManager,
+  seedGeminiHome,
+} from './identity/sandbox';
 export {
   limitsFromHeaders,
   ReportedLimitsStore,

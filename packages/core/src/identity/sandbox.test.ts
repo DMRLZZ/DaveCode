@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { accountDir, SandboxManager } from './sandbox';
+import { accountDir, GEMINI_CLI_SETTINGS, SandboxManager } from './sandbox';
 
 let root: string;
 
@@ -37,8 +37,23 @@ describe('SandboxManager', () => {
     expect(sandboxes.envFor({ id: 'acc_2', provider: 'codex-cli' })).toEqual({
       CODEX_HOME: join(root, 'acc_2'),
     });
+    const gemini = join(root, 'acc_5');
+    expect(sandboxes.envFor({ id: 'acc_5', provider: 'gemini-cli' })).toEqual({
+      GEMINI_CLI_HOME: gemini,
+      HOME: gemini,
+      USERPROFILE: gemini,
+    });
     expect(sandboxes.envFor({ id: 'acc_3', provider: 'openai' })).toEqual({});
     expect(sandboxes.envFor({ id: 'acc_4', provider: 'gemini-web' })).toEqual({});
+  });
+
+  it('seeds Gemini CLI settings on prepare, only for gemini-cli accounts', () => {
+    const sandboxes = new SandboxManager(root);
+    const dir = sandboxes.prepare({ id: 'acc_g', provider: 'gemini-cli' });
+    const settings = join(dir, '.gemini', 'settings.json');
+    expect(JSON.parse(readFileSync(settings, 'utf8'))).toEqual(GEMINI_CLI_SETTINGS);
+    const other = sandboxes.prepare({ id: 'acc_c', provider: 'claude-cli' });
+    expect(existsSync(join(other, '.gemini'))).toBe(false);
   });
 
   it.each([

@@ -65,6 +65,7 @@ function harness(options: HarnessOptions = {}) {
     'openai-compatible',
     'claude-cli',
     'codex-cli',
+    'gemini-cli',
     'gemini-web',
   ] as const) {
     const fake = new FakeProvider(kind, [`${kind}-listed-model`]);

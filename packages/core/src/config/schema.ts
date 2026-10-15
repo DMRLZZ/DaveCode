@@ -7,6 +7,7 @@ const providerKind = z.enum([
   'openai-compatible',
   'claude-cli',
   'codex-cli',
+  'gemini-cli',
   'gemini-web',
 ]);
 

@@ -26,6 +26,7 @@ export type ProviderKind =
   | 'openai-compatible'
   | 'claude-cli'
   | 'codex-cli'
+  | 'gemini-cli'
   | 'gemini-web';
 
 export const EXPERIMENTAL_PROVIDER_KINDS: readonly ProviderKind[] = ['gemini-web'];
@@ -33,6 +34,7 @@ export const EXPERIMENTAL_PROVIDER_KINDS: readonly ProviderKind[] = ['gemini-web
 export const SUBSCRIPTION_PROVIDER_KINDS: readonly ProviderKind[] = [
   'claude-cli',
   'codex-cli',
+  'gemini-cli',
   'gemini-web',
 ];
 

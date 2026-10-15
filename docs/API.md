@@ -140,6 +140,12 @@ with `400 invalid_body`; send credentials in `secret`. `AccountCreate` also acce
 `PATCH` with `enabled: false` sets `status: "disabled"`. `enabled: true` or a new `secret`
 resets an enabled account to `active` and clears `cooldownUntil` and `lastError`.
 
+`ProviderKind` is one of `anthropic`, `openai`, `gemini`, `openai-compatible` (API keys),
+`claude-cli`, `codex-cli`, `gemini-cli` (subscription logins held by the vendor's own CLI inside
+the account's sandbox: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`) and the
+experimental `gemini-web`. `gemini-cli` runs the official Gemini CLI with "Login with Google";
+a fresh sandbox is seeded with `.gemini/settings.json` selecting `oauth-personal`.
+
 #### Subscription & budget contracts
 
 `Account.subscription?: SubscriptionInfo` records what the user pays for the account. It is
