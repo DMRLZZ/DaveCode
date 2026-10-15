@@ -1,4 +1,4 @@
-import { type Account, globalPaths, SandboxManager } from '@davecode/core';
+import { type Account, globalPaths, SandboxManager, type SubscriptionInfo } from '@davecode/core';
 import { type CliContext, printJson } from '../context';
 import { CliError, EXIT } from '../errors';
 import {
@@ -293,6 +293,90 @@ export async function accountsSetEnabled(
     else {
       ctx.out(
         `${ctx.theme.ok(ctx.theme.glyph.ok)} ${updated.label} is now ${enabled ? 'enabled' : 'disabled'} ${ctx.theme.dim(`(${updated.status})`)}`,
+      );
+    }
+    return EXIT.ok;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// plan (subscription details)
+// ---------------------------------------------------------------------------
+
+export interface PlanFlags extends BackendFlags {
+  plan?: string;
+  paid?: string;
+  renews?: string;
+  price?: string;
+  currency?: string;
+  period?: string;
+  notes?: string;
+  clear?: boolean;
+}
+
+export function describeSubscription(subscription: SubscriptionInfo | undefined): string {
+  if (!subscription) return 'no plan recorded';
+  const parts: string[] = [];
+  if (subscription.plan) parts.push(subscription.plan);
+  if (subscription.price) {
+    const { amount, currency, period } = subscription.price;
+    parts.push(`${amount} ${currency}/${period}`);
+  }
+  if (subscription.paidAt) parts.push(`paid ${subscription.paidAt}`);
+  if (subscription.renewsAt) parts.push(`renews ${subscription.renewsAt}`);
+  if (subscription.notes) parts.push(subscription.notes);
+  return parts.length > 0 ? parts.join(' · ') : 'no plan recorded';
+}
+
+/** Merge plan flags into the existing subscription details (validated by the backend). */
+export function subscriptionFromFlags(
+  existing: SubscriptionInfo | undefined,
+  flags: PlanFlags,
+): SubscriptionInfo {
+  const next: SubscriptionInfo = { ...existing };
+  if (flags.plan !== undefined) next.plan = flags.plan;
+  if (flags.paid !== undefined) next.paidAt = flags.paid;
+  if (flags.renews !== undefined) next.renewsAt = flags.renews;
+  if (flags.notes !== undefined) next.notes = flags.notes;
+  if (flags.price !== undefined || flags.currency !== undefined || flags.period !== undefined) {
+    const amount = flags.price !== undefined ? Number(flags.price) : existing?.price?.amount;
+    if (amount === undefined || !Number.isFinite(amount)) {
+      throw new CliError('--price needs a number, e.g. --price 20', {
+        hint: 'Set the amount with --price, and optionally --currency USD --period month.',
+      });
+    }
+    const period = flags.period ?? existing?.price?.period ?? 'month';
+    if (period !== 'month' && period !== 'year') {
+      throw new CliError('--period must be "month" or "year"');
+    }
+    next.price = { amount, currency: flags.currency ?? existing?.price?.currency ?? 'USD', period };
+  }
+  return next;
+}
+
+export async function accountsPlan(
+  ctx: CliContext,
+  ref: string,
+  flags: PlanFlags = {},
+  deps: AccountsDeps = {},
+): Promise<number> {
+  return withBackend(ctx, flags, deps, async (backend) => {
+    const account = await resolveAccount(backend, ref);
+    const { theme } = ctx;
+    const changes = ['plan', 'paid', 'renews', 'price', 'currency', 'period', 'notes'] as const;
+    const editing = flags.clear || changes.some((key) => flags[key] !== undefined);
+    if (!editing) {
+      if (ctx.json)
+        printJson(ctx, { account: account.id, subscription: account.subscription ?? null });
+      else ctx.out(`${theme.bold(account.label)}: ${describeSubscription(account.subscription)}`);
+      return EXIT.ok;
+    }
+    const subscription = flags.clear ? null : subscriptionFromFlags(account.subscription, flags);
+    const updated = await backend.update(account.id, { subscription });
+    if (ctx.json) printJson(ctx, { account: updated });
+    else {
+      ctx.out(
+        `${theme.ok(theme.glyph.ok)} ${updated.label}: ${describeSubscription(updated.subscription)}`,
       );
     }
     return EXIT.ok;

@@ -160,6 +160,18 @@ function registerCommands(program: Command, run: Runner): void {
   registerProject(program, run);
 
   program
+    .command('budget')
+    .description('plans, renewals and remaining quota per account (what agents are told)')
+    .option('--context', 'print only the summary injected into agent prompts')
+    .option('--local', 'read the local database even if a gateway is running')
+    .action(
+      run(async (ctx, opts: import('./commands/budget').BudgetFlags) => {
+        const { budgetCommand } = await import('./commands/budget');
+        return budgetCommand(ctx, opts);
+      }),
+    );
+
+  program
     .command('doctor')
     .description('check the environment and print fixes')
     .action(
@@ -458,6 +470,31 @@ function registerAccounts(program: Command, run: Runner): void {
         }),
       );
   }
+
+  accounts
+    .command('plan <id>')
+    .description('show or set what you pay for an account (plan, price, paid/renewal dates)')
+    .option('--plan <name>', 'plan name, e.g. "Claude Pro" or "API pay-as-you-go"')
+    .option('--price <amount>', 'price per period, e.g. 20')
+    .option('--currency <code>', '3-letter currency code (default USD)')
+    .option('--period <period>', 'month | year (default month)')
+    .option('--paid <date>', 'last payment date (YYYY-MM-DD)')
+    .option('--renews <date>', 'next renewal date (YYYY-MM-DD)')
+    .option('--notes <text>', 'free-form note')
+    .option('--clear', 'remove the recorded plan')
+    .option('--local', 'write to the local database even if a gateway is running')
+    .addHelpText(
+      'after',
+      `
+Entered by hand: DaveCode never reads billing pages. Example:
+  davecode accounts plan acc_123 --plan "Claude Pro" --price 20 --renews 2026-11-01`,
+    )
+    .action(
+      run(async (ctx, id: string, opts: import('./commands/accounts').PlanFlags) => {
+        const { accountsPlan } = await import('./commands/accounts');
+        return accountsPlan(ctx, id, opts);
+      }),
+    );
 
   accounts
     .command('login <id> [args...]')
