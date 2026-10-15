@@ -124,6 +124,12 @@ export {
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
 export { accountDir, SandboxManager } from './identity/sandbox';
 export {
+  limitsFromHeaders,
+  ReportedLimitsStore,
+  type ReportedLimitsStoreOptions,
+  reportedFraction,
+} from './rate-limiter/reported';
+export {
   approximateTokens,
   countTextTokens,
   estimateTokens,

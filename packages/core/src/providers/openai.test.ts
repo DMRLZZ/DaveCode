@@ -57,6 +57,26 @@ describe('OpenAIProvider', () => {
     expect(res.usage).toEqual({ prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 });
   });
 
+  it('reports rate-limit headers from successful responses', async () => {
+    stubFetch(() =>
+      jsonResponse(completion, 200, {
+        'x-ratelimit-remaining-tokens': '250',
+        'x-ratelimit-limit-tokens': '1000',
+        'x-ratelimit-reset-tokens': '30s',
+      }),
+    );
+    const reports: unknown[] = [];
+    const ctx = { ...makeCtx('openai'), reportLimits: (l: unknown) => reports.push(l) };
+    await provider.complete(req, ctx);
+    expect(reports).toEqual([
+      expect.objectContaining({
+        tokensRemaining: 250,
+        tokensLimit: 1000,
+        resetAt: expect.any(String),
+      }),
+    ]);
+  });
+
   it('always returns usage, defaulting to zeros', async () => {
     stubFetch(() => jsonResponse({ ...completion, usage: undefined }));
     const res = await provider.complete(req, makeCtx('openai'));

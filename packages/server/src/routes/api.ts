@@ -96,6 +96,7 @@ export function registerApiRoutes(
       patch.cooldownUntil = null;
       patch.lastError = null;
       engine.router.breaker.reset(existing.id);
+      engine.reported.forget(existing.id);
     }
     const account = engine.db.transaction(() => {
       // Store the secret first so the re-read account reports hasSecret correctly.
@@ -124,6 +125,7 @@ export function registerApiRoutes(
       }
     }
     quota.forget(id);
+    engine.reported.forget(id);
     engine.router.breaker.reset(id);
     audit.record({ actor: 'api', action: 'account.delete', target: id });
     events.emit({ type: 'account.removed', accountId: id });

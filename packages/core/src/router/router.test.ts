@@ -9,6 +9,7 @@ import { type DaveEvent, EventBus } from '../events';
 import { ChromiumProfileManager } from '../identity/chromium';
 import { Keyring } from '../identity/keyring';
 import { SandboxManager } from '../identity/sandbox';
+import { ReportedLimitsStore } from '../rate-limiter/reported';
 import { estimateTokens } from '../rate-limiter/tokens';
 import { UsageTracker } from '../rate-limiter/tracker';
 import { QuotaEngine } from '../rate-limiter/window';
@@ -54,6 +55,7 @@ function harness(options: HarnessOptions = {}) {
     experimentalEnabled: config.experimental.geminiWeb,
   });
   const keyring = new Keyring(db, { key: randomBytes(32) });
+  const reported = new ReportedLimitsStore({ clock });
   const fakes = new Map<ProviderKind, FakeProvider>();
   const providers = new Map<ProviderKind, FakeProvider>();
   for (const kind of [
@@ -82,11 +84,13 @@ function harness(options: HarnessOptions = {}) {
     clock,
     random: options.random ?? (() => 0.5),
     breaker: options.breaker,
+    reported,
   });
   const seen: DaveEvent[] = [];
   events.subscribe((e) => seen.push(e));
   return {
     router,
+    reported,
     accounts,
     usage,
     quota,
@@ -652,6 +656,60 @@ describe('Router.stream', () => {
     const { chunks } = await h.router.stream(chat('openai/gpt-x'));
     expect(await collect(chunks)).toBe('');
     expect(h.usage.recent()).toMatchObject([{ status: 'success' }]);
+  });
+});
+
+describe('provider-reported limits', () => {
+  it('skips an account the provider reported exhausted until its reset', async () => {
+    const h = harness();
+    const a = h.add({ provider: 'openai', label: 'a', priority: 1 });
+    const b = h.add({ provider: 'openai', label: 'b', priority: 2 });
+    const resetAt = new Date(h.now() + 60_000).toISOString();
+    h.fake('openai').script(a.id, {
+      type: 'complete',
+      limits: { tokensRemaining: 0, tokensLimit: 1000, resetAt, exhausted: true },
+    });
+    await h.router.complete(chat('openai/gpt-x'));
+    expect(h.reported.get(a.id)).toMatchObject({ source: 'headers', exhausted: true });
+    expect(h.router.unavailableReason(h.accounts.get(a.id)!)).toBe('quota');
+
+    const { meta } = await h.router.complete(chat('openai/gpt-x'));
+    expect(meta.accountId).toBe(b.id);
+    h.advance(61_000);
+    expect((await h.router.complete(chat('openai/gpt-x'))).meta.accountId).toBe(a.id);
+  });
+
+  it('marks quota_exhausted errors until the reset and forgets them after a success', async () => {
+    const h = harness();
+    const a = h.add({ provider: 'claude-cli', label: 'a' });
+    h.fake('claude-cli').script(a.id, {
+      type: 'error',
+      error: providerError('quota_exhausted', { retryAfterMs: 3_600_000 }),
+    });
+    await expect(h.router.complete(chat('claude-cli/sonnet'))).rejects.toBeInstanceOf(RouterError);
+    expect(h.reported.get(a.id)).toMatchObject({
+      source: 'error',
+      exhausted: true,
+      resetAt: new Date(h.now() + 3_600_000).toISOString(),
+    });
+    expect(h.router.plan(chat('claude-cli/sonnet')).skipped).toContainEqual({
+      accountId: a.id,
+      model: 'sonnet',
+      reason: expect.stringMatching(/cooldown|quota/),
+    });
+  });
+
+  it('weights accounts by the share the provider says is left', () => {
+    const h = harness();
+    const a = h.add({ provider: 'openai', label: 'a' });
+    const b = h.add({ provider: 'openai', label: 'b' });
+    h.reported.report(a.id, { tokensRemaining: 100, tokensLimit: 1000 }, 'headers');
+    h.reported.report(b.id, { requestsRemaining: 90, requestsLimit: 100 }, 'headers');
+    const { candidates } = h.router.plan(chat('openai/gpt-x'));
+    expect(candidates.map((c) => [c.account.id, c.effectiveWeight])).toEqual([
+      [b.id, 0.9],
+      [a.id, 0.1],
+    ]);
   });
 });
 

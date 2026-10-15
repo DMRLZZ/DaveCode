@@ -13,6 +13,7 @@ import { Keyring } from './identity/keyring';
 import { SandboxManager } from './identity/sandbox';
 import { davecodeHome, type GlobalPaths, globalPaths } from './paths';
 import { createProviders } from './providers/registry';
+import { ReportedLimitsStore } from './rate-limiter/reported';
 import { UsageTracker } from './rate-limiter/tracker';
 import { type Clock, QuotaEngine } from './rate-limiter/window';
 import { Router } from './router/router';
@@ -57,6 +58,8 @@ export interface Engine {
   chromium: ChromiumProfileManager;
   quota: QuotaEngine;
   tracker: UsageTracker;
+  /** Rate-limit state the providers reported (headers, limit errors), in memory. */
+  reported: ReportedLimitsStore;
   router: Router;
   providers: Map<ProviderKind, Provider>;
   /**
@@ -105,6 +108,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       getAccount: (id) => accounts.get(id),
     });
     tracker.hydrate();
+    const reported = new ReportedLimitsStore({ clock });
     const providers = options.providers ?? createProviders();
     const router = new Router({
       config,
@@ -117,6 +121,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       chromium,
       keyring,
       clock,
+      reported,
     });
 
     let closed = false;
@@ -135,6 +140,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       chromium,
       quota,
       tracker,
+      reported,
       router,
       providers,
       async updateRouting(update) {
