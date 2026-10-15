@@ -117,8 +117,8 @@ upstream errors are forwarded as a final error chunk.
 for a `cli-login` account (`claude auth login`, `codex login`, Gemini CLI's "Login with Google")
 via `davecode accounts login <id>`, isolated in the account sandbox. DaveCode never sees or
 stores the password or the resulting tokens; they stay in the vendor CLI's own store inside the
-sandbox. When the gateway was started with a `loginLauncher` (the CLI's `davecode serve` injects
-one when bound to loopback), it opens a terminal window on the gateway machine and answers
+sandbox. When the gateway was started with a `loginLauncher` (`davecode start` injects one when
+bound to a loopback address), it opens a terminal window on the gateway machine and answers
 `launched: true`; otherwise `launched: false` and `command` tells the user what to run. Poll
 `GET …/connection` to see when the login lands. Errors: `415 json_required` without
 `Content-Type: application/json` (blocks cross-site form posts), `400 not_cli_login` for API-key
@@ -487,6 +487,35 @@ Runner configuration (`runner.*`, all optional):
 | `validate.lint` / `typecheck` / `test` | unset | Quality-gate commands (split into argv, run without a shell) |
 | `judge.kind` | `none` | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |
 | `judge.model` / `baseUrl` / `threshold` | `typesafe/jev-1.13` or `runner.route` / `https://openrouter.ai/api/alpha` / `0.7` | Judge model, Decisions API base URL, minimum confidence |
+
+### Goals
+
+| Method | Path | Body | Response |
+| :----- | :--- | :--- | :------- |
+| `GET` | `/api/goals` | — | `{ "goals": Goal[] }` |
+| `GET` | `/api/goals/:id` | — | `{ "goal": Goal }` |
+| `POST` | `/api/goals` | `GoalStartInput` | `202 { "goal": Goal }` |
+| `POST` | `/api/goals/:id/cancel` | — | `{ "goal": Goal }` (once it has stopped) |
+
+```ts
+interface GoalStartInput {
+  objective: string;   // 1–4000 chars
+  maxRounds?: number;  // 1–20, overrides goal.maxRounds
+  maxTasks?: number;   // 1–100
+  maxTokens?: number;  // ≥ 1000
+  dryRun?: boolean;    // plan only: no task is executed
+}
+```
+
+`POST /api/goals` persists the goal and starts it in the background; follow it with
+`goal.updated` / `goal.log` events or by polling `GET /api/goals/:id`. One goal runs at a time,
+and a non-dry-run goal takes the same workspace lock as the autonomous runner, so a busy
+repository answers `409 busy`. Other errors: `404 not_found`, `400 invalid` / `invalid_body`.
+Without a project brain (gateway started outside an initialised repository) every route returns
+`501 goals_unavailable`. Goals are stored under `<repo>/.davecode/goals/<goal-id>/` (`goal.json`
+plus one markdown artifact per task). Goal mode never acts outside the machine: tasks that ask
+for an outbound action (sending email, posting, payments, sign-ups, deployments) are turned into
+draft artifacts for a human to review and execute.
 
 ### Goal mode contracts
 
