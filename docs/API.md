@@ -199,6 +199,44 @@ interface BudgetSnapshot {
 `ProviderCallContext.reportLimits?(limits)` is how adapters hand reported limits to the router.
 It receives the same fields without `source`/`observedAt`.
 
+#### Connection contracts
+
+Whether an account can authenticate, checked without reading or returning credentials.
+
+```ts
+type ConnectionMethod = 'api-key' | 'cli-login' | 'browser';
+type ConnectionStatus = 'connected' | 'not_connected' | 'unknown';
+
+interface AccountConnection {
+  accountId: string;
+  provider: ProviderKind;
+  method: ConnectionMethod;
+  status: ConnectionStatus;
+  detail?: string;        // explanation or caveat; never credentials or account emails
+  loginCommand?: string;  // `davecode accounts login <id>` (cli-login only)
+  checkedAt: string;      // ISO
+}
+
+interface ConnectResult {
+  connection: AccountConnection;
+  launched: boolean;      // the gateway opened a terminal running the official login
+  command: string;        // what to run by hand otherwise
+  message: string;
+}
+```
+
+How each method is checked (core `ConnectionChecker`, exposed as `engine.connections`):
+
+| Provider | Check |
+| :------- | :---- |
+| API-key kinds | `hasSecret` (keyring). `openai-compatible` without a key counts as connected. |
+| `claude-cli` | `claude auth status --json` (`loggedIn`) with `CLAUDE_CONFIG_DIR` set. When it reports a login but the sandbox holds no `.credentials.json` (outside macOS, where the keychain is used), `detail` warns that it is probably the global Claude Code login and the account is not isolated. |
+| `codex-cli` | exit code of `codex login status` with `CODEX_HOME` set. |
+| `gemini-cli` | presence of `<sandbox>/.gemini/oauth_creds.json` (written by Gemini CLI; never read). |
+| `gemini-web` | `unknown`: checking would mean opening the browser profile. |
+
+Vendor output is parsed for the logged-in flag only and never returned.
+
 ### Usage
 
 `GET /api/usage`

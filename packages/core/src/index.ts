@@ -124,6 +124,20 @@ export {
   ChromiumUnavailableError,
   ExperimentalDisabledError,
 } from './identity/chromium';
+export {
+  CLI_LOGINS,
+  type CliLoginSpec,
+  ConnectionChecker,
+  type ConnectionCheckerOptions,
+  cliBinaryFor,
+  connectionMethod,
+  loginCommandFor,
+  loginEnv,
+  type ProbeCommand,
+  type ProbeResult,
+  type StatusProbe,
+  spawnProbe,
+} from './identity/connect';
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
 export {
   accountDir,

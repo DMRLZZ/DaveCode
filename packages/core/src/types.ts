@@ -308,6 +308,38 @@ export interface BudgetSnapshot {
   context: string;
 }
 
+/**
+ * How an account proves who it is upstream: an API key in the keyring, the vendor CLI's own
+ * login inside the account sandbox, or a browser profile (experimental `gemini-web`).
+ */
+export type ConnectionMethod = 'api-key' | 'cli-login' | 'browser';
+
+export type ConnectionStatus = 'connected' | 'not_connected' | 'unknown';
+
+/** Result of checking an account's credentials without exposing them. */
+export interface AccountConnection {
+  accountId: string;
+  provider: ProviderKind;
+  method: ConnectionMethod;
+  status: ConnectionStatus;
+  /** Plain-language explanation or caveat. Never contains credentials or account emails. */
+  detail?: string;
+  /** Command that runs the vendor's official login for this account (`cli-login` only). */
+  loginCommand?: string;
+  /** ISO timestamp. */
+  checkedAt: string;
+}
+
+/** Outcome of a "Connect subscription" request. */
+export interface ConnectResult {
+  connection: AccountConnection;
+  /** True when the gateway opened a terminal running the official login on its own machine. */
+  launched: boolean;
+  /** What to run by hand when nothing was launched (or the window was closed). */
+  command: string;
+  message: string;
+}
+
 /** `cancelled`: the client aborted (disconnect, Esc in the TUI); never counts against the account. */
 export type UsageStatus = 'success' | 'error' | 'rate_limited' | 'cancelled';
 
