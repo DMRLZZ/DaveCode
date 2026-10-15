@@ -6,6 +6,7 @@ import type {
   AccountUsage,
   ApiErrorBody,
   BrainResponse,
+  BudgetSnapshot,
   DaveEvent,
   Goal,
   GoalStart,
@@ -74,6 +75,8 @@ export interface DaveClient {
   updateAccount(id: string, patch: AccountPatch): Promise<Account>;
   deleteAccount(id: string): Promise<void>;
   usage(): Promise<AccountUsage[]>;
+  /** `GET /api/budget`: plan, renewal and remaining capacity per account. */
+  budget(): Promise<BudgetSnapshot>;
   timeseries(minutes?: number, bucketSec?: number): Promise<TimeseriesBucket[]>;
   requests(limit?: number): Promise<UsageRecord[]>;
   routes(): Promise<RoutesResponse>;
@@ -184,6 +187,7 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
       ).account,
     deleteAccount: (id) => request<void>('DELETE', `/api/accounts/${encodeURIComponent(id)}`),
     usage: async () => (await get<{ usage: AccountUsage[] }>('/api/usage')).usage,
+    budget: async () => (await get<{ budget: BudgetSnapshot }>('/api/budget')).budget,
     timeseries: async (minutes = 60, bucketSec = 60) =>
       (
         await get<{ buckets: TimeseriesBucket[] }>(

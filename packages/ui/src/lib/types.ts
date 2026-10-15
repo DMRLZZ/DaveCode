@@ -362,11 +362,16 @@ export interface AccountCreate {
   weight?: number;
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
+  subscription?: SubscriptionInfo;
   /** Write-only: encrypted at rest, never returned by any endpoint. */
   secret?: string;
 }
 
-export type AccountPatch = Partial<Omit<AccountCreate, 'provider'>> & { enabled?: boolean };
+export type AccountPatch = Partial<Omit<AccountCreate, 'provider' | 'subscription'>> & {
+  enabled?: boolean;
+  /** Replaces the subscription details; `null` clears them. */
+  subscription?: SubscriptionInfo | null;
+};
 
 export interface TimeseriesBucket {
   ts: number;

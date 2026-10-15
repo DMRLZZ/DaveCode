@@ -19,7 +19,11 @@ import {
   limitsToDraft,
   parseLimits,
   parseModels,
+  parseSubscription,
   SecretInput,
+  type SubscriptionDraft,
+  SubscriptionFields,
+  subscriptionToDraft,
 } from './forms';
 
 export function AccountSheet({
@@ -66,6 +70,10 @@ function AccountEditor({
   const [priority, setPriority] = useState(String(account.priority));
   const [weight, setWeight] = useState(String(account.weight));
   const [limits, setLimits] = useState<LimitsDraft>(limitsToDraft(account.limits));
+  const [plan, setPlan] = useState<SubscriptionDraft>(subscriptionToDraft(account.subscription));
+  const [planErrors, setPlanErrors] = useState<Partial<Record<keyof SubscriptionDraft, string>>>(
+    {},
+  );
   const [baseUrl, setBaseUrl] = useState(
     typeof account.config.baseUrl === 'string' ? account.config.baseUrl : '',
   );
@@ -88,9 +96,16 @@ function AccountEditor({
     if (account.provider === 'openai-compatible' && !isValidUrl(baseUrl.trim()))
       next.baseUrl = 'Enter an http(s) URL.';
     const parsed = parseLimits(limits);
+    const parsedPlan = parseSubscription(plan);
     setErrors(next);
     setLimitErrors(parsed.errors);
-    if (Object.values(next).some(Boolean) || Object.keys(parsed.errors).length) return;
+    setPlanErrors(parsedPlan.errors);
+    if (
+      Object.values(next).some(Boolean) ||
+      Object.keys(parsed.errors).length ||
+      Object.keys(parsedPlan.errors).length
+    )
+      return;
 
     const patch: AccountPatch = {};
     if (label.trim() !== account.label) patch.label = label.trim();
@@ -98,6 +113,11 @@ function AccountEditor({
     if (w !== account.weight) patch.weight = w;
     if (JSON.stringify(parsed.limits) !== JSON.stringify(account.limits))
       patch.limits = parsed.limits;
+    if (
+      JSON.stringify(parsedPlan.subscription ?? null) !==
+      JSON.stringify(account.subscription ?? null)
+    )
+      patch.subscription = parsedPlan.subscription ?? null;
     if (account.provider === 'openai-compatible') {
       const list = parseModels(models);
       const config = {
@@ -258,6 +278,15 @@ function AccountEditor({
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-[12px] font-medium text-fg-2">Quota limits</legend>
         <LimitsFields value={limits} onChange={setLimits} errors={limitErrors} />
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 text-[12px] font-medium text-fg-2">Subscription</legend>
+        <p className="mb-1 text-2xs text-muted">
+          What you pay for this account. Entered by hand; DaveCode never reads billing pages. Agents
+          see the plan, renewal and remaining budget, never secrets.
+        </p>
+        <SubscriptionFields value={plan} onChange={setPlan} errors={planErrors} />
       </fieldset>
 
       {Object.keys(account.config).length > 0 && account.provider !== 'openai-compatible' && (

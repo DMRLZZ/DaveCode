@@ -42,6 +42,25 @@ describe('MockEngine', () => {
     expect(chains.some((c) => c.failovers > 0 && c.outcome === 'success')).toBe(true);
   });
 
+  it('serves a budget with plans, renewals and an agent context', async () => {
+    const e = engine();
+    const budget = await e.budget();
+    const claude = budget.accounts.find((b) => b.accountId === 'acc_claude_pro');
+    expect(claude).toMatchObject({ subscription: { plan: 'Claude Pro' }, renewsInDays: 9 });
+    expect(claude?.remaining).toBeLessThan(0.25);
+    const gemini = budget.accounts.find((b) => b.accountId === 'acc_gemini_web');
+    expect(gemini).toMatchObject({ available: false, unavailableReason: 'disabled' });
+    expect(budget.context).toContain('ACCOUNT BUDGET');
+    expect(budget.context).not.toContain('Gemini web');
+
+    const updated = await e.updateAccount('acc_ollama_local', {
+      subscription: { plan: 'Self-hosted' },
+    });
+    expect(updated.subscription).toEqual({ plan: 'Self-hosted' });
+    const cleared = await e.updateAccount('acc_ollama_local', { subscription: null });
+    expect(cleared.subscription).toBeUndefined();
+  });
+
   it('reports quota windows with a hot subscription account', async () => {
     const usage = await engine().usage();
     const claude = usage.find((u) => u.accountId === 'acc_claude_pro');

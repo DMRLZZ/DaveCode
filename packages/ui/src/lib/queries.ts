@@ -44,6 +44,15 @@ export function useUsage() {
   });
 }
 
+export function useBudget() {
+  const { client, sourceKey } = useData();
+  return useQuery({
+    queryKey: qk(sourceKey, 'budget'),
+    queryFn: () => client.budget(),
+    refetchInterval: 30_000,
+  });
+}
+
 export function useTimeseries(minutes = 60, bucketSec = 60) {
   const { client, sourceKey } = useData();
   return useQuery({
@@ -110,6 +119,7 @@ function useAccountsCache() {
     invalidate: () => {
       qc.invalidateQueries({ queryKey: key });
       qc.invalidateQueries({ queryKey: qk(sourceKey, 'usage') });
+      qc.invalidateQueries({ queryKey: qk(sourceKey, 'budget') });
     },
   };
 }
@@ -156,6 +166,7 @@ export function useUpdateAccount() {
       if (ctx?.prev) qc.setQueryData(qk(sourceKey, 'accounts'), ctx.prev);
     },
     onSuccess: (account) => cache.upsert(account),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk(sourceKey, 'budget') }),
   });
 }
 

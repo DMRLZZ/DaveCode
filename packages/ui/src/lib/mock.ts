@@ -1,5 +1,6 @@
 import { ApiError, type DaveClient, type RunnerAction } from './api';
 import type { StreamHandlers } from './events';
+import { buildMockBudget, mockSubscription } from './mock-budget';
 import {
   ACCOUNT_SEEDS,
   MOCK_ARCHITECTURE,
@@ -18,6 +19,7 @@ import type {
   AccountPatch,
   AccountUsage,
   BrainResponse,
+  BudgetSnapshot,
   DaveEvent,
   Goal,
   GoalStart,
@@ -181,8 +183,10 @@ export class MockEngine implements DaveClient {
 
     for (const seed of ACCOUNT_SEEDS) {
       this.seeds.set(seed.account.id, seed);
+      const subscription = mockSubscription(seed.account.id, this.t0);
       this.accounts.push({
         ...seed.account,
+        ...(subscription && { subscription }),
         status: seed.account.status ?? 'active',
         createdAt: new Date(this.t0 - 12 * 86_400_000).toISOString(),
         updatedAt: new Date(this.t0 - 3_600_000).toISOString(),
@@ -244,6 +248,7 @@ export class MockEngine implements DaveClient {
         weight: body.weight ?? 1,
         limits: body.limits ?? {},
         config: body.config ?? {},
+        ...(body.subscription && { subscription: body.subscription }),
         status: 'active',
         createdAt: now,
         updatedAt: now,
@@ -273,6 +278,7 @@ export class MockEngine implements DaveClient {
         ...(patch.weight !== undefined && { weight: patch.weight }),
         ...(patch.limits !== undefined && { limits: patch.limits }),
         ...(patch.config !== undefined && { config: patch.config }),
+        ...(patch.subscription && { subscription: patch.subscription }),
         enabled,
         status: !enabled ? 'disabled' : current.status === 'disabled' ? 'active' : current.status,
         updatedAt: new Date(this.clock()).toISOString(),
@@ -280,6 +286,7 @@ export class MockEngine implements DaveClient {
       if (!enabled) {
         delete next.cooldownUntil;
       }
+      if (patch.subscription === null) delete next.subscription;
       this.replaceAccount(next);
       return next;
     });
@@ -296,6 +303,13 @@ export class MockEngine implements DaveClient {
 
   usage(): Promise<AccountUsage[]> {
     return this.respond(() => this.accounts.map((a) => this.accountUsage(a, this.clock())));
+  }
+
+  budget(): Promise<BudgetSnapshot> {
+    return this.respond(() => {
+      const now = this.clock();
+      return buildMockBudget(this.accounts, (a) => this.accountUsage(a, now), now);
+    });
   }
 
   timeseries(minutes = 60, bucketSec = 60): Promise<TimeseriesBucket[]> {
