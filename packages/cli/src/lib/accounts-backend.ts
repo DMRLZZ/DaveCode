@@ -1,5 +1,6 @@
 import {
   type Account,
+  type AccountConnection,
   type AccountUpdateInput,
   type BudgetSnapshot,
   createEngine,
@@ -46,6 +47,8 @@ export interface AccountsBackend {
   remove(id: string): Promise<void>;
   /** Subscription details and remaining capacity per account. */
   budget(): Promise<BudgetSnapshot>;
+  /** Whether the account's API key or vendor CLI login is in place. */
+  connection(id: string): Promise<AccountConnection>;
   close(): void;
 }
 
@@ -135,6 +138,12 @@ export class LocalAccounts implements AccountsBackend {
     return this.engine.budget.snapshot();
   }
 
+  async connection(id: string): Promise<AccountConnection> {
+    const account = this.engine.accounts.get(id);
+    if (!account) throw notFound(id);
+    return this.engine.connections.check(account);
+  }
+
   close(): void {
     this.engine.close();
   }
@@ -175,6 +184,14 @@ export class GatewayAccounts implements AccountsBackend {
 
   async budget(): Promise<BudgetSnapshot> {
     return (await this.client.get<{ budget: BudgetSnapshot }>('/api/budget')).budget;
+  }
+
+  async connection(id: string): Promise<AccountConnection> {
+    return (
+      await this.client.get<{ connection: AccountConnection }>(
+        `/api/accounts/${encodeURIComponent(id)}/connection`,
+      )
+    ).connection;
   }
 
   close(): void {}

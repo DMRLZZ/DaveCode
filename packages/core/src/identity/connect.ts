@@ -79,7 +79,8 @@ export function cliBinaryFor(account: Pick<Account, 'provider' | 'config'>): str
 export interface ProbeCommand {
   command: string;
   args: string[];
-  env: Record<string, string>;
+  /** Complete environment of the child (also used to resolve `command` on PATH). */
+  env: NodeJS.ProcessEnv;
   cwd: string;
   timeoutMs: number;
 }
@@ -100,7 +101,7 @@ const MAX_OUTPUT = 64 * 1024;
 
 export const spawnProbe: StatusProbe = (cmd) =>
   new Promise((resolve) => {
-    const resolved = resolveOnPath(cmd.command);
+    const resolved = resolveOnPath(cmd.command, cmd.env);
     const shell = needsShell(resolved);
     if (shell && (cmd.args.some((a) => !isShellSafeArg(a)) || /["%!]/.test(resolved))) {
       resolve({ code: null, stdout: '' });
@@ -108,7 +109,7 @@ export const spawnProbe: StatusProbe = (cmd) =>
     }
     const options = {
       cwd: cmd.cwd,
-      env: { ...process.env, ...cmd.env },
+      env: cmd.env,
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'ignore'] as ['ignore', 'pipe', 'ignore'],
     };
@@ -147,6 +148,8 @@ export interface ConnectionCheckerOptions {
   timeoutMs?: number;
   /** Defaults to `process.platform`; Claude Code keeps macOS logins in the keychain. */
   platform?: NodeJS.Platform;
+  /** Base environment of status commands (default `process.env`). */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -160,6 +163,7 @@ export class ConnectionChecker {
   private readonly clock: () => number;
   private readonly timeoutMs: number;
   private readonly platform: NodeJS.Platform;
+  private readonly env: NodeJS.ProcessEnv;
 
   constructor(options: ConnectionCheckerOptions) {
     this.sandboxes = options.sandboxes;
@@ -167,6 +171,7 @@ export class ConnectionChecker {
     this.clock = options.clock ?? Date.now;
     this.timeoutMs = options.timeoutMs ?? 20_000;
     this.platform = options.platform ?? process.platform;
+    this.env = options.env ?? process.env;
   }
 
   async check(account: Account): Promise<AccountConnection> {
@@ -219,7 +224,7 @@ export class ConnectionChecker {
     const probed = await this.probe({
       command: binary,
       args: [...prefix, ...statusArgs],
-      env: loginEnv(account, this.sandboxes),
+      env: { ...this.env, ...loginEnv(account, this.sandboxes) },
       cwd: this.sandboxes.ensure(account.id),
       timeoutMs: this.timeoutMs,
     });

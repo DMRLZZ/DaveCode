@@ -135,6 +135,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
     const connections = new ConnectionChecker({
       sandboxes,
       clock,
+      env,
       ...(options.statusProbe ? { probe: options.statusProbe } : {}),
     });
 

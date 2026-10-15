@@ -97,6 +97,23 @@ describe('ConnectionChecker', () => {
     expect(mac.detail).not.toMatch(/not isolated/);
   });
 
+  it('runs status commands with the configured base environment', async () => {
+    const seen: ProbeCommand[] = [];
+    const c = new ConnectionChecker({
+      sandboxes,
+      env: { PATH: '/only/here' },
+      probe: async (cmd) => {
+        seen.push(cmd);
+        return { code: 1, stdout: '' };
+      },
+    });
+    await c.check(account('codex-cli'));
+    expect(seen[0]?.env).toEqual({
+      PATH: '/only/here',
+      CODEX_HOME: sandboxes.dirFor('acc_codex_cli'),
+    });
+  });
+
   it('maps Claude Code logged-out, unreadable and missing-binary results', async () => {
     const acc = account('claude-cli');
     const out = await checker({ code: 1, stdout: '{"loggedIn":false}' }).check(acc);
@@ -169,7 +186,7 @@ describe('spawnProbe', () => {
     const res = await spawnProbe({
       command: process.execPath,
       args: [script],
-      env: { FAKE_HOME: 'x' },
+      env: { ...process.env, FAKE_HOME: 'x' },
       cwd: root,
       timeoutMs: 10_000,
     });
@@ -177,7 +194,7 @@ describe('spawnProbe', () => {
     const missing = await spawnProbe({
       command: join(root, 'does-not-exist'),
       args: [],
-      env: {},
+      env: process.env,
       cwd: root,
       timeoutMs: 10_000,
     });
