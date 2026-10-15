@@ -286,3 +286,36 @@ export {
 export { WorkspaceLock } from './autonomous/workspace-lock';
 export { ProjectBrainSource } from './brain/source';
 // --- end phase 4 ---
+
+// --- goal mode ---
+export {
+  type GoalTaskRunner,
+  MeteredExecutor,
+  RunnerCodeTasks,
+  type RunnerCodeTasksOptions,
+} from './goal/code-tasks';
+export { type CreateGoalServiceOptions, createGoalService } from './goal/create';
+export {
+  type CodeTaskResult,
+  type CodeTaskRunner,
+  GoalOrchestrator,
+  type GoalOrchestratorOptions,
+  isTerminalGoal,
+  type NewGoalInput,
+  readyGoalTasks,
+} from './goal/orchestrator';
+export {
+  applySafetyGuard,
+  DEFAULT_ROLES,
+  type GoalConfig,
+  outboundAction,
+  type ResolvedRole,
+  resolveRoles,
+} from './goal/plan';
+export {
+  GoalError,
+  type GoalErrorCode,
+  GoalService,
+  type GoalServiceOptions,
+} from './goal/service';
+export { GoalStore, goalSchema, isGoalId } from './goal/store';
