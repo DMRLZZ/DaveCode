@@ -11,9 +11,12 @@ npm install -g davecode      # Node.js 22.12+
 
 davecode doctor              # check your environment
 davecode accounts add        # add a provider account (API key, Ollama, Claude Code login…)
+davecode accounts connect <id>  # sign a subscription in with the vendor's official login
 davecode start               # gateway on http://localhost:4040/v1 + dashboard at http://localhost:4040/
 davecode                     # chat TUI in your terminal
 davecode init && davecode run   # let the autonomous runner work through .davecode/TASK_GRAPH.json
+davecode goal "<objective>"  # a team of agents plans, executes, reviews and re-plans
+davecode budget              # plans, renewals and remaining quota per account
 ```
 
 Point any OpenAI SDK at `http://localhost:4040/v1` and use the model `davecode/auto`.

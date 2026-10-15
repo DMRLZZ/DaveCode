@@ -6,6 +6,55 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Goal mode: `davecode goal "<objective>"` (`--dry-run`, `--max-rounds`, `--max-tasks`,
+  `--max-tokens`), `davecode goals list|show|cancel`, `GET/POST /api/goals`,
+  `GET /api/goals/:id`, `POST /api/goals/:id/cancel`, `goal.updated` / `goal.log` events and a
+  Goals view in the dashboard with a live agent log (simulated in mock mode). A planner turns the
+  objective into role-based tasks (zod-validated JSON), `artifact` tasks write markdown to
+  `.davecode/goals/<goal-id>/`, `code` tasks run through the autonomous runner, and a reviewer
+  re-plans. Bounded by `goal.maxRounds`, `maxTasks`, `maxTokens` and `maxTaskAttempts`.
+  Outbound actions (email, posting, payments, sign-ups, deployments) are always turned into
+  drafts for a human.
+- Workspace lock shared by the runner and goal mode so they never edit the tree at the same time.
+- Subscription details per account (`Account.subscription`: plan, price, paid and renewal dates),
+  entered by hand with `davecode accounts plan <id>` or the dashboard; DaveCode never reads billing
+  pages.
+- Provider-reported limits: rate-limit headers and "usage limit reached… resets at" errors are
+  captured, and accounts reported as exhausted are skipped until the reset time.
+- Budget: `GET /api/budget`, `davecode budget [--context]` and a dashboard budget panel showing
+  the remaining share of each account's tightest limit, renewal countdowns and availability. The
+  compact budget summary is added to runner and goal agent prompts.
+- `gemini-cli` provider: the official Gemini CLI with "Login with Google", isolated per account
+  through `GEMINI_CLI_HOME`.
+- Connect subscription: `davecode accounts connect <id> [--check]`,
+  `GET /api/accounts/:id/connection`, `POST /api/accounts/:id/connect` and a connection panel
+  with a **Connect subscription** button in the dashboard's account sheet. It runs the vendor's
+  official sign-in (`claude auth login`, `codex login`, Gemini CLI) inside the account sandbox;
+  DaveCode never sees the password or the tokens. On a loopback gateway the button opens a
+  terminal on that machine (`davecode accounts login <id> --hold`); otherwise it shows the command.
+  Connection status comes from the vendor CLI's status command and never includes credentials.
+- `davecode doctor` checks for the Gemini CLI.
+
+### Changed
+
+- `davecode accounts login` runs `claude auth login` for Claude Code accounts (was the
+  interactive `claude` session) and prints the connection status afterwards.
+
+### Fixed
+
+- The dashboard's add-account sheet stored the CLI binary override as `config.binary`; it now
+  uses `config.binaryPath`, which the adapters read.
+
+### Known limitations
+
+- Google Antigravity is not supported: it has no public API or CLI, and reusing its OAuth tokens
+  violates Google's terms. Use `gemini-cli` for Google AI subscriptions.
+- Claude Code on Windows and Linux can fall back to the global `~/.claude` login, so those
+  accounts are not isolated; the connection check reports it.
+- The `gemini-cli` adapter has not been verified against a real Gemini CLI install.
+
 ## [0.2.0] - 2026-10-06
 
 First version validated end to end against a real (local, free) model: the autonomous runner

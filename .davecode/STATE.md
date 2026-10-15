@@ -1,13 +1,13 @@
 # DaveCode: project state
 
-_Last updated: 2026-10-06_
+_Last updated: 2026-10-15_
 
 ## Current focus
 
-**v0.2.0 is released**: `davecode` is a standalone package, the dashboard can edit tasks and
-routes, and the runner completed a real implement → test → merge loop on a free local model
-(`qwen3:8b` via Ollama). Next up: publishing to npm and dogfooding the runner on this repository
-with a frontier model.
+**Unreleased work on `feat/goal-mode-subscriptions`**: goal mode, per-account plans and budget,
+and "Connect subscription" through each vendor's official login (including the new `gemini-cli`
+provider). Next up: verify `gemini-cli` against a real install, cut v0.3.0, publish to npm and
+dogfood goal mode on this repository with a frontier model.
 
 ## Done
 
@@ -24,6 +24,15 @@ with a frontier model.
 - **Contract hardening** (#12): SSE ids with `Last-Event-ID` resume, `Account.hasSecret`.
 - **v0.2.0** (#16–#18): standalone package, task/route editing, targeted runs, and fixes found by
   running against real Ollama models (cancellations, empty finishes, double-escaped edits).
+- **Goal mode** (unreleased): planner/reviewer roles with zod JSON contracts, artifact tasks
+  through the router, code tasks through the runner, shared workspace lock, outbound-action
+  guard, `davecode goal|goals`, `/api/goals`, dashboard Goals view.
+- **Plans and budget** (unreleased): `Account.subscription`, provider-reported limits (headers
+  and "resets at" errors) with routing around exhausted accounts, `BudgetSnapshot`,
+  `davecode budget`, `davecode accounts plan`, budget context in agent prompts, dashboard panel.
+- **Connect subscription** (unreleased): `gemini-cli` provider, `ConnectionChecker`, official
+  login specs, `davecode accounts connect`, `/api/accounts/:id/connection|connect`, loopback-only
+  terminal launcher, dashboard connection panel.
 
 ## Blockers
 
@@ -35,6 +44,14 @@ None.
 - Small local models: `llama3.1:8b` hallucinates edit arguments; use `qwen3:8b` or a frontier model
   for `davecode run`.
 - The `codex-cli` adapter's event parser has not been verified against a real Codex install.
+- The `gemini-cli` adapter (`GEMINI_CLI_HOME` isolation, `stream-json` parser) has not been
+  verified against a real Gemini CLI install (not installed on the development machine).
+- Claude Code on Windows (and likely Linux) reports the global `~/.claude` login even with an
+  empty `CLAUDE_CONFIG_DIR`, so per-account isolation is not effective there; the connection
+  check says so.
+- Google Antigravity is out of scope: no public API or CLI, and token reuse violates the terms.
+- The dashboard's Connect button can only open a terminal when the gateway is bound to loopback;
+  remote gateways get the command to run instead.
 - The TUIs are covered by `ink-testing-library` tests; they still need manual passes in
   Windows Terminal, iTerm2 and common Linux terminals.
 
@@ -48,9 +65,15 @@ None.
 | 2026-10-06 | MIT license; English for code, docs and commits |
 | 2026-10-06 | Stay on TypeScript 5.x: TS 7 (native port) lacks the compiler API used by tsup's dts build |
 | 2026-10-06 | `context_length` errors fail over without cooling the account down (the prompt is at fault) |
+| 2026-10-15 | Goal mode never performs outbound actions; such tasks become draft artifacts (deterministic guard) |
+| 2026-10-15 | Subscription details are entered by hand; DaveCode never scrapes billing pages |
+| 2026-10-15 | Subscriptions connect only through the vendor CLI's official login; no passwords, no token reuse, no Antigravity |
+| 2026-10-15 | The gateway's Connect endpoint delegates to an injected launcher, only on loopback binds |
 
 ## Activity log
 
 - 2026-10-06: v0.1.0 release prepared; task graph updated through `davecode tasks status`.
 - 2026-10-06: v0.1.0 tagged and published as a GitHub release.
 - 2026-10-06: first autonomous success on a free local model (qwen3:8b); v0.2.0 released.
+- 2026-10-15: goal mode, plans/budget and Connect subscription implemented on
+  `feat/goal-mode-subscriptions` (not merged).
