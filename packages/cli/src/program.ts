@@ -190,6 +190,80 @@ Ctrl+C stops safely: partial work stays on the task branch and the task goes bac
         return runCommand(ctx, opts);
       }),
     );
+
+  registerGoals(program, run);
+}
+
+function registerGoals(program: Command, run: Runner): void {
+  const limit = (flag: string, description: string) =>
+    new Option(flag, description).argParser((value) => {
+      const n = parseInteger(value);
+      if (n < 1) throw new InvalidArgumentError('expected a positive integer');
+      return n;
+    });
+
+  program
+    .command('goal <objective...>')
+    .description('pursue an objective with a team of agents (plan, execute, review, re-plan)')
+    .addOption(
+      limit('--max-rounds <n>', 'plan → execute → review rounds (capped by goal.maxRounds)'),
+    )
+    .addOption(limit('--max-tasks <n>', 'tasks across all rounds (capped by goal.maxTasks)'))
+    .addOption(
+      limit('--max-tokens <n>', 'token budget for the whole goal (capped by goal.maxTokens)'),
+    )
+    .option('--dry-run', 'plan only: print the task graph without executing it')
+    .option('--project <dir>', 'repository to work in (default: detected)')
+    .addHelpText(
+      'after',
+      `
+Agents never send emails, post, pay or sign up for anything: such steps become drafts in
+.davecode/goals/<goal-id>/. Code tasks go through the autonomous runner (branch, checks, merge).
+Ctrl+C cancels. Exit codes: 0 succeeded or planned, 1 failed or out of budget, 130 cancelled.
+
+Examples:
+  davecode goal "Write positioning and landing copy for this app" --dry-run
+  davecode goal "Add a /health endpoint with tests" --max-rounds 2`,
+    )
+    .action(
+      run(async (ctx, words: string[], opts: import('./commands/goal').GoalOptions) => {
+        const { goalCommand } = await import('./commands/goal');
+        return goalCommand(ctx, words, opts);
+      }),
+    );
+
+  const goals = program.command('goals').description('goals of this repository');
+  goals
+    .command('list', { isDefault: true })
+    .alias('ls')
+    .description('goals, newest first')
+    .option('--project <dir>', 'repository (default: detected)')
+    .action(
+      run(async (ctx, opts: { project?: string }) => {
+        const { goalsList } = await import('./commands/goal');
+        return goalsList(ctx, opts);
+      }),
+    );
+  goals
+    .command('show <id>')
+    .description('tasks, artifacts and summary of a goal')
+    .option('--project <dir>', 'repository (default: detected)')
+    .action(
+      run(async (ctx, id: string, opts: { project?: string }) => {
+        const { goalsShow } = await import('./commands/goal');
+        return goalsShow(ctx, id, opts);
+      }),
+    );
+  goals
+    .command('cancel <id>')
+    .description('cancel a running goal')
+    .option('--project <dir>', 'repository (default: detected)')
+    .action(
+      run(async (ctx, id: string, opts: { project?: string }) => {
+        const { goalsCancel } = await import('./commands/goal');
+        return goalsCancel(ctx, id, opts);
+      }),
+    );
 }
 
 function registerProject(program: Command, run: Runner): void {
