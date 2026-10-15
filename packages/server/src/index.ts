@@ -5,6 +5,7 @@ export type {
   GatewayOptions,
   GoalControl,
   GoalStartInput,
+  LoginLauncher,
   ProjectInfo,
   RunnerControl,
   StartGatewayOptions,

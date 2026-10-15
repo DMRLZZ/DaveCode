@@ -110,6 +110,19 @@ upstream errors are forwarded as a final error chunk.
 | `POST` | `/api/accounts` | `AccountCreate` | `201 { "account": Account }` |
 | `PATCH` | `/api/accounts/:id` | `AccountPatch` | `{ "account": Account }` |
 | `DELETE` | `/api/accounts/:id` | — | `204` |
+| `GET` | `/api/accounts/:id/connection` | — | `{ "connection": AccountConnection }` |
+| `POST` | `/api/accounts/:id/connect` | `{}` (JSON) | `{ "connect": ConnectResult }` |
+
+`POST /api/accounts/:id/connect` ("Connect subscription") starts the vendor's **official** login
+for a `cli-login` account (`claude auth login`, `codex login`, Gemini CLI's "Login with Google")
+via `davecode accounts login <id>`, isolated in the account sandbox. DaveCode never sees or
+stores the password or the resulting tokens; they stay in the vendor CLI's own store inside the
+sandbox. When the gateway was started with a `loginLauncher` (the CLI's `davecode serve` injects
+one when bound to loopback), it opens a terminal window on the gateway machine and answers
+`launched: true`; otherwise `launched: false` and `command` tells the user what to run. Poll
+`GET …/connection` to see when the login lands. Errors: `415 json_required` without
+`Content-Type: application/json` (blocks cross-site form posts), `400 not_cli_login` for API-key
+and `gemini-web` accounts, `404 not_found`.
 
 ```ts
 interface AccountCreate {

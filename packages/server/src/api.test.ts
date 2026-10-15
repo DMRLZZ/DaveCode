@@ -370,6 +370,82 @@ describe('subscriptions and budget', () => {
   });
 });
 
+describe('connect subscription', () => {
+  it('reports connection state without exposing credentials', async () => {
+    await setup();
+    const keyed = t.engine.accounts.create({ provider: 'openai', label: 'key' });
+    t.engine.keyring.set(keyed.id, SECRET);
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+
+    const ok = await app.inject({ method: 'GET', url: `/api/accounts/${keyed.id}/connection` });
+    expect(ok.json().connection).toMatchObject({ method: 'api-key', status: 'connected' });
+    expect(ok.payload).not.toContain(SECRET);
+
+    const cli = await app.inject({ method: 'GET', url: `/api/accounts/${gemini.id}/connection` });
+    expect(cli.json().connection).toMatchObject({
+      method: 'cli-login',
+      status: 'not_connected',
+      loginCommand: `davecode accounts login ${gemini.id}`,
+    });
+    const missing = await app.inject({ method: 'GET', url: '/api/accounts/nope/connection' });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('returns the official login command when no launcher is available', async () => {
+    await setup();
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${gemini.id}/connect`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().connect).toMatchObject({
+      launched: false,
+      command: `davecode accounts login ${gemini.id}`,
+      connection: { status: 'not_connected' },
+    });
+    expect(t.engine.audit.list({ limit: 5 }).map((e) => e.action)).toContain('account.connect');
+  });
+
+  it('launches the login through the injected launcher, only for CLI-login accounts', async () => {
+    const launch = vi.fn(async () => ({ launched: true }));
+    await setup(undefined, { loginLauncher: { launch } });
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${gemini.id}/connect`,
+      payload: {},
+    });
+    expect(res.json().connect.launched).toBe(true);
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ id: gemini.id }));
+
+    const keyed = t.engine.accounts.create({ provider: 'anthropic', label: 'key' });
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${keyed.id}/connect`,
+      payload: {},
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error.code).toBe('not_cli_login');
+    expect(launch).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses requests without a JSON content type (cross-site forms)', async () => {
+    const launch = vi.fn(async () => ({ launched: true }));
+    await setup(undefined, { loginLauncher: { launch } });
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${gemini.id}/connect`,
+      headers: { 'content-type': 'text/plain' },
+      payload: 'x',
+    });
+    expect(res.statusCode).toBe(415);
+    expect(launch).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /api/routes', () => {
   it('returns the default route and configured routes', async () => {
     const routes = [{ name: 'fast', targets: [{ provider: 'openai' as const, model: 'gpt-x' }] }];

@@ -1,4 +1,5 @@
 import type {
+  Account,
   ClearableTaskField,
   Goal,
   NewTask,
@@ -73,6 +74,15 @@ export interface GoalControl {
   cancel(id: string): Promise<Goal>;
 }
 
+/**
+ * Opens the vendor's official login for a `cli-login` account somewhere the user can finish
+ * it (a terminal window on the gateway machine). Inject it only when the gateway and the user
+ * share a machine; without it `POST /api/accounts/:id/connect` returns the command to run.
+ */
+export interface LoginLauncher {
+  launch(account: Account): Promise<{ launched: boolean }>;
+}
+
 export interface GatewayOptions {
   /** Fastify logging: `false` (default), `true`, or `{ level }`. Bearer tokens are redacted. */
   logger?: boolean | { level?: string };
@@ -81,6 +91,8 @@ export interface GatewayOptions {
   brain?: BrainSource;
   runner?: RunnerControl;
   goals?: GoalControl;
+  /** "Connect subscription" launcher for CLI-login accounts. */
+  loginLauncher?: LoginLauncher;
   /** SSE heartbeat interval for `/api/events` (default 15 000 ms). */
   heartbeatMs?: number;
   /** Extra CORS origins on top of the Vite dev server (`http://localhost:5173`). */

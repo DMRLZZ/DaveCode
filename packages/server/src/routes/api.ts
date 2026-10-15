@@ -2,7 +2,10 @@ import {
   type Account,
   type AccountUpdateInput,
   ConfigError,
+  type ConnectResult,
+  connectionMethod,
   type Engine,
+  loginCommandFor,
   type RunnerStatus,
   type TaskGraph,
   VERSION,
@@ -130,6 +133,53 @@ export function registerApiRoutes(
     audit.record({ actor: 'api', action: 'account.delete', target: id });
     events.emit({ type: 'account.removed', accountId: id });
     return reply.code(204).send();
+  });
+
+  // --- connect (official vendor login) ---------------------------------------
+
+  app.get<{ Params: { id: string } }>('/api/accounts/:id/connection', async (request, reply) => {
+    const account = accounts.get(request.params.id);
+    if (!account) return sendApiError(reply, 404, 'not_found', 'Account not found');
+    return { connection: await engine.connections.check(account) };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/accounts/:id/connect', async (request, reply) => {
+    // A JSON content type cannot be sent cross-site without a CORS preflight, so other web
+    // pages cannot make the gateway open a login window.
+    if (!request.headers['content-type']?.toLowerCase().startsWith('application/json')) {
+      return sendApiError(reply, 415, 'json_required', 'Send Content-Type: application/json');
+    }
+    const account = accounts.get(request.params.id);
+    if (!account) return sendApiError(reply, 404, 'not_found', 'Account not found');
+    if (connectionMethod(account.provider) !== 'cli-login') {
+      return sendApiError(
+        reply,
+        400,
+        'not_cli_login',
+        account.provider === 'gemini-web'
+          ? 'gemini-web signs in through its own browser profile, not a CLI login'
+          : 'This account connects with an API key: set it in the account settings',
+      );
+    }
+    const command = loginCommandFor(account.id);
+    const { launched } = options.loginLauncher
+      ? await options.loginLauncher.launch(account)
+      : { launched: false };
+    audit.record({
+      actor: 'api',
+      action: 'account.connect',
+      target: account.id,
+      details: { launched },
+    });
+    const result: ConnectResult = {
+      connection: await engine.connections.check(account),
+      launched,
+      command,
+      message: launched
+        ? 'A terminal opened on the gateway machine with the official sign-in. Finish it there; this page updates when the login is detected.'
+        : `Run this in a terminal on the machine running the gateway: ${command}`,
+    };
+    return { connect: result };
   });
 
   // --- usage -----------------------------------------------------------------
