@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs';
+import { BudgetService } from './budget/service';
 import { loadConfig } from './config/loader';
 import type { DaveConfig, DaveConfigInput } from './config/schema';
 import {
@@ -61,6 +62,8 @@ export interface Engine {
   /** Rate-limit state the providers reported (headers, limit errors), in memory. */
   reported: ReportedLimitsStore;
   router: Router;
+  /** Subscription details + remaining capacity per account, and the agents' budget context. */
+  budget: BudgetService;
   providers: Map<ProviderKind, Provider>;
   /**
    * Replaces the route list (and optionally the default route): persists it to the **global**
@@ -123,6 +126,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       clock,
       reported,
     });
+    const budget = new BudgetService({ accounts, quota, reported, router, clock });
 
     let closed = false;
     const engine: Engine = {
@@ -142,6 +146,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       tracker,
       reported,
       router,
+      budget,
       providers,
       async updateRouting(update) {
         const result = await writeGlobalRouting(home, update);

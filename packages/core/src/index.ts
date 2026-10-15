@@ -105,6 +105,7 @@ export { VERSION } from './version';
 
 // --- phase 1 & 2: storage, identity, quotas, router, engine ---
 
+export { BudgetService, type BudgetServiceOptions } from './budget/service';
 export {
   ConfigError,
   deepMerge,
