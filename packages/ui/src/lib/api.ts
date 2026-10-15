@@ -1,12 +1,14 @@
 import { connectEventStream, type StreamHandlers } from './events';
 import type {
   Account,
+  AccountConnection,
   AccountCreate,
   AccountPatch,
   AccountUsage,
   ApiErrorBody,
   BrainResponse,
   BudgetSnapshot,
+  ConnectResult,
   DaveEvent,
   Goal,
   GoalStart,
@@ -77,6 +79,10 @@ export interface DaveClient {
   usage(): Promise<AccountUsage[]>;
   /** `GET /api/budget`: plan, renewal and remaining capacity per account. */
   budget(): Promise<BudgetSnapshot>;
+  /** `GET /api/accounts/:id/connection`: is the API key or vendor CLI login in place? */
+  connection(id: string): Promise<AccountConnection>;
+  /** `POST /api/accounts/:id/connect`: start the vendor's official login ("Connect subscription"). */
+  connect(id: string): Promise<ConnectResult>;
   timeseries(minutes?: number, bucketSec?: number): Promise<TimeseriesBucket[]>;
   requests(limit?: number): Promise<UsageRecord[]>;
   routes(): Promise<RoutesResponse>;
@@ -188,6 +194,20 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
     deleteAccount: (id) => request<void>('DELETE', `/api/accounts/${encodeURIComponent(id)}`),
     usage: async () => (await get<{ usage: AccountUsage[] }>('/api/usage')).usage,
     budget: async () => (await get<{ budget: BudgetSnapshot }>('/api/budget')).budget,
+    connection: async (id) =>
+      (
+        await get<{ connection: AccountConnection }>(
+          `/api/accounts/${encodeURIComponent(id)}/connection`,
+        )
+      ).connection,
+    connect: async (id) =>
+      (
+        await request<{ connect: ConnectResult }>(
+          'POST',
+          `/api/accounts/${encodeURIComponent(id)}/connect`,
+          {},
+        )
+      ).connect,
     timeseries: async (minutes = 60, bucketSec = 60) =>
       (
         await get<{ buckets: TimeseriesBucket[] }>(

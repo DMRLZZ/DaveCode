@@ -61,6 +61,25 @@ describe('MockEngine', () => {
     expect(cleared.subscription).toBeUndefined();
   });
 
+  it('reports connections and simulates the official sign-in for CLI accounts', async () => {
+    const e = engine();
+    expect(await e.connection('acc_claude_pro')).toMatchObject({
+      method: 'cli-login',
+      status: 'connected',
+    });
+    expect((await e.connection('acc_anthropic_work')).method).toBe('api-key');
+    expect((await e.connection('acc_gemini_web')).status).toBe('unknown');
+
+    const gemini = await e.createAccount({ provider: 'gemini-cli', label: 'Google' });
+    const result = await e.connect(gemini.id);
+    expect(result).toMatchObject({
+      launched: true,
+      command: `davecode accounts login ${gemini.id}`,
+      connection: { status: 'not_connected' },
+    });
+    await expect(e.connect('acc_anthropic_work')).rejects.toMatchObject({ code: 'not_cli_login' });
+  });
+
   it('reports quota windows with a hot subscription account', async () => {
     const usage = await engine().usage();
     const claude = usage.find((u) => u.accountId === 'acc_claude_pro');

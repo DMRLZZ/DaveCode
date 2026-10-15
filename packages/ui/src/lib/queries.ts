@@ -53,6 +53,26 @@ export function useBudget() {
   });
 }
 
+/** Connection state of one account. `poll` re-checks every 3 s while a login is in progress. */
+export function useConnection(id: string, poll = false) {
+  const { client, sourceKey } = useData();
+  return useQuery({
+    queryKey: qk(sourceKey, 'connection', id),
+    queryFn: () => client.connection(id),
+    refetchInterval: poll ? 3_000 : false,
+    staleTime: 15_000,
+  });
+}
+
+export function useConnect() {
+  const { client, sourceKey } = useData();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.connect(id),
+    onSuccess: (result, id) => qc.setQueryData(qk(sourceKey, 'connection', id), result.connection),
+  });
+}
+
 export function useTimeseries(minutes = 60, bucketSec = 60) {
   const { client, sourceKey } = useData();
   return useQuery({

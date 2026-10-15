@@ -154,6 +154,29 @@ export interface BudgetSnapshot {
   context: string;
 }
 
+export type ConnectionMethod = 'api-key' | 'cli-login' | 'browser';
+
+export type ConnectionStatus = 'connected' | 'not_connected' | 'unknown';
+
+/** `GET /api/accounts/:id/connection`. Never contains credentials. */
+export interface AccountConnection {
+  accountId: string;
+  provider: ProviderKind;
+  method: ConnectionMethod;
+  status: ConnectionStatus;
+  detail?: string;
+  loginCommand?: string;
+  checkedAt: string;
+}
+
+/** `POST /api/accounts/:id/connect`. */
+export interface ConnectResult {
+  connection: AccountConnection;
+  launched: boolean;
+  command: string;
+  message: string;
+}
+
 /** `cancelled`: the client aborted (disconnect, Esc in the TUI); never counts against the account. */
 export type UsageStatus = 'success' | 'error' | 'rate_limited' | 'cancelled';
 

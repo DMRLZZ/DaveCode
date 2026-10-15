@@ -1,6 +1,7 @@
 import { ApiError, type DaveClient, type RunnerAction } from './api';
 import type { StreamHandlers } from './events';
 import { buildMockBudget, mockSubscription } from './mock-budget';
+import { MOCK_LOGGED_IN, MOCK_LOGIN_MS, mockConnection } from './mock-connect';
 import {
   ACCOUNT_SEEDS,
   MOCK_ARCHITECTURE,
@@ -15,11 +16,13 @@ import { ROUTE_NAME_PATTERN } from './route-edit';
 import { canTransition, findCyclePath, TASK_ID_PATTERN } from './task-edit';
 import type {
   Account,
+  AccountConnection,
   AccountCreate,
   AccountPatch,
   AccountUsage,
   BrainResponse,
   BudgetSnapshot,
+  ConnectResult,
   DaveEvent,
   Goal,
   GoalStart,
@@ -170,6 +173,7 @@ export class MockEngine implements DaveClient {
   private pausedFrom: RunnerState | undefined;
   private readonly pressureLogged = new Map<string, number>();
   private readonly goalSim: MockGoals;
+  private readonly loggedIn = new Set(MOCK_LOGGED_IN);
 
   constructor(options: MockOptions = {}) {
     this.rng = mulberry32(options.seed ?? 0xda7ec0de);
@@ -309,6 +313,41 @@ export class MockEngine implements DaveClient {
     return this.respond(() => {
       const now = this.clock();
       return buildMockBudget(this.accounts, (a) => this.accountUsage(a, now), now);
+    });
+  }
+
+  connection(id: string): Promise<AccountConnection> {
+    return this.respond(() =>
+      mockConnection(this.findAccount(id), this.loggedIn.has(id), this.clock()),
+    );
+  }
+
+  connect(id: string): Promise<ConnectResult> {
+    return this.respond(() => {
+      const account = this.findAccount(id);
+      const connection = mockConnection(account, this.loggedIn.has(id), this.clock());
+      if (connection.method !== 'cli-login') {
+        throw new ApiError(
+          400,
+          'not_cli_login',
+          'This account connects with an API key: set it in the account settings',
+        );
+      }
+      const command = `davecode accounts login ${id}`;
+      if (connection.status !== 'connected') {
+        this.later(MOCK_LOGIN_MS, () => {
+          this.loggedIn.add(id);
+          this.log('info', 'accounts', `Account ${id} signed in through the vendor CLI`);
+        });
+      }
+      this.log('info', 'accounts', `Opened the official sign-in for ${id}`);
+      return {
+        connection,
+        launched: true,
+        command,
+        message:
+          'A terminal opened on the gateway machine with the official sign-in. Finish it there; this page updates when the login is detected.',
+      };
     });
   }
 

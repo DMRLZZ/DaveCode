@@ -12,6 +12,7 @@ import { providerMeta } from '../../lib/providers';
 import { useDeleteAccount, useUpdateAccount } from '../../lib/queries';
 import { toast } from '../../lib/toast';
 import type { Account, AccountPatch, AccountUsage } from '../../lib/types';
+import { ConnectionPanel } from './ConnectionPanel';
 import {
   isValidUrl,
   type LimitsDraft,
@@ -183,6 +184,8 @@ function AccountEditor({
           <QuotaLegend className="pl-9" />
         </div>
       </section>
+
+      <ConnectionPanel account={account} />
 
       <Field label="Label" required error={errors.label}>
         {({ id, describedBy, invalid }) => (

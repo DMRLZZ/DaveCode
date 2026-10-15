@@ -22,6 +22,13 @@ import {
   SecretInput,
 } from './forms';
 
+/** Default binary and the variable that isolates each CLI's login per account. */
+const CLI_HOME: Partial<Record<ProviderKind, { binary: string; env: string }>> = {
+  'claude-cli': { binary: 'claude', env: 'CLAUDE_CONFIG_DIR' },
+  'codex-cli': { binary: 'codex', env: 'CODEX_HOME' },
+  'gemini-cli': { binary: 'gemini', env: 'GEMINI_CLI_HOME' },
+};
+
 interface Errors {
   label?: string;
   secret?: string;
@@ -97,7 +104,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
       const list = parseModels(models);
       if (list.length) config.models = list;
     }
-    if (meta.auth === 'cli' && binary.trim()) config.binary = binary.trim();
+    if (meta.auth === 'cli' && binary.trim()) config.binaryPath = binary.trim();
 
     const body: AccountCreate = {
       provider,
@@ -290,7 +297,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
                   <Input
                     id={id}
                     value={binary}
-                    placeholder={provider === 'claude-cli' ? 'claude' : 'codex'}
+                    placeholder={CLI_HOME[provider]?.binary ?? 'claude'}
                     onChange={(e) => setBinary(e.target.value)}
                     aria-describedby={describedBy}
                     className="font-mono"
@@ -298,9 +305,10 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
                 )}
               </Field>
               <p className="text-[12px] text-muted">
-                No secret is needed here. The CLI signs in inside its own sandbox (
-                {provider === 'claude-cli' ? 'CLAUDE_CONFIG_DIR' : 'CODEX_HOME'}) the first time it
-                runs. To log in interactively, use the terminal:
+                No secret is needed here. After adding, open the account and press{' '}
+                <span className="text-fg-2">Connect subscription</span>: it runs the vendor’s
+                official sign-in inside the account’s own sandbox ({CLI_HOME[provider]?.env}).
+                DaveCode never sees your password. From a terminal:
               </p>
               <CommandHint command={`davecode add-account --provider ${provider}`} />
             </div>
