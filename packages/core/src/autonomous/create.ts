@@ -6,14 +6,16 @@ import { ClaudeCliExecutor } from './claude-cli-executor';
 import { BuiltinExecutor, type Executor } from './executor';
 import { Git } from './git';
 import { createJudge, type Judge } from './judge';
-import { AutonomousRunner, type RunnerConfig } from './runner';
+import { AutonomousRunner, type AutonomousRunnerOptions, type RunnerConfig } from './runner';
 import { Validator } from './validator';
 
 type EngineDeps = Pick<Engine, 'config' | 'router' | 'accounts' | 'sandboxes' | 'events' | 'paths'>;
 
-/** Builds the executor selected by `runner.executor`. */
-export function createExecutor(engine: Omit<EngineDeps, 'events' | 'paths'>): Executor {
-  const cfg: RunnerConfig = engine.config.runner;
+/** Builds the executor selected by `runner.executor` (`cfg` overrides `engine.config.runner`). */
+export function createExecutor(
+  engine: Omit<EngineDeps, 'events' | 'paths'>,
+  cfg: RunnerConfig = engine.config.runner,
+): Executor {
   if (cfg.executor === 'claude-cli') {
     return new ClaudeCliExecutor({
       accounts: engine.accounts,
@@ -44,6 +46,12 @@ export interface CreateRunnerOptions {
   executor?: Executor;
   /** Override the judge chosen by `runner.judge`. */
   judge?: Judge;
+  /** Override `engine.config.runner` (e.g. a tighter `maxTaskTokens`). */
+  config?: RunnerConfig;
+  /** Workspace lock shared with goal mode. */
+  lock?: AutonomousRunnerOptions['lock'];
+  /** Extra text appended to every task context. */
+  contextExtras?: AutonomousRunnerOptions['contextExtras'];
   /** Environment for the judge's API key lookup (default `process.env`). */
   env?: NodeJS.ProcessEnv;
   fetch?: typeof fetch;
@@ -51,13 +59,13 @@ export interface CreateRunnerOptions {
 
 /** An {@link AutonomousRunner} for `brain.root` using the engine's config, router and events. */
 export function createRunner(engine: EngineDeps, opts: CreateRunnerOptions): AutonomousRunner {
-  const cfg = engine.config.runner;
+  const cfg = opts.config ?? engine.config.runner;
   const global =
     opts.global === false ? undefined : (opts.global ?? new GlobalBrain(engine.paths.brain));
   return new AutonomousRunner({
     brain: opts.brain,
     config: cfg,
-    executor: opts.executor ?? createExecutor(engine),
+    executor: opts.executor ?? createExecutor(engine, cfg),
     judge:
       opts.judge ??
       createJudge(cfg.judge, {
@@ -74,5 +82,7 @@ export function createRunner(engine: EngineDeps, opts: CreateRunnerOptions): Aut
     git: new Git(opts.brain.root),
     events: engine.events,
     ...(global ? { global } : {}),
+    ...(opts.lock ? { lock: opts.lock } : {}),
+    ...(opts.contextExtras ? { contextExtras: opts.contextExtras } : {}),
   });
 }

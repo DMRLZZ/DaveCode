@@ -1,4 +1,4 @@
-import type { Account, AccountStatus, ProviderKind, QuotaLimits } from '../types';
+import type { Account, AccountStatus, ProviderKind, QuotaLimits, SubscriptionInfo } from '../types';
 import type { Database } from './database';
 import { newId } from './ids';
 
@@ -10,6 +10,7 @@ export interface AccountCreateInput {
   weight?: number;
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
+  subscription?: SubscriptionInfo;
 }
 
 export interface AccountUpdateInput {
@@ -19,6 +20,8 @@ export interface AccountUpdateInput {
   weight?: number;
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
+  /** Replaces the subscription details; `null` clears them. */
+  subscription?: SubscriptionInfo | null;
   status?: AccountStatus;
   /** ISO timestamp, or `null` to clear. */
   cooldownUntil?: string | null;
@@ -35,6 +38,7 @@ interface AccountRow {
   weight: number;
   limits: string;
   config: string;
+  subscription: string;
   status: string;
   cooldown_until: string | null;
   last_error: string | null;
@@ -74,6 +78,8 @@ function toAccount(row: AccountRow): Account {
     updatedAt: row.updated_at,
     hasSecret: row.has_secret === 1,
   };
+  const subscription = parseObject(row.subscription ?? '{}');
+  if (Object.keys(subscription).length > 0) account.subscription = subscription as SubscriptionInfo;
   if (row.cooldown_until) account.cooldownUntil = row.cooldown_until;
   if (row.last_error) account.lastError = row.last_error;
   return account;
@@ -98,6 +104,7 @@ export class AccountRepository {
       weight: input.weight ?? 1,
       limits: JSON.stringify(input.limits ?? {}),
       config: JSON.stringify(input.config ?? {}),
+      subscription: JSON.stringify(input.subscription ?? {}),
       status: enabled ? 'active' : 'disabled',
       cooldown_until: null,
       last_error: null,
@@ -107,9 +114,9 @@ export class AccountRepository {
     this.db
       .prepare(
         `INSERT INTO accounts (id, provider, label, enabled, priority, weight, limits, config,
-           status, cooldown_until, last_error, created_at, updated_at)
+           subscription, status, cooldown_until, last_error, created_at, updated_at)
          VALUES (@id, @provider, @label, @enabled, @priority, @weight, @limits, @config,
-           @status, @cooldown_until, @last_error, @created_at, @updated_at)`,
+           @subscription, @status, @cooldown_until, @last_error, @created_at, @updated_at)`,
       )
       .run(row);
     return toAccount(row);
@@ -144,6 +151,9 @@ export class AccountRepository {
     if (patch.weight !== undefined) set('weight', patch.weight);
     if (patch.limits !== undefined) set('limits', JSON.stringify(patch.limits));
     if (patch.config !== undefined) set('config', JSON.stringify(patch.config));
+    if (patch.subscription !== undefined) {
+      set('subscription', JSON.stringify(patch.subscription ?? {}));
+    }
     if (patch.status !== undefined) set('status', patch.status);
     if (patch.cooldownUntil !== undefined) set('cooldown_until', patch.cooldownUntil);
     if (patch.lastError !== undefined) set('last_error', patch.lastError);

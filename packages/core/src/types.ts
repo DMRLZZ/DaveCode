@@ -110,6 +110,8 @@ export type ProviderKind =
   | 'claude-cli'
   /** Local Codex CLI, isolated per account via CODEX_HOME. */
   | 'codex-cli'
+  /** Local Gemini CLI ("Login with Google"), isolated per account via GEMINI_CLI_HOME. */
+  | 'gemini-cli'
   /** EXPERIMENTAL, opt-in: Gemini web session driven through a Chromium profile. */
   | 'gemini-web';
 
@@ -126,6 +128,7 @@ export const EXPERIMENTAL_PROVIDER_KINDS: readonly ProviderKind[] = ['gemini-web
 export const SUBSCRIPTION_PROVIDER_KINDS: readonly ProviderKind[] = [
   'claude-cli',
   'codex-cli',
+  'gemini-cli',
   'gemini-web',
 ];
 
@@ -146,6 +149,29 @@ export interface QuotaLimits {
 
 export type AccountStatus = 'active' | 'cooldown' | 'disabled' | 'error';
 
+export interface SubscriptionPrice {
+  /** Amount per period in `currency`, e.g. 20. */
+  amount: number;
+  /** ISO 4217 code, e.g. "USD". */
+  currency: string;
+  period: 'month' | 'year';
+}
+
+/**
+ * What the user pays for an account, entered by hand (DaveCode never reads billing pages).
+ * Dates are `YYYY-MM-DD` or full ISO timestamps.
+ */
+export interface SubscriptionInfo {
+  /** Plan name as the vendor calls it, e.g. "Claude Pro", "ChatGPT Plus", "API pay-as-you-go". */
+  plan?: string;
+  /** Last payment date. */
+  paidAt?: string;
+  /** Next renewal (or quota reset) date. */
+  renewsAt?: string;
+  price?: SubscriptionPrice;
+  notes?: string;
+}
+
 export interface Account {
   id: string;
   provider: ProviderKind;
@@ -157,6 +183,8 @@ export interface Account {
   /** Relative share of traffic among accounts with equal priority. */
   weight: number;
   limits: QuotaLimits;
+  /** Plan, payment and renewal details; omitted when none were entered. */
+  subscription?: SubscriptionInfo;
   /**
    * Non-secret provider settings (baseUrl, model allow-list, CLI binary path…).
    * Secrets (API keys, cookies, OAuth tokens) live encrypted in the keyring, never here.
@@ -179,6 +207,8 @@ export interface ProviderCallContext {
   /** Isolated per-account directory (CLAUDE_CONFIG_DIR, CODEX_HOME, Chromium userDataDir). */
   sandboxDir: string;
   signal?: AbortSignal;
+  /** Called with rate-limit state the upstream reported (response headers), if any. */
+  reportLimits?: (limits: ReportedLimitsInput) => void;
 }
 
 export interface Provider {
@@ -226,6 +256,88 @@ export interface WindowUsage {
 export interface AccountUsage {
   accountId: string;
   windows: Record<QuotaWindow, WindowUsage>;
+}
+
+/** Rate-limit state as a provider reports it (headers, CLI limit messages). */
+export interface ReportedLimitsInput {
+  tokensRemaining?: number;
+  tokensLimit?: number;
+  requestsRemaining?: number;
+  requestsLimit?: number;
+  /** ISO timestamp when the reported window resets. */
+  resetAt?: string;
+  /** The provider refused the request because the quota is used up (until `resetAt`). */
+  exhausted?: boolean;
+}
+
+export interface ReportedLimits extends ReportedLimitsInput {
+  source: 'headers' | 'error';
+  /** ISO timestamp of the observation. */
+  observedAt: string;
+}
+
+/** One account in `GET /api/budget`: subscription details plus remaining capacity. */
+export interface AccountBudget {
+  accountId: string;
+  label: string;
+  provider: ProviderKind;
+  enabled: boolean;
+  subscription?: SubscriptionInfo;
+  /** Whole days until `subscription.renewsAt` (negative when overdue). */
+  renewsInDays?: number;
+  /**
+   * Remaining fraction 0..1 of the tightest limit, combining DaveCode's own windows and the
+   * provider-reported limits. `null` when no limit is known (unmetered).
+   */
+  remaining: number | null;
+  /** Window behind `remaining` when it comes from DaveCode's own limits. */
+  tightestWindow?: QuotaWindow;
+  usage: AccountUsage;
+  reported?: ReportedLimits;
+  /** Whether the router would currently send traffic to the account. */
+  available: boolean;
+  /** Why not, when `available` is false (disabled, cooldown, exhausted…). */
+  unavailableReason?: string;
+}
+
+export interface BudgetSnapshot {
+  /** ISO timestamp. */
+  generatedAt: string;
+  accounts: AccountBudget[];
+  /** Compact plain-text summary injected into the orchestrator and agent prompts. */
+  context: string;
+}
+
+/**
+ * How an account proves who it is upstream: an API key in the keyring, the vendor CLI's own
+ * login inside the account sandbox, or a browser profile (experimental `gemini-web`).
+ */
+export type ConnectionMethod = 'api-key' | 'cli-login' | 'browser';
+
+export type ConnectionStatus = 'connected' | 'not_connected' | 'unknown';
+
+/** Result of checking an account's credentials without exposing them. */
+export interface AccountConnection {
+  accountId: string;
+  provider: ProviderKind;
+  method: ConnectionMethod;
+  status: ConnectionStatus;
+  /** Plain-language explanation or caveat. Never contains credentials or account emails. */
+  detail?: string;
+  /** Command that runs the vendor's official login for this account (`cli-login` only). */
+  loginCommand?: string;
+  /** ISO timestamp. */
+  checkedAt: string;
+}
+
+/** Outcome of a "Connect subscription" request. */
+export interface ConnectResult {
+  connection: AccountConnection;
+  /** True when the gateway opened a terminal running the official login on its own machine. */
+  launched: boolean;
+  /** What to run by hand when nothing was launched (or the window was closed). */
+  command: string;
+  message: string;
 }
 
 /** `cancelled`: the client aborted (disconnect, Esc in the TUI); never counts against the account. */
@@ -306,6 +418,87 @@ export interface RunnerStatus {
   repairCycle?: number;
   startedAt?: string;
   lastError?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Goal mode (a team of role-based agents working toward one objective)
+// ---------------------------------------------------------------------------
+
+/**
+ * `code` tasks are handed to the autonomous runner (branch, quality gates, merge).
+ * `artifact` tasks produce a markdown document under `.davecode/goals/<goal-id>/`.
+ */
+export type GoalTaskKind = 'code' | 'artifact';
+
+export interface GoalRole {
+  /** Lowercase id the planner assigns tasks to, e.g. `researcher`. */
+  id: string;
+  description: string;
+  /** Route or model id this role talks to (default: `goal.route`). */
+  route?: string;
+}
+
+export interface GoalTask {
+  /** Unique within the goal (task-graph id syntax). */
+  id: string;
+  title: string;
+  description?: string;
+  role: string;
+  kind: GoalTaskKind;
+  status: TaskStatus;
+  dependsOn: string[];
+  acceptance?: string[];
+  /** Planning round that created the task (1-based). */
+  round: number;
+  attempts: number;
+  /** Workspace-relative path of the markdown artifact, once written. */
+  artifact?: string;
+  /** Project task-graph id the runner worked on (`code` tasks). */
+  runnerTaskId?: string;
+  /** Result summary or failure reason. */
+  notes?: string;
+}
+
+export type GoalStatus =
+  | 'planning'
+  | 'running'
+  | 'reviewing'
+  /** Dry run: the plan was made and nothing was executed. */
+  | 'planned'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  /** A token cap was reached or no account had capacity left. */
+  | 'budget_exhausted';
+
+export interface GoalLimits {
+  /** Plan → execute → review rounds. */
+  maxRounds: number;
+  /** Tasks across all rounds. */
+  maxTasks: number;
+  /** Prompt + completion tokens across every agent and runner pass. */
+  maxTokens: number;
+  tokensUsed: number;
+}
+
+export interface Goal {
+  id: string;
+  objective: string;
+  status: GoalStatus;
+  /** Current round (1-based). */
+  round: number;
+  limits: GoalLimits;
+  roles: GoalRole[];
+  tasks: GoalTask[];
+  /** Task being executed right now. */
+  activeTaskId?: string;
+  /** Reviewer's (or planner's, for dry runs) latest summary. */
+  summary?: string;
+  lastError?: string;
+  dryRun?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
 }
 
 // ---------------------------------------------------------------------------

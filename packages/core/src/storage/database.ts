@@ -71,6 +71,9 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX idx_audit_logs_ts ON audit_logs(ts);
   `,
+  `
+  ALTER TABLE accounts ADD COLUMN subscription TEXT NOT NULL DEFAULT '{}';
+  `,
 ];
 
 /** Current schema version of the database. */

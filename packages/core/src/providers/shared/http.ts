@@ -1,3 +1,4 @@
+import { limitsFromHeaders } from '../../rate-limiter/reported';
 import { type ErrorScope, errorFromHttp, toProviderError } from './errors';
 import { bodyChunks } from './lines';
 
@@ -33,6 +34,16 @@ export async function send(req: HttpRequest, scope: ErrorScope): Promise<Respons
       // ignore body read errors; the status is what matters
     }
     throw errorFromHttp(res.status, text, res.headers, scope);
+  }
+  if (scope.reportLimits) {
+    const limits = limitsFromHeaders(res.headers);
+    if (limits) {
+      try {
+        scope.reportLimits(limits);
+      } catch {
+        // Bookkeeping must never fail a successful request.
+      }
+    }
   }
   return res;
 }

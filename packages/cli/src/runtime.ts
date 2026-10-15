@@ -5,16 +5,23 @@ import type { AddressInfo } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  type Account,
   type AutonomousRunner,
   createEngine,
+  createGoalService,
   createRunner,
   type DaveConfigInput,
   type Engine,
+  type GoalService,
   ProjectBrain,
   ProjectBrainSource,
+  WorkspaceLock,
 } from '@davecode/core';
 import { type GatewayOptions, type ProjectInfo, startGateway } from '@davecode/server';
 import { connectHost } from './client';
+import { launchLoginTerminal } from './lib/terminal';
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
 /**
  * Process wiring shared by `davecode start`, `chat` (in-process gateway) and `run`:
@@ -65,12 +72,17 @@ export interface ProjectWiring {
   source: ProjectBrainSource;
   /** The Phase 4 autonomous runner for this repository; satisfies `RunnerControl`. */
   runner: AutonomousRunner;
+  /** Goal mode for this repository; satisfies `GoalControl`. */
+  goals: GoalService;
+  /** Held by the runner (`runner`) or goal mode (`goal`) while they touch the working tree. */
+  lock: WorkspaceLock;
 }
 
 /**
- * Open the project brain of `root` on the engine's event bus and build its autonomous runner.
- * The runner is created even before `davecode init`: `start()`/`runOnce()` then reject with a
- * `RunnerError` (`no_brain`, `not_a_repo`...) that the CLI and the dashboard explain.
+ * Open the project brain of `root` on the engine's event bus and build its autonomous runner
+ * and goal service, which share one workspace lock. The runner is created even before
+ * `davecode init`: `start()`/`runOnce()` then reject with a `RunnerError` (`no_brain`,
+ * `not_a_repo`...) that the CLI and the dashboard explain.
  */
 export function wireProject(
   engine: Engine,
@@ -78,10 +90,19 @@ export function wireProject(
   options: { env?: NodeJS.ProcessEnv; name?: string } = {},
 ): ProjectWiring {
   const brain = new ProjectBrain(root, { events: engine.events });
+  const lock = new WorkspaceLock();
+  const budgetContext = () => engine.budget.context();
   return {
     brain,
     source: new ProjectBrainSource(brain, options.name),
-    runner: createRunner(engine, { brain, ...(options.env ? { env: options.env } : {}) }),
+    runner: createRunner(engine, {
+      brain,
+      lock: { lock, owner: 'runner' },
+      contextExtras: budgetContext,
+      ...(options.env ? { env: options.env } : {}),
+    }),
+    goals: createGoalService(engine, { brain, lock, budgetContext }),
+    lock,
   };
 }
 
@@ -154,6 +175,7 @@ export interface Runtime {
   brain: ProjectBrain | undefined;
   project: ProjectInfo | undefined;
   runner: AutonomousRunner | undefined;
+  goals: GoalService | undefined;
   /** Address to connect to, e.g. `http://127.0.0.1:4040`. */
   url: string;
   host: string;
@@ -192,11 +214,22 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       : undefined;
     const wantDashboard = options.dashboard !== false && engine.config.server.dashboard;
     const dashboardDir = wantDashboard ? resolveDashboardDir(options.env) : undefined;
+    const bindHost = options.host ?? engine.config.server.host;
+    // Only a gateway on loopback shares a screen with its user; elsewhere a login window
+    // would open on a machine nobody is looking at.
+    const loginLauncher = LOOPBACK_HOSTS.has(bindHost)
+      ? {
+          launch: async (account: Account) => ({
+            launched: await launchLoginTerminal(account.id, { env: options.env }),
+          }),
+        }
+      : undefined;
 
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
+      ...(loginLauncher ? { loginLauncher } : {}),
       ...(dashboardDir ? { dashboardDir } : {}),
-      ...(project ? { brain: project.source, runner: project.runner } : {}),
+      ...(project ? { brain: project.source, runner: project.runner, goals: project.goals } : {}),
       ...(options.host !== undefined ? { host: options.host } : {}),
       ...(options.port !== undefined ? { port: options.port } : {}),
     });
@@ -207,11 +240,13 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     let closed = false;
     const runner = project?.runner;
+    const goals = project?.goals;
     return {
       engine,
       brain: project?.brain,
       project: project?.source.project(),
       runner,
+      goals,
       url: `http://${connectHost(host)}:${port}`,
       host,
       port,
@@ -220,6 +255,8 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
         if (closed) return;
         closed = true;
         try {
+          const active = goals?.activeGoalId;
+          if (active) await goals?.cancel(active);
           await runner?.stop();
           await app.close();
         } finally {

@@ -6,6 +6,7 @@ import {
   type LucideIcon,
   Route,
   Settings,
+  Target,
   Users,
 } from 'lucide-react';
 
@@ -16,6 +17,7 @@ export type PageId =
   | 'routes'
   | 'tasks'
   | 'runner'
+  | 'goals'
   | 'settings';
 
 export interface NavItem {
@@ -83,6 +85,15 @@ export const NAV: NavItem[] = [
     key: 'e',
     group: 'Engine',
     description: 'Autonomous runner state and live logs',
+  },
+  {
+    id: 'goals',
+    path: '/goals',
+    label: 'Goals',
+    icon: Target,
+    key: 'l',
+    group: 'Engine',
+    description: 'Agent team working toward an objective',
   },
   {
     id: 'settings',

@@ -1,12 +1,17 @@
 import { connectEventStream, type StreamHandlers } from './events';
 import type {
   Account,
+  AccountConnection,
   AccountCreate,
   AccountPatch,
   AccountUsage,
   ApiErrorBody,
   BrainResponse,
+  BudgetSnapshot,
+  ConnectResult,
   DaveEvent,
+  Goal,
+  GoalStart,
   HealthResponse,
   ModelInfo,
   RoutesResponse,
@@ -72,6 +77,12 @@ export interface DaveClient {
   updateAccount(id: string, patch: AccountPatch): Promise<Account>;
   deleteAccount(id: string): Promise<void>;
   usage(): Promise<AccountUsage[]>;
+  /** `GET /api/budget`: plan, renewal and remaining capacity per account. */
+  budget(): Promise<BudgetSnapshot>;
+  /** `GET /api/accounts/:id/connection`: is the API key or vendor CLI login in place? */
+  connection(id: string): Promise<AccountConnection>;
+  /** `POST /api/accounts/:id/connect`: start the vendor's official login ("Connect subscription"). */
+  connect(id: string): Promise<ConnectResult>;
   timeseries(minutes?: number, bucketSec?: number): Promise<TimeseriesBucket[]>;
   requests(limit?: number): Promise<UsageRecord[]>;
   routes(): Promise<RoutesResponse>;
@@ -86,6 +97,12 @@ export interface DaveClient {
   /** `start` may name a task to run first (`POST /api/runner/start { taskId }`). */
   runnerAction(action: RunnerAction, opts?: { taskId?: string }): Promise<RunnerStatus>;
   logs(limit?: number): Promise<DaveEvent[]>;
+  /** Goals of the gateway's project, newest first (`501 goals_unavailable` without one). */
+  goals(): Promise<Goal[]>;
+  /** Starts a goal; it keeps running in the background (`goal.*` events). */
+  startGoal(body: GoalStart): Promise<Goal>;
+  /** Cancels a goal and resolves once it has stopped. */
+  cancelGoal(id: string): Promise<Goal>;
   /** `GET /v1/models`: every model of every enabled account plus `davecode/<route>` aliases. */
   models(): Promise<ModelInfo[]>;
   /** Subscribe to `/api/events`. Returns an unsubscribe function. */
@@ -176,6 +193,21 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
       ).account,
     deleteAccount: (id) => request<void>('DELETE', `/api/accounts/${encodeURIComponent(id)}`),
     usage: async () => (await get<{ usage: AccountUsage[] }>('/api/usage')).usage,
+    budget: async () => (await get<{ budget: BudgetSnapshot }>('/api/budget')).budget,
+    connection: async (id) =>
+      (
+        await get<{ connection: AccountConnection }>(
+          `/api/accounts/${encodeURIComponent(id)}/connection`,
+        )
+      ).connection,
+    connect: async (id) =>
+      (
+        await request<{ connect: ConnectResult }>(
+          'POST',
+          `/api/accounts/${encodeURIComponent(id)}/connect`,
+          {},
+        )
+      ).connect,
     timeseries: async (minutes = 60, bucketSec = 60) =>
       (
         await get<{ buckets: TimeseriesBucket[] }>(
@@ -205,6 +237,10 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
       ).status,
     logs: async (limit = 200) =>
       (await get<{ events: DaveEvent[] }>(`/api/logs?limit=${limit}`)).events,
+    goals: async () => (await get<{ goals: Goal[] }>('/api/goals')).goals,
+    startGoal: async (body) => (await request<{ goal: Goal }>('POST', '/api/goals', body)).goal,
+    cancelGoal: async (id) =>
+      (await request<{ goal: Goal }>('POST', `/api/goals/${encodeURIComponent(id)}/cancel`)).goal,
     models: async () => (await get<{ data: ModelInfo[] }>('/v1/models')).data,
     subscribe: (handlers) => {
       const qs = token ? `?token=${encodeURIComponent(token)}` : '';

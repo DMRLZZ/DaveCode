@@ -1,5 +1,5 @@
-import { mkdirSync, rmSync } from 'node:fs';
-import { isAbsolute, relative, resolve } from 'node:path';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import { globalPaths } from '../paths';
 import type { Account } from '../types';
 
@@ -25,6 +25,30 @@ export function accountDir(root: string, accountId: string): string {
 }
 
 /**
+ * Gemini CLI settings that select "Login with Google" (personal OAuth) so the first run in a
+ * fresh sandbox starts Google's own sign-in instead of asking for an API key.
+ */
+export const GEMINI_CLI_SETTINGS = { security: { auth: { selectedType: 'oauth-personal' } } };
+
+/** Write `<home>/.gemini/settings.json` unless the user (or Gemini CLI) already created one. */
+export function seedGeminiHome(home: string): void {
+  const dir = join(home, '.gemini');
+  const file = join(dir, 'settings.json');
+  if (existsSync(file)) return;
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  writeFileSync(file, `${JSON.stringify(GEMINI_CLI_SETTINGS, null, 2)}\n`, { mode: 0o600 });
+}
+
+/**
+ * Point Gemini CLI's home at `home`. `GEMINI_CLI_HOME` is honoured by recent releases;
+ * `HOME`/`USERPROFILE` cover older ones, since Gemini CLI keeps everything under
+ * `os.homedir()/.gemini`.
+ */
+export function geminiHomeEnv(home: string): Record<string, string> {
+  return { GEMINI_CLI_HOME: home, HOME: home, USERPROFILE: home };
+}
+
+/**
  * Per-account isolated directories for CLI providers (`~/.davecode/sandboxes/<accountId>`),
  * so accounts never share credentials, caches or rate-limit state.
  */
@@ -47,6 +71,13 @@ export class SandboxManager {
     return dir;
   }
 
+  /** {@link ensure} plus any provider-specific first-run files (Gemini CLI auth selection). */
+  prepare(account: Pick<Account, 'id' | 'provider'>): string {
+    const dir = this.ensure(account.id);
+    if (account.provider === 'gemini-cli') seedGeminiHome(dir);
+    return dir;
+  }
+
   /** Environment variables that point a CLI provider at the account's sandbox. */
   envFor(account: Pick<Account, 'id' | 'provider'>): Record<string, string> {
     switch (account.provider) {
@@ -54,6 +85,8 @@ export class SandboxManager {
         return { CLAUDE_CONFIG_DIR: this.dirFor(account.id) };
       case 'codex-cli':
         return { CODEX_HOME: this.dirFor(account.id) };
+      case 'gemini-cli':
+        return geminiHomeEnv(this.dirFor(account.id));
       default:
         return {};
     }

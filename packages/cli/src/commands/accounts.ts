@@ -1,4 +1,15 @@
-import { type Account, globalPaths, SandboxManager } from '@davecode/core';
+import { createInterface } from 'node:readline';
+import {
+  type Account,
+  type AccountConnection,
+  CLI_LOGINS,
+  cliBinaryFor,
+  globalPaths,
+  loginEnv,
+  type ProviderKind,
+  SandboxManager,
+  type SubscriptionInfo,
+} from '@davecode/core';
 import { type CliContext, printJson } from '../context';
 import { CliError, EXIT } from '../errors';
 import {
@@ -22,6 +33,8 @@ export interface AccountsDeps {
   prompter?: Prompter;
   readStdin?: () => Promise<string>;
   spawn?: SpawnFn;
+  /** Used by `accounts login --hold` (tests). */
+  waitForEnter?: () => Promise<void>;
 }
 
 export interface BackendFlags {
@@ -300,30 +313,153 @@ export async function accountsSetEnabled(
 }
 
 // ---------------------------------------------------------------------------
+// plan (subscription details)
+// ---------------------------------------------------------------------------
+
+export interface PlanFlags extends BackendFlags {
+  plan?: string;
+  paid?: string;
+  renews?: string;
+  price?: string;
+  currency?: string;
+  period?: string;
+  notes?: string;
+  clear?: boolean;
+}
+
+export function describeSubscription(subscription: SubscriptionInfo | undefined): string {
+  if (!subscription) return 'no plan recorded';
+  const parts: string[] = [];
+  if (subscription.plan) parts.push(subscription.plan);
+  if (subscription.price) {
+    const { amount, currency, period } = subscription.price;
+    parts.push(`${amount} ${currency}/${period}`);
+  }
+  if (subscription.paidAt) parts.push(`paid ${subscription.paidAt}`);
+  if (subscription.renewsAt) parts.push(`renews ${subscription.renewsAt}`);
+  if (subscription.notes) parts.push(subscription.notes);
+  return parts.length > 0 ? parts.join(' · ') : 'no plan recorded';
+}
+
+/** Merge plan flags into the existing subscription details (validated by the backend). */
+export function subscriptionFromFlags(
+  existing: SubscriptionInfo | undefined,
+  flags: PlanFlags,
+): SubscriptionInfo {
+  const next: SubscriptionInfo = { ...existing };
+  if (flags.plan !== undefined) next.plan = flags.plan;
+  if (flags.paid !== undefined) next.paidAt = flags.paid;
+  if (flags.renews !== undefined) next.renewsAt = flags.renews;
+  if (flags.notes !== undefined) next.notes = flags.notes;
+  if (flags.price !== undefined || flags.currency !== undefined || flags.period !== undefined) {
+    const amount = flags.price !== undefined ? Number(flags.price) : existing?.price?.amount;
+    if (amount === undefined || !Number.isFinite(amount)) {
+      throw new CliError('--price needs a number, e.g. --price 20', {
+        hint: 'Set the amount with --price, and optionally --currency USD --period month.',
+      });
+    }
+    const period = flags.period ?? existing?.price?.period ?? 'month';
+    if (period !== 'month' && period !== 'year') {
+      throw new CliError('--period must be "month" or "year"');
+    }
+    next.price = { amount, currency: flags.currency ?? existing?.price?.currency ?? 'USD', period };
+  }
+  return next;
+}
+
+export async function accountsPlan(
+  ctx: CliContext,
+  ref: string,
+  flags: PlanFlags = {},
+  deps: AccountsDeps = {},
+): Promise<number> {
+  return withBackend(ctx, flags, deps, async (backend) => {
+    const account = await resolveAccount(backend, ref);
+    const { theme } = ctx;
+    const changes = ['plan', 'paid', 'renews', 'price', 'currency', 'period', 'notes'] as const;
+    const editing = flags.clear || changes.some((key) => flags[key] !== undefined);
+    if (!editing) {
+      if (ctx.json)
+        printJson(ctx, { account: account.id, subscription: account.subscription ?? null });
+      else ctx.out(`${theme.bold(account.label)}: ${describeSubscription(account.subscription)}`);
+      return EXIT.ok;
+    }
+    const subscription = flags.clear ? null : subscriptionFromFlags(account.subscription, flags);
+    const updated = await backend.update(account.id, { subscription });
+    if (ctx.json) printJson(ctx, { account: updated });
+    else {
+      ctx.out(
+        `${theme.ok(theme.glyph.ok)} ${updated.label}: ${describeSubscription(updated.subscription)}`,
+      );
+    }
+    return EXIT.ok;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // login
 // ---------------------------------------------------------------------------
 
-const INSTALL_HINTS: Record<string, string> = {
-  'claude-cli': 'Install Claude Code: npm install -g @anthropic-ai/claude-code',
-  'codex-cli': 'Install Codex: npm install -g @openai/codex',
-};
+/** Arguments that start each CLI's own official login flow. */
+export function loginArgs(provider: ProviderKind): string[] {
+  return CLI_LOGINS[provider]?.loginArgs ?? [];
+}
 
-/** Arguments that start each CLI's own login flow. */
-export function loginArgs(provider: string): string[] {
-  return provider === 'codex-cli' ? ['login'] : [];
+export interface LoginFlags extends BackendFlags {
+  /** Wait for Enter before exiting (used when the dashboard opened this in a new window). */
+  hold?: boolean;
+}
+
+function waitForEnter(): Promise<void> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question('Press Enter to close this window.', () => {
+      rl.close();
+      resolve();
+    });
+    rl.once('close', resolve);
+  });
+}
+
+export function describeConnection(theme: Theme, connection: AccountConnection): string {
+  const label: Record<AccountConnection['status'], string> = {
+    connected: theme.ok(`${theme.glyph.ok} connected`),
+    not_connected: theme.warn(`${theme.glyph.warn} not connected`),
+    unknown: theme.dim('? unknown'),
+  };
+  return `${label[connection.status]}${connection.detail ? theme.dim(` — ${connection.detail}`) : ''}`;
 }
 
 export async function accountsLogin(
   ctx: CliContext,
   ref: string,
   extraArgs: string[] = [],
-  flags: BackendFlags = {},
+  flags: LoginFlags = {},
   deps: AccountsDeps = {},
+): Promise<number> {
+  if (!flags.hold) return runLogin(ctx, ref, extraArgs, flags, deps);
+  try {
+    return await runLogin(ctx, ref, extraArgs, flags, deps);
+  } catch (err) {
+    ctx.err(ctx.errTheme.warn(err instanceof Error ? err.message : String(err)));
+    return EXIT.failure;
+  } finally {
+    await (deps.waitForEnter ?? waitForEnter)();
+  }
+}
+
+function runLogin(
+  ctx: CliContext,
+  ref: string,
+  extraArgs: string[],
+  flags: LoginFlags,
+  deps: AccountsDeps,
 ): Promise<number> {
   return withBackend(ctx, flags, deps, async (backend) => {
     const account = await resolveAccount(backend, ref);
-    const info = providerInfo(account.provider);
-    if (info?.auth !== 'cli-login' || !info.binary) {
+    const spec = CLI_LOGINS[account.provider];
+    if (!spec) {
+      const info = providerInfo(account.provider);
       throw new CliError(`${account.provider} accounts do not use a CLI login`, {
         hint:
           info?.auth === 'api-key' || info?.auth === 'optional-key'
@@ -331,20 +467,15 @@ export async function accountsLogin(
             : undefined,
       });
     }
-    const binary =
-      typeof account.config.binaryPath === 'string' && account.config.binaryPath.trim()
-        ? account.config.binaryPath.trim()
-        : info.binary;
+    const binary = cliBinaryFor(account) ?? spec.binary;
     const resolved = which(binary, ctx.env);
     if (!resolved) {
-      throw new CliError(`Cannot find \`${binary}\` on PATH`, {
-        hint: INSTALL_HINTS[account.provider],
-      });
+      throw new CliError(`Cannot find \`${binary}\` on PATH`, { hint: spec.installHint });
     }
 
     const sandboxes = new SandboxManager(globalPaths(ctx.home).sandboxes);
-    const dir = sandboxes.ensure(account.id);
-    const isolation = sandboxes.envFor(account);
+    const dir = sandboxes.prepare(account);
+    const isolation = loginEnv(account, sandboxes);
     const env = { ...ctx.env, ...isolation };
     const [variable] = Object.keys(isolation);
     const { theme } = ctx;
@@ -353,33 +484,70 @@ export async function accountsLogin(
       `${theme.accent(theme.glyph.arrow)} Logging in ${theme.bold(account.label)} ${theme.dim(`(${account.id})`)}`,
     );
     ctx.out(theme.dim(`  ${variable}=${dir}`));
-    ctx.out(
-      theme.dim(
-        account.provider === 'claude-cli'
-          ? '  Claude Code asks you to sign in on first start (or type /login). Exit with /exit when done.'
-          : '  Follow the Codex sign-in flow; it exits when you are logged in.',
-      ),
-    );
+    ctx.out(theme.dim(`  ${spec.instructions}`));
+    ctx.out(theme.dim('  DaveCode never sees your password; the vendor CLI keeps the login.'));
     ctx.out();
 
-    const args = extraArgs.length > 0 ? extraArgs : loginArgs(account.provider);
-    const code = await spawnInteractive(resolved, args, {
+    const args = extraArgs.length > 0 ? extraArgs : spec.loginArgs;
+    const exit = await spawnInteractive(resolved, args, {
       env,
       cwd: dir,
       ...(deps.spawn ? { spawn: deps.spawn } : {}),
     });
     ctx.out();
-    if (code !== 0) {
-      ctx.err(ctx.errTheme.warn(`${binary} exited with code ${code}`));
-      return code;
+    if (exit !== 0) {
+      ctx.err(ctx.errTheme.warn(`${binary} exited with code ${exit}`));
+      return exit;
     }
     if (account.status === 'error' && account.enabled) {
       // A fresh login fixes auth errors; reset the account so the router tries it again.
       await backend.update(account.id, { enabled: true });
     }
+    const connection = await backend.connection(account.id).catch(() => undefined);
+    if (connection) ctx.out(`  ${describeConnection(theme, connection)}`);
     ctx.out(
       `${theme.ok(theme.glyph.ok)} ${account.label} is ready. Its login lives only in ${dir}`,
     );
     return EXIT.ok;
   });
+}
+
+export interface ConnectFlags extends BackendFlags {
+  /** Only report the connection state. */
+  check?: boolean;
+}
+
+/**
+ * "Connect subscription" from the terminal: show the account's connection state and, for
+ * CLI-login accounts that are not connected, run the vendor's official login.
+ */
+export async function accountsConnect(
+  ctx: CliContext,
+  ref: string,
+  flags: ConnectFlags = {},
+  deps: AccountsDeps = {},
+): Promise<number> {
+  const { account, connection } = await withBackend(ctx, flags, deps, async (backend) => {
+    const account = await resolveAccount(backend, ref);
+    return { account, connection: await backend.connection(account.id) };
+  });
+  if (ctx.json) {
+    printJson(ctx, { connection });
+    return connection.status === 'connected' || flags.check ? EXIT.ok : EXIT.failure;
+  }
+  const { theme } = ctx;
+  ctx.out(`${theme.bold(account.label)} ${theme.dim(`(${account.id}, ${account.provider})`)}`);
+  ctx.out(`  ${describeConnection(theme, connection)}`);
+  if (flags.check || connection.status === 'connected') return EXIT.ok;
+  if (connection.method === 'api-key') {
+    ctx.out(
+      theme.dim(
+        `  Store a key in the dashboard (Accounts → ${account.label}) or re-add the account with --secret-env.`,
+      ),
+    );
+    return EXIT.failure;
+  }
+  if (connection.method !== 'cli-login') return EXIT.failure;
+  ctx.out();
+  return accountsLogin(ctx, account.id, [], flags, deps);
 }

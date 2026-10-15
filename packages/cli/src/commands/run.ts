@@ -80,8 +80,7 @@ const HINTS: Record<RunnerErrorCode, (config: DaveConfig) => { message?: string;
     hint: 'Run its dependencies first (`davecode tasks` shows what each task waits on).',
   }),
   busy: () => ({
-    message: 'The runner is already running',
-    hint: 'Stop it from the dashboard or the other `davecode run` first.',
+    hint: 'Stop the runner or the running goal (dashboard, `davecode goals cancel <id>` or the other `davecode run`) first.',
   }),
 };
 
@@ -90,7 +89,7 @@ const CODE_PATTERNS: Array<[RunnerErrorCode, RegExp]> = [
   ['no_brain', /no project brain/i],
   ['no_base_branch', /base branch .* does not exist/i],
   ['dirty_worktree', /uncommitted changes/i],
-  ['busy', /already running/i],
+  ['busy', /already running|working tree is busy/i],
   ['invalid_graph', /task graph/i],
 ];
 

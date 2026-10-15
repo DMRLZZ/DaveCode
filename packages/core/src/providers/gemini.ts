@@ -289,7 +289,12 @@ export class GeminiProvider implements Provider {
   readonly kind = 'gemini' as const;
 
   private scope(ctx: ProviderCallContext): ErrorScope {
-    return { provider: this.kind, accountId: ctx.account.id, secret: ctx.secret };
+    return {
+      provider: this.kind,
+      accountId: ctx.account.id,
+      secret: ctx.secret,
+      reportLimits: ctx.reportLimits,
+    };
   }
 
   private baseUrl(ctx: ProviderCallContext): string {

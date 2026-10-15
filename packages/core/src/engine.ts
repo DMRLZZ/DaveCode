@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs';
+import { BudgetService } from './budget/service';
 import { loadConfig } from './config/loader';
 import type { DaveConfig, DaveConfigInput } from './config/schema';
 import {
@@ -9,10 +10,12 @@ import {
 } from './config/writer';
 import { EventBus } from './events';
 import { ChromiumProfileManager } from './identity/chromium';
+import { ConnectionChecker, type StatusProbe } from './identity/connect';
 import { Keyring } from './identity/keyring';
 import { SandboxManager } from './identity/sandbox';
 import { davecodeHome, type GlobalPaths, globalPaths } from './paths';
 import { createProviders } from './providers/registry';
+import { ReportedLimitsStore } from './rate-limiter/reported';
 import { UsageTracker } from './rate-limiter/tracker';
 import { type Clock, QuotaEngine } from './rate-limiter/window';
 import { Router } from './router/router';
@@ -37,6 +40,8 @@ export interface CreateEngineOptions {
   databasePath?: string;
   /** Clock shared by quotas, cooldowns and timestamps (tests). */
   clock?: Clock;
+  /** Runs vendor CLI status commands for connection checks (tests inject a fake). */
+  statusProbe?: StatusProbe;
 }
 
 /** Fully wired DaveCode core, shared by the gateway, CLI and runner. */
@@ -57,7 +62,13 @@ export interface Engine {
   chromium: ChromiumProfileManager;
   quota: QuotaEngine;
   tracker: UsageTracker;
+  /** Rate-limit state the providers reported (headers, limit errors), in memory. */
+  reported: ReportedLimitsStore;
   router: Router;
+  /** Subscription details + remaining capacity per account, and the agents' budget context. */
+  budget: BudgetService;
+  /** Whether each account's API key or vendor CLI login is in place. */
+  connections: ConnectionChecker;
   providers: Map<ProviderKind, Provider>;
   /**
    * Replaces the route list (and optionally the default route): persists it to the **global**
@@ -105,6 +116,7 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       getAccount: (id) => accounts.get(id),
     });
     tracker.hydrate();
+    const reported = new ReportedLimitsStore({ clock });
     const providers = options.providers ?? createProviders();
     const router = new Router({
       config,
@@ -117,6 +129,14 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       chromium,
       keyring,
       clock,
+      reported,
+    });
+    const budget = new BudgetService({ accounts, quota, reported, router, clock });
+    const connections = new ConnectionChecker({
+      sandboxes,
+      clock,
+      env,
+      ...(options.statusProbe ? { probe: options.statusProbe } : {}),
     });
 
     let closed = false;
@@ -135,7 +155,10 @@ export function createEngine(options: CreateEngineOptions = {}): Engine {
       chromium,
       quota,
       tracker,
+      reported,
       router,
+      budget,
+      connections,
       providers,
       async updateRouting(update) {
         const result = await writeGlobalRouting(home, update);

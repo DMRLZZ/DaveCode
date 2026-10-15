@@ -1,11 +1,14 @@
 import {
   type Account,
+  type AccountConnection,
   type AccountUpdateInput,
+  type BudgetSnapshot,
   createEngine,
   type DaveConfig,
   type Engine,
   type ProviderKind,
   type QuotaLimits,
+  type SubscriptionInfo,
 } from '@davecode/core';
 import { accountCreateSchema, accountPatchSchema } from '@davecode/server';
 import { z } from 'zod';
@@ -21,10 +24,14 @@ export interface AccountCreate {
   weight?: number;
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
+  subscription?: SubscriptionInfo;
   secret?: string;
 }
 
-export type AccountPatch = Partial<Omit<AccountCreate, 'provider'>>;
+export type AccountPatch = Partial<Omit<AccountCreate, 'provider' | 'subscription'>> & {
+  /** Replaces the subscription details; `null` clears them. */
+  subscription?: SubscriptionInfo | null;
+};
 
 /**
  * Account operations against a running gateway (so the dashboard sees the change live) or, when
@@ -38,6 +45,10 @@ export interface AccountsBackend {
   create(input: AccountCreate): Promise<Account>;
   update(id: string, patch: AccountPatch): Promise<Account>;
   remove(id: string): Promise<void>;
+  /** Subscription details and remaining capacity per account. */
+  budget(): Promise<BudgetSnapshot>;
+  /** Whether the account's API key or vendor CLI login is in place. */
+  connection(id: string): Promise<AccountConnection>;
   close(): void;
 }
 
@@ -122,6 +133,17 @@ export class LocalAccounts implements AccountsBackend {
     audit.record({ actor: 'cli', action: 'account.delete', target: id });
   }
 
+  /** Quota windows are rebuilt from state.db; provider-reported limits live in the gateway only. */
+  async budget(): Promise<BudgetSnapshot> {
+    return this.engine.budget.snapshot();
+  }
+
+  async connection(id: string): Promise<AccountConnection> {
+    const account = this.engine.accounts.get(id);
+    if (!account) throw notFound(id);
+    return this.engine.connections.check(account);
+  }
+
   close(): void {
     this.engine.close();
   }
@@ -158,6 +180,18 @@ export class GatewayAccounts implements AccountsBackend {
 
   async remove(id: string): Promise<void> {
     await this.client.delete(`/api/accounts/${encodeURIComponent(id)}`);
+  }
+
+  async budget(): Promise<BudgetSnapshot> {
+    return (await this.client.get<{ budget: BudgetSnapshot }>('/api/budget')).budget;
+  }
+
+  async connection(id: string): Promise<AccountConnection> {
+    return (
+      await this.client.get<{ connection: AccountConnection }>(
+        `/api/accounts/${encodeURIComponent(id)}/connection`,
+      )
+    ).connection;
   }
 
   close(): void {}

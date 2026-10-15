@@ -19,6 +19,7 @@ import { toast } from '../../lib/toast';
 import type { Account, AccountStatus } from '../../lib/types';
 import { AccountSheet } from './AccountSheet';
 import { AddAccountSheet } from './AddAccountSheet';
+import { BudgetPanel } from './BudgetPanel';
 
 type StatusFilter = 'all' | AccountStatus;
 
@@ -252,6 +253,8 @@ export function Accounts() {
           </div>
         )}
       </Panel>
+
+      {all.length > 0 && <BudgetPanel />}
 
       <AddAccountSheet open={adding} onClose={() => setParam('new', null)} />
       <AccountSheet

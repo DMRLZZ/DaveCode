@@ -11,6 +11,7 @@ import type {
   Provider,
   ProviderCallContext,
   ProviderKind,
+  ReportedLimitsInput,
   ToolCall,
   Usage,
 } from '../types';
@@ -23,6 +24,8 @@ export type FakeResponse =
       usage?: Usage;
       /** Assistant tool calls (non-streaming only); sets `finish_reason: 'tool_calls'`. */
       toolCalls?: ToolCall[];
+      /** Rate-limit state to report, as an HTTP adapter does from response headers. */
+      limits?: ReportedLimitsInput;
     }
   | { type: 'error'; error: Error }
   | {
@@ -139,6 +142,7 @@ export class FakeProvider implements Provider {
     if (response.type === 'error') throw response.error;
     if (response.type === 'stream')
       return fakeCompletion(req.model, response.chunks.join(''), response.usage);
+    if (response.limits) ctx.reportLimits?.(response.limits);
     return fakeCompletion(
       req.model,
       response.content ?? (response.toolCalls ? '' : `ok from ${ctx.account.id}`),

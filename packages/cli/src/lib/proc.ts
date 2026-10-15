@@ -2,6 +2,27 @@ import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
+/** Split PATH, keeping Windows drive-letter prefixes when the delimiter is `:`. */
+export function splitPathEnv(pathEnv: string, delimiter: string): string[] {
+  if (delimiter === ';') return pathEnv.split(';').filter(Boolean);
+  const dirs: string[] = [];
+  let pendingDrive: string | undefined;
+  for (const piece of pathEnv.split(':')) {
+    if (pendingDrive !== undefined) {
+      dirs.push(`${pendingDrive}:${piece}`);
+      pendingDrive = undefined;
+      continue;
+    }
+    if (/^[A-Za-z]$/.test(piece)) {
+      pendingDrive = piece;
+      continue;
+    }
+    if (piece) dirs.push(piece);
+  }
+  if (pendingDrive !== undefined) dirs.push(pendingDrive);
+  return dirs;
+}
+
 /**
  * Locate `command` on PATH (honouring PATHEXT on Windows, preferring `.exe` over `.cmd` shims).
  * Paths containing a separator are returned as-is when they exist.
@@ -23,7 +44,9 @@ export function which(
   }
   const win = platform === 'win32';
   const delimiter = win ? ';' : ':';
-  const dirs = (env.PATH ?? env.Path ?? '').split(delimiter).filter(Boolean);
+  // When tests simulate linux/darwin on a Windows host, PATH still has drive letters
+  // (`C:\tmp\bin`). Splitting only on `:` would yield `C` + `\tmp\bin`.
+  const dirs = splitPathEnv(env.PATH ?? env.Path ?? '', delimiter);
   const exts = win
     ? [
         '.exe',

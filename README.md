@@ -104,7 +104,7 @@ faster and more reliable; set `runner.route` to a route that targets them.
 ```bash
 alias davecode="node $PWD/packages/cli/bin/davecode.js"   # or: cd packages/cli && npm link
 
-davecode doctor                     # checks Node, SQLite, ports, git/claude/codex/gh, Ollama
+davecode doctor                     # checks Node, SQLite, ports, git/claude/codex/gemini/gh, Ollama
 davecode accounts add               # interactive: provider, label, priority, masked API key
 davecode start                      # gateway on :4040 + dashboard at http://localhost:4040/
 davecode status                     # health, accounts and 1m/5h/24h quota bars (--json too)
@@ -118,8 +118,43 @@ davecode accounts add --provider anthropic --label work --secret-env ANTHROPIC_A
 davecode accounts add --provider openai-compatible --label ollama \
   --base-url http://localhost:11434/v1 --model qwen3:32b --yes
 davecode accounts add --provider claude-cli --label "Claude Pro" --yes
-davecode accounts login <id>        # logs that account in inside its own CLAUDE_CONFIG_DIR
+davecode accounts connect <id>      # official sign-in (claude auth login) in the account sandbox
 ```
+
+### Connect a subscription
+
+Subscription accounts (`claude-cli`, `codex-cli`, `gemini-cli`) are signed in by the vendor's own
+CLI, never by DaveCode: there is no password field anywhere, and the resulting tokens stay in the
+vendor CLI's store inside the account's sandbox (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+`GEMINI_CLI_HOME`). API keys go to the AES-256-GCM keyring.
+
+```bash
+davecode accounts connect <id> --check   # connected / not connected, without touching anything
+davecode accounts connect <id>           # runs the official login if needed
+davecode accounts login <id> -- login --device-auth   # pass your own arguments (Codex device code)
+```
+
+In the dashboard, the account sheet shows the connection status and a **Connect subscription**
+button. When the gateway is bound to `127.0.0.1` it opens a terminal window on that machine with
+the official login and the page updates once it lands; on any other bind address it shows the
+command to run instead.
+
+### Plans and remaining budget
+
+Record what each account costs and when it renews (entered by hand; DaveCode never reads billing
+pages), then see what is left:
+
+```bash
+davecode accounts plan <id> --plan "Claude Pro" --price 20 --renews 2026-11-01
+davecode budget                     # plan, renewal, remaining share of the tightest limit
+davecode budget --context           # the compact summary agents receive in their prompts
+```
+
+Remaining budget combines DaveCode's own sliding windows with the limits providers report
+(rate-limit headers, "usage limit reached… resets at" errors). Accounts a provider reported as
+exhausted are skipped by the router until the reset time.
+
+### Work on a repository
 
 Point DaveCode at a repository and let it work through the task graph:
 
@@ -133,8 +168,21 @@ davecode run                        # 24/7 loop with a live runner view; Ctrl+C 
 davecode run --task api --once      # run one specific task (must be PENDING and unblocked)
 ```
 
+Or give it an objective and let a team of agents plan, execute, review and re-plan:
+
+```bash
+davecode goal "Write positioning and landing copy for this app" --dry-run   # plan only
+davecode goal "Add a /health endpoint with tests" --max-rounds 2
+davecode goals                      # list; `goals show <id>`, `goals cancel <id>`
+```
+
+Goal mode is bounded by rounds, a task cap and a token budget (`goal.*` config). Code tasks go
+through the autonomous runner (branch, checks, merge); research and writing tasks produce
+markdown under `.davecode/goals/<goal-id>/`. Agents never send email, post, pay or sign up for
+anything: those steps become drafts for you to review.
+
 Other commands: `davecode config show|path|get <key>` (secrets redacted), `davecode tasks next`,
-`davecode tasks status <id> <STATUS>`, `davecode accounts list|enable|disable|remove`. Global
+`davecode tasks status <id> <STATUS>`, `davecode accounts list|enable|disable|remove|plan|login|connect`. Global
 flags: `--home <dir>` (sets `DAVECODE_HOME`), `--json`, `--no-color` (and `NO_COLOR`).
 
 In the chat TUI, Enter sends, Shift+Enter or Ctrl+J adds a line, Esc cancels a reply and
@@ -170,8 +218,12 @@ React + Tailwind). The gateway serves its production build (`packages/ui/dist`) 
 
 - **Overview**: live token burn (tokens/min over 60 min), requests/min, failovers, health and
   per-account 1m/5h/24h quota meters with the 85 % backpressure and 90 % shift thresholds.
-- **Accounts, Traffic, Routes**: add accounts with write-only secrets, watch every request with
-  its failover chain inline (`acc A → 429 → acc B ✓`), inspect ordered route targets.
+- **Accounts, Traffic, Routes**: add accounts with write-only secrets, see each account's
+  connection status and **Connect subscription** to the vendor's official sign-in, record plans
+  and renewals next to the remaining budget, watch every request with its failover chain inline
+  (`acc A → 429 → acc B ✓`), inspect ordered route targets.
+- **Goals**: start an objective (or a dry-run plan), follow the agent team's live log, task
+  board and artifacts, and cancel it.
 - **Tasks and Runner**: the task graph as a DAG, board or list next to `STATE.md`, and the
   runner's state machine, repair cycles and live logs with start/pause/stop.
 - `Ctrl/⌘ K` opens the command palette; `g o`, `g a`, `g t`… jump between screens; `?` lists
@@ -197,7 +249,22 @@ When the gateway is unreachable the dashboard falls back to mock data automatica
 | OpenRouter, Ollama, LM Studio, vLLM, LiteLLM… | `openai-compatible` | Optional key + base URL | ✅ |
 | Claude Code CLI | `claude-cli` | Your Claude login, isolated per account | ✅ |
 | Codex CLI | `codex-cli` | Your ChatGPT/OpenAI login, isolated per account | ✅ |
+| Gemini CLI | `gemini-cli` | Your Google login ("Login with Google"), isolated per account | ✅ |
 | Gemini web session | `gemini-web` | Browser profile | ⚠️ Experimental, off |
+
+Subscriptions are used only through the vendor's own CLI and its official sign-in. Known limits:
+
+- **Google Antigravity is not supported.** It has no public API or CLI, and reusing its OAuth
+  tokens from another program (what community plugins do) breaks Google's terms. The supported way
+  to use a Google AI subscription is `gemini-cli`.
+- None of Anthropic, OpenAI or Google offer an OAuth flow that lets third-party apps use a
+  consumer subscription directly, so "Connect subscription" runs the vendor CLI's login rather
+  than a web OAuth consent screen.
+- On Windows and Linux, Claude Code may fall back to your global login (`~/.claude`) instead of
+  the account sandbox. `accounts connect --check` and the dashboard say so when it happens, because
+  the account is then not isolated.
+- The `gemini-cli` adapter (`GEMINI_CLI_HOME` isolation and the `stream-json` output) has not been
+  verified against a real Gemini CLI install yet.
 
 ### Terms of Service
 
@@ -268,6 +335,10 @@ docs/         architecture, API contract, original spec
 - [ ] Verified Codex CLI event format and more provider live tests
 - [x] Editing routes and the task graph from the dashboard
 - [x] Targeting a specific task with `davecode run --task <id>`
+- [x] Goal mode: objective → agent team → plan, execute, review, re-plan
+- [x] Plans, renewals and remaining budget per account, shared with agents
+- [x] Connect subscription (official vendor sign-in) from the CLI and the dashboard
+- [ ] Verified Gemini CLI adapter against a real install
 
 ## Contributing
 

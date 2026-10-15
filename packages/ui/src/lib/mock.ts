@@ -1,5 +1,7 @@
 import { ApiError, type DaveClient, type RunnerAction } from './api';
 import type { StreamHandlers } from './events';
+import { buildMockBudget, mockSubscription } from './mock-budget';
+import { MOCK_LOGGED_IN, MOCK_LOGIN_MS, mockConnection } from './mock-connect';
 import {
   ACCOUNT_SEEDS,
   MOCK_ARCHITECTURE,
@@ -9,15 +11,21 @@ import {
   mockTasks,
   ROUTE_MIX,
 } from './mock-data';
+import { MockGoals } from './mock-goals';
 import { ROUTE_NAME_PATTERN } from './route-edit';
 import { canTransition, findCyclePath, TASK_ID_PATTERN } from './task-edit';
 import type {
   Account,
+  AccountConnection,
   AccountCreate,
   AccountPatch,
   AccountUsage,
   BrainResponse,
+  BudgetSnapshot,
+  ConnectResult,
   DaveEvent,
+  Goal,
+  GoalStart,
   HealthResponse,
   LogLevel,
   ModelInfo,
@@ -164,6 +172,8 @@ export class MockEngine implements DaveClient {
   private initialResumed = false;
   private pausedFrom: RunnerState | undefined;
   private readonly pressureLogged = new Map<string, number>();
+  private readonly goalSim: MockGoals;
+  private readonly loggedIn = new Set(MOCK_LOGGED_IN);
 
   constructor(options: MockOptions = {}) {
     this.rng = mulberry32(options.seed ?? 0xda7ec0de);
@@ -177,8 +187,10 @@ export class MockEngine implements DaveClient {
 
     for (const seed of ACCOUNT_SEEDS) {
       this.seeds.set(seed.account.id, seed);
+      const subscription = mockSubscription(seed.account.id, this.t0);
       this.accounts.push({
         ...seed.account,
+        ...(subscription && { subscription }),
         status: seed.account.status ?? 'active',
         createdAt: new Date(this.t0 - 12 * 86_400_000).toISOString(),
         updatedAt: new Date(this.t0 - 3_600_000).toISOString(),
@@ -193,6 +205,13 @@ export class MockEngine implements DaveClient {
     };
     this.generateHistory();
     if (this.opts.runnerAvailable) this.seedRunnerHistory();
+    this.goalSim = new MockGoals({
+      now: () => this.clock(),
+      emit: (event) => this.emit(event),
+      later: (ms, fn) => this.later(ms, fn),
+      nextId: (prefix) => this.nextId(prefix),
+    });
+    this.goalSim.seed(this.t0);
   }
 
   // -------------------------------------------------------------------------
@@ -233,6 +252,7 @@ export class MockEngine implements DaveClient {
         weight: body.weight ?? 1,
         limits: body.limits ?? {},
         config: body.config ?? {},
+        ...(body.subscription && { subscription: body.subscription }),
         status: 'active',
         createdAt: now,
         updatedAt: now,
@@ -262,6 +282,7 @@ export class MockEngine implements DaveClient {
         ...(patch.weight !== undefined && { weight: patch.weight }),
         ...(patch.limits !== undefined && { limits: patch.limits }),
         ...(patch.config !== undefined && { config: patch.config }),
+        ...(patch.subscription && { subscription: patch.subscription }),
         enabled,
         status: !enabled ? 'disabled' : current.status === 'disabled' ? 'active' : current.status,
         updatedAt: new Date(this.clock()).toISOString(),
@@ -269,6 +290,7 @@ export class MockEngine implements DaveClient {
       if (!enabled) {
         delete next.cooldownUntil;
       }
+      if (patch.subscription === null) delete next.subscription;
       this.replaceAccount(next);
       return next;
     });
@@ -285,6 +307,48 @@ export class MockEngine implements DaveClient {
 
   usage(): Promise<AccountUsage[]> {
     return this.respond(() => this.accounts.map((a) => this.accountUsage(a, this.clock())));
+  }
+
+  budget(): Promise<BudgetSnapshot> {
+    return this.respond(() => {
+      const now = this.clock();
+      return buildMockBudget(this.accounts, (a) => this.accountUsage(a, now), now);
+    });
+  }
+
+  connection(id: string): Promise<AccountConnection> {
+    return this.respond(() =>
+      mockConnection(this.findAccount(id), this.loggedIn.has(id), this.clock()),
+    );
+  }
+
+  connect(id: string): Promise<ConnectResult> {
+    return this.respond(() => {
+      const account = this.findAccount(id);
+      const connection = mockConnection(account, this.loggedIn.has(id), this.clock());
+      if (connection.method !== 'cli-login') {
+        throw new ApiError(
+          400,
+          'not_cli_login',
+          'This account connects with an API key: set it in the account settings',
+        );
+      }
+      const command = `davecode accounts login ${id}`;
+      if (connection.status !== 'connected') {
+        this.later(MOCK_LOGIN_MS, () => {
+          this.loggedIn.add(id);
+          this.log('info', 'accounts', `Account ${id} signed in through the vendor CLI`);
+        });
+      }
+      this.log('info', 'accounts', `Opened the official sign-in for ${id}`);
+      return {
+        connection,
+        launched: true,
+        command,
+        message:
+          'A terminal opened on the gateway machine with the official sign-in. Finish it there; this page updates when the login is detected.',
+      };
+    });
   }
 
   timeseries(minutes = 60, bucketSec = 60): Promise<TimeseriesBucket[]> {
@@ -530,6 +594,27 @@ export class MockEngine implements DaveClient {
 
   logs(limit = 200): Promise<DaveEvent[]> {
     return this.respond(() => this.buffer.slice(-limit));
+  }
+
+  goals(): Promise<Goal[]> {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.all();
+    });
+  }
+
+  startGoal(body: GoalStart): Promise<Goal> {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.start(body);
+    });
+  }
+
+  cancelGoal(id: string): Promise<Goal> {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.cancel(id);
+    });
   }
 
   models(): Promise<ModelInfo[]> {
@@ -1053,6 +1138,16 @@ export class MockEngine implements DaveClient {
   // -------------------------------------------------------------------------
   // Autonomous runner simulation
   // -------------------------------------------------------------------------
+
+  private assertGoals(): void {
+    if (!this.opts.runnerAvailable) {
+      throw new ApiError(
+        501,
+        'goals_unavailable',
+        'Goal mode is not available; start the gateway inside a project (davecode init)',
+      );
+    }
+  }
 
   private assertRunner(): void {
     if (!this.opts.runnerAvailable) {

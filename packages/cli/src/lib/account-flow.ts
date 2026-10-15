@@ -50,6 +50,13 @@ export const PROVIDERS: readonly ProviderInfo[] = [
     binary: 'codex',
   },
   {
+    kind: 'gemini-cli',
+    name: 'Gemini CLI (your Google login)',
+    auth: 'cli-login',
+    defaultLabel: 'Gemini CLI',
+    binary: 'gemini',
+  },
+  {
     kind: 'gemini-web',
     name: 'Gemini web session (experimental)',
     auth: 'browser',

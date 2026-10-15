@@ -26,6 +26,7 @@ export type ProviderKind =
   | 'openai-compatible'
   | 'claude-cli'
   | 'codex-cli'
+  | 'gemini-cli'
   | 'gemini-web';
 
 export const EXPERIMENTAL_PROVIDER_KINDS: readonly ProviderKind[] = ['gemini-web'];
@@ -33,6 +34,7 @@ export const EXPERIMENTAL_PROVIDER_KINDS: readonly ProviderKind[] = ['gemini-web
 export const SUBSCRIPTION_PROVIDER_KINDS: readonly ProviderKind[] = [
   'claude-cli',
   'codex-cli',
+  'gemini-cli',
   'gemini-web',
 ];
 
@@ -47,6 +49,22 @@ export interface QuotaLimits {
 
 export type AccountStatus = 'active' | 'cooldown' | 'disabled' | 'error';
 
+export interface SubscriptionPrice {
+  amount: number;
+  /** ISO 4217 code, e.g. "USD". */
+  currency: string;
+  period: 'month' | 'year';
+}
+
+/** Plan, payment and renewal details entered by the user. Dates: YYYY-MM-DD or ISO. */
+export interface SubscriptionInfo {
+  plan?: string;
+  paidAt?: string;
+  renewsAt?: string;
+  price?: SubscriptionPrice;
+  notes?: string;
+}
+
 export interface Account {
   id: string;
   provider: ProviderKind;
@@ -56,6 +74,7 @@ export interface Account {
   priority: number;
   weight: number;
   limits: QuotaLimits;
+  subscription?: SubscriptionInfo;
   /** Non-secret provider settings (baseUrl, models…). Secrets are never returned. */
   config: Record<string, unknown>;
   status: AccountStatus;
@@ -94,6 +113,68 @@ export interface WindowUsage {
 export interface AccountUsage {
   accountId: string;
   windows: Record<QuotaWindow, WindowUsage>;
+}
+
+export interface ReportedLimitsInput {
+  tokensRemaining?: number;
+  tokensLimit?: number;
+  requestsRemaining?: number;
+  requestsLimit?: number;
+  resetAt?: string;
+  exhausted?: boolean;
+}
+
+/** Rate-limit state as the provider reported it (headers or a limit error). */
+export interface ReportedLimits extends ReportedLimitsInput {
+  source: 'headers' | 'error';
+  observedAt: string;
+}
+
+/** One account in `GET /api/budget`. */
+export interface AccountBudget {
+  accountId: string;
+  label: string;
+  provider: ProviderKind;
+  enabled: boolean;
+  subscription?: SubscriptionInfo;
+  renewsInDays?: number;
+  /** Remaining fraction 0..1 of the tightest known limit; null when unmetered. */
+  remaining: number | null;
+  tightestWindow?: QuotaWindow;
+  usage: AccountUsage;
+  reported?: ReportedLimits;
+  available: boolean;
+  unavailableReason?: string;
+}
+
+export interface BudgetSnapshot {
+  generatedAt: string;
+  accounts: AccountBudget[];
+  /** Compact summary injected into agent prompts. */
+  context: string;
+}
+
+export type ConnectionMethod = 'api-key' | 'cli-login' | 'browser';
+
+export type ConnectionStatus = 'connected' | 'not_connected' | 'unknown';
+
+/** `GET /api/accounts/:id/connection`. Never contains credentials. */
+export interface AccountConnection {
+  accountId: string;
+  provider: ProviderKind;
+  method: ConnectionMethod;
+  status: ConnectionStatus;
+  detail?: string;
+  loginCommand?: string;
+  checkedAt: string;
+}
+
+/** `POST /api/accounts/:id/connect`. */
+export interface ConnectResult {
+  connection: AccountConnection;
+  launched: boolean;
+  command: string;
+  message: string;
 }
 
 /** `cancelled`: the client aborted (disconnect, Esc in the TUI); never counts against the account. */
@@ -156,6 +237,64 @@ export interface RunnerStatus {
   lastError?: string;
 }
 
+export type GoalTaskKind = 'code' | 'artifact';
+
+export interface GoalRole {
+  id: string;
+  description: string;
+  route?: string;
+}
+
+export interface GoalTask {
+  id: string;
+  title: string;
+  description?: string;
+  role: string;
+  kind: GoalTaskKind;
+  status: TaskStatus;
+  dependsOn: string[];
+  acceptance?: string[];
+  round: number;
+  attempts: number;
+  artifact?: string;
+  runnerTaskId?: string;
+  notes?: string;
+}
+
+export type GoalStatus =
+  | 'planning'
+  | 'running'
+  | 'reviewing'
+  | 'planned'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'budget_exhausted';
+
+export interface GoalLimits {
+  maxRounds: number;
+  maxTasks: number;
+  maxTokens: number;
+  tokensUsed: number;
+}
+
+export interface Goal {
+  id: string;
+  objective: string;
+  status: GoalStatus;
+  round: number;
+  limits: GoalLimits;
+  roles: GoalRole[];
+  tasks: GoalTask[];
+  activeTaskId?: string;
+  summary?: string;
+  lastError?: string;
+  dryRun?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+}
+
 export type ProviderErrorKind =
   | 'rate_limit'
   | 'quota_exhausted'
@@ -216,6 +355,16 @@ export type DaveEvent =
   | { type: 'task.removed'; taskId: string; ts: number }
   | { type: 'runner.status'; status: RunnerStatus; ts: number }
   | { type: 'runner.log'; level: LogLevel; message: string; taskId?: string; ts: number }
+  | { type: 'goal.updated'; goal: Goal; ts: number }
+  | {
+      type: 'goal.log';
+      goalId: string;
+      level: LogLevel;
+      message: string;
+      role?: string;
+      taskId?: string;
+      ts: number;
+    }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };
 
 export type DaveEventType = DaveEvent['type'];
@@ -238,11 +387,16 @@ export interface AccountCreate {
   weight?: number;
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
+  subscription?: SubscriptionInfo;
   /** Write-only: encrypted at rest, never returned by any endpoint. */
   secret?: string;
 }
 
-export type AccountPatch = Partial<Omit<AccountCreate, 'provider'>> & { enabled?: boolean };
+export type AccountPatch = Partial<Omit<AccountCreate, 'provider' | 'subscription'>> & {
+  enabled?: boolean;
+  /** Replaces the subscription details; `null` clears them. */
+  subscription?: SubscriptionInfo | null;
+};
 
 export interface TimeseriesBucket {
   ts: number;
@@ -280,6 +434,15 @@ export interface TaskPatch {
   acceptance?: string[] | null;
   notes?: string | null;
   status?: TaskStatus;
+}
+
+/** `POST /api/goals` body. Limits are clamped to the gateway's `goal.*` config. */
+export interface GoalStart {
+  objective: string;
+  maxRounds?: number;
+  maxTasks?: number;
+  maxTokens?: number;
+  dryRun?: boolean;
 }
 
 /** `PUT /api/routes` body. `defaultRoute` must be one of `routes`. */

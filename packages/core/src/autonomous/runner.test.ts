@@ -14,9 +14,15 @@ import type {
 } from './executor';
 import { ExecutorAbortedError } from './executor';
 import { type Judge, JudgeError, type JudgeVerdict } from './judge';
-import { AutonomousRunner, commitMessage, RunnerError } from './runner';
+import {
+  AutonomousRunner,
+  type AutonomousRunnerOptions,
+  commitMessage,
+  RunnerError,
+} from './runner';
 import { createTempRepo, git, writeFiles } from './test-helpers';
 import type { ValidationReport } from './validator';
+import { WorkspaceLock } from './workspace-lock';
 
 type Step = (task: ExecutorTask, opts: ExecutorRunOptions) => Promise<Partial<ExecutorResult>>;
 
@@ -85,6 +91,7 @@ async function setup(
     validator?: { validate(): Promise<ValidationReport> };
     judge?: Judge;
     runner?: Record<string, unknown>;
+    extra?: Pick<AutonomousRunnerOptions, 'lock' | 'contextExtras'>;
   },
 ) {
   const repo = createTempRepo({ '.gitignore': '.davecode/.lock\n' });
@@ -102,6 +109,7 @@ async function setup(
     validator: opts.validator ?? new ScriptedValidator([]),
     events,
     ...(opts.judge ? { judge: opts.judge } : {}),
+    ...opts.extra,
   });
   const states = (): RunnerState[] =>
     events
@@ -160,6 +168,30 @@ describe('AutonomousRunner', { timeout: 60_000 }, () => {
     ]);
     expect(runner.status()).toMatchObject({ state: 'idle' });
     expect(readFileSync(brain.paths.state, 'utf8')).toMatch(/Task `a` SUCCESS/);
+  });
+
+  it('refuses to run while another owner holds the workspace lock, and appends context extras', async () => {
+    const lock = new WorkspaceLock();
+    let seen = '';
+    const executor = new ScriptedExecutor([
+      async (task) => {
+        seen = task.context;
+        writeFiles(task.root, { 'x.txt': 'x\n' });
+        return {};
+      },
+    ]);
+    const { runner } = await setup(tasks({ id: 'a' }), {
+      executor,
+      extra: { lock: { lock, owner: 'runner' }, contextExtras: () => '===== BUDGET =====\nok' },
+    });
+    expect(lock.acquire('goal')).toBe(true);
+    await expect(runner.runOnce()).rejects.toMatchObject({ code: 'busy' });
+    await expect(runner.start()).rejects.toBeInstanceOf(RunnerError);
+    lock.release('goal');
+    const result = await runner.runOnce();
+    expect(result.outcome).toBe('success');
+    expect(seen).toMatch(/===== CURRENT TASK =====[\s\S]*===== BUDGET =====\nok$/);
+    expect(lock.holder).toBeUndefined();
   });
 
   it('runOnce({ taskId }) runs that task instead of the highest priority one', async () => {

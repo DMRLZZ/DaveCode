@@ -93,9 +93,11 @@ export {
   CodexCliProvider,
   type CreateProvidersOptions,
   createProviders,
+  GeminiCliProvider,
   GeminiProvider,
   type GeminiWebDriver,
   GeminiWebProvider,
+  geminiCliEnv,
   OpenAICompatibleProvider,
   OpenAIProvider,
   type OpenAIProviderOptions,
@@ -105,6 +107,7 @@ export { VERSION } from './version';
 
 // --- phase 1 & 2: storage, identity, quotas, router, engine ---
 
+export { BudgetService, type BudgetServiceOptions } from './budget/service';
 export {
   ConfigError,
   deepMerge,
@@ -121,8 +124,34 @@ export {
   ChromiumUnavailableError,
   ExperimentalDisabledError,
 } from './identity/chromium';
+export {
+  CLI_LOGINS,
+  type CliLoginSpec,
+  ConnectionChecker,
+  type ConnectionCheckerOptions,
+  cliBinaryFor,
+  connectionMethod,
+  loginCommandFor,
+  loginEnv,
+  type ProbeCommand,
+  type ProbeResult,
+  type StatusProbe,
+  spawnProbe,
+} from './identity/connect';
 export { Keyring, KeyringError, type KeyringOptions, loadMasterKey } from './identity/keyring';
-export { accountDir, SandboxManager } from './identity/sandbox';
+export {
+  accountDir,
+  GEMINI_CLI_SETTINGS,
+  geminiHomeEnv,
+  SandboxManager,
+  seedGeminiHome,
+} from './identity/sandbox';
+export {
+  limitsFromHeaders,
+  ReportedLimitsStore,
+  type ReportedLimitsStoreOptions,
+  reportedFraction,
+} from './rate-limiter/reported';
 export {
   approximateTokens,
   countTextTokens,
@@ -283,5 +312,39 @@ export {
   Validator,
   type ValidatorOptions,
 } from './autonomous/validator';
+export { WorkspaceLock } from './autonomous/workspace-lock';
 export { ProjectBrainSource } from './brain/source';
 // --- end phase 4 ---
+
+// --- goal mode ---
+export {
+  type GoalTaskRunner,
+  MeteredExecutor,
+  RunnerCodeTasks,
+  type RunnerCodeTasksOptions,
+} from './goal/code-tasks';
+export { type CreateGoalServiceOptions, createGoalService } from './goal/create';
+export {
+  type CodeTaskResult,
+  type CodeTaskRunner,
+  GoalOrchestrator,
+  type GoalOrchestratorOptions,
+  isTerminalGoal,
+  type NewGoalInput,
+  readyGoalTasks,
+} from './goal/orchestrator';
+export {
+  applySafetyGuard,
+  DEFAULT_ROLES,
+  type GoalConfig,
+  outboundAction,
+  type ResolvedRole,
+  resolveRoles,
+} from './goal/plan';
+export {
+  GoalError,
+  type GoalErrorCode,
+  GoalService,
+  type GoalServiceOptions,
+} from './goal/service';
+export { GoalStore, goalSchema, isGoalId } from './goal/store';

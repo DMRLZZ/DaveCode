@@ -3,6 +3,7 @@ import { AnthropicProvider } from './anthropic';
 import { ClaudeCliProvider } from './claude-cli';
 import { CodexCliProvider } from './codex-cli';
 import { GeminiProvider } from './gemini';
+import { GeminiCliProvider } from './gemini-cli';
 import { type GeminiWebDriver, GeminiWebProvider } from './gemini-web';
 import { OpenAIProvider } from './openai';
 import { OpenAICompatibleProvider } from './openai-compatible';
@@ -24,6 +25,7 @@ export function createProviders(options: CreateProvidersOptions = {}): Map<Provi
     new GeminiProvider(),
     new ClaudeCliProvider(),
     new CodexCliProvider(),
+    new GeminiCliProvider(),
     new GeminiWebProvider(options.geminiWebDriver),
   ];
   return new Map(providers.map((p) => [p.kind, p]));

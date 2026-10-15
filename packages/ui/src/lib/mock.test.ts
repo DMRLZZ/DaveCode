@@ -42,6 +42,44 @@ describe('MockEngine', () => {
     expect(chains.some((c) => c.failovers > 0 && c.outcome === 'success')).toBe(true);
   });
 
+  it('serves a budget with plans, renewals and an agent context', async () => {
+    const e = engine();
+    const budget = await e.budget();
+    const claude = budget.accounts.find((b) => b.accountId === 'acc_claude_pro');
+    expect(claude).toMatchObject({ subscription: { plan: 'Claude Pro' }, renewsInDays: 9 });
+    expect(claude?.remaining).toBeLessThan(0.25);
+    const gemini = budget.accounts.find((b) => b.accountId === 'acc_gemini_web');
+    expect(gemini).toMatchObject({ available: false, unavailableReason: 'disabled' });
+    expect(budget.context).toContain('ACCOUNT BUDGET');
+    expect(budget.context).not.toContain('Gemini web');
+
+    const updated = await e.updateAccount('acc_ollama_local', {
+      subscription: { plan: 'Self-hosted' },
+    });
+    expect(updated.subscription).toEqual({ plan: 'Self-hosted' });
+    const cleared = await e.updateAccount('acc_ollama_local', { subscription: null });
+    expect(cleared.subscription).toBeUndefined();
+  });
+
+  it('reports connections and simulates the official sign-in for CLI accounts', async () => {
+    const e = engine();
+    expect(await e.connection('acc_claude_pro')).toMatchObject({
+      method: 'cli-login',
+      status: 'connected',
+    });
+    expect((await e.connection('acc_anthropic_work')).method).toBe('api-key');
+    expect((await e.connection('acc_gemini_web')).status).toBe('unknown');
+
+    const gemini = await e.createAccount({ provider: 'gemini-cli', label: 'Google' });
+    const result = await e.connect(gemini.id);
+    expect(result).toMatchObject({
+      launched: true,
+      command: `davecode accounts login ${gemini.id}`,
+      connection: { status: 'not_connected' },
+    });
+    await expect(e.connect('acc_anthropic_work')).rejects.toMatchObject({ code: 'not_cli_login' });
+  });
+
   it('reports quota windows with a hot subscription account', async () => {
     const usage = await engine().usage();
     const claude = usage.find((u) => u.accountId === 'acc_claude_pro');
@@ -261,6 +299,42 @@ describe('MockEngine', () => {
       await e.runnerAction('stop');
       expect((await e.runner()).state).toBe('stopped');
       stop();
+      e.stop();
+    });
+
+    it('plans and completes a goal with draft-only outreach, one goal at a time', async () => {
+      const e = new MockEngine({ seed: 5, latency: false });
+      const events: DaveEvent[] = [];
+      const stop = e.subscribe({ onEvent: (ev) => events.push(ev) });
+      expect((await e.goals()).map((g) => g.status)).toEqual(['succeeded']);
+
+      const goal = await e.startGoal({ objective: 'Launch a landing page' });
+      expect(goal.status).toBe('planning');
+      await expect(e.startGoal({ objective: 'Another' })).rejects.toMatchObject({
+        status: 409,
+        code: 'busy',
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      const done = (await e.goals()).find((g) => g.id === goal.id);
+      expect(done?.status).toBe('succeeded');
+      expect(done?.tasks.every((t) => t.status === 'SUCCESS')).toBe(true);
+      expect(done?.tasks.some((t) => t.kind === 'code')).toBe(true);
+      expect(done?.tasks.find((t) => t.id === 'outreach')?.title).toMatch(/^Draft:/);
+      expect(events.some((ev) => ev.type === 'goal.log' && ev.goalId === goal.id)).toBe(true);
+
+      const dry = await e.startGoal({ objective: 'Plan only', dryRun: true });
+      const running = await e.startGoal({ objective: 'x' }).catch((err: unknown) => err);
+      expect(running).toBeInstanceOf(ApiError);
+      await e.cancelGoal(dry.id);
+      expect((await e.goals()).find((g) => g.id === dry.id)?.status).toBe('cancelled');
+      await expect(e.startGoal({ objective: ' ' })).rejects.toMatchObject({ status: 400 });
+      stop();
+      e.stop();
+    });
+
+    it('answers 501 for goals when the runner is off', async () => {
+      const e = new MockEngine({ seed: 5, latency: false, runnerAvailable: false });
+      await expect(e.goals()).rejects.toMatchObject({ status: 501, code: 'goals_unavailable' });
       e.stop();
     });
   });

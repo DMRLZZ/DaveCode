@@ -5,6 +5,7 @@ import {
   type LucideIcon,
   Server,
   Sparkle,
+  Sparkles,
   SquareTerminal,
   TerminalSquare,
 } from 'lucide-react';
@@ -79,6 +80,14 @@ export const PROVIDERS: Record<ProviderKind, ProviderMeta> = {
     blurb: 'Your ChatGPT/OpenAI login, isolated in its own CODEX_HOME sandbox.',
     subscription: true,
   },
+  'gemini-cli': {
+    kind: 'gemini-cli',
+    label: 'Gemini CLI',
+    icon: Sparkles,
+    auth: 'cli',
+    blurb: 'Your Google login (Login with Google), isolated in its own GEMINI_CLI_HOME sandbox.',
+    subscription: true,
+  },
   'gemini-web': {
     kind: 'gemini-web',
     label: 'Gemini web',
@@ -97,6 +106,7 @@ export const PROVIDER_ORDER: ProviderKind[] = [
   'openai-compatible',
   'claude-cli',
   'codex-cli',
+  'gemini-cli',
   'gemini-web',
 ];
 

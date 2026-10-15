@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createEngine } from '@davecode/core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -9,7 +9,7 @@ import { scriptedPrompter } from '../lib/prompter';
 import { startRuntime } from '../runtime';
 import { cli, type TempDir, tempDir, testEnv, testIO } from '../test-utils';
 import { stripAnsi } from '../ui/format';
-import { accountsAdd, accountsLogin } from './accounts';
+import { accountsAdd, accountsConnect, accountsLogin } from './accounts';
 
 let tmp: TempDir;
 let home: string;
@@ -167,13 +167,89 @@ describe('interactive add', () => {
 });
 
 describe('davecode accounts login', () => {
-  function fakeClaudeOnPath(): string {
+  function fakeOnPath(binary: string): string {
     const bin = join(tmp.path, 'bin');
-    mkdirSync(bin);
-    const name = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+    mkdirSync(bin, { recursive: true });
+    const name = process.platform === 'win32' ? `${binary}.cmd` : binary;
     writeFileSync(join(bin, name), '');
     return bin;
   }
+  const fakeClaudeOnPath = () => fakeOnPath('claude');
+
+  function recordingSpawn() {
+    const calls: Array<{ command: string; args: readonly string[]; env: NodeJS.ProcessEnv }> = [];
+    const spawn: SpawnFn = (command, args, options) => {
+      calls.push({ command, args, env: options.env ?? {} });
+      const child = new EventEmitter();
+      setImmediate(() => child.emit('exit', 0, null));
+      return child;
+    };
+    return { calls, spawn };
+  }
+
+  async function addLocal(provider: string): Promise<string> {
+    const add = await cli(
+      ['accounts', 'add', '--provider', provider, '--yes', '--json', '--local'],
+      {
+        home,
+      },
+    );
+    return JSON.parse(add.stdout).account.id;
+  }
+
+  it('runs Gemini CLI with an isolated home, seeded Google login and no API key', async () => {
+    const id = await addLocal('gemini-cli');
+    const bin = fakeOnPath('gemini');
+    const { calls, spawn } = recordingSpawn();
+    const io = testIO();
+    const ctx = createContext({}, io, {
+      env: testEnv(home, { PATH: bin, GEMINI_API_KEY: 'parent-key' }),
+      cwd: home,
+    });
+    expect(await accountsLogin(ctx, id, [], { local: true }, { spawn })).toBe(0);
+    const sandbox = join(home, 'sandboxes', id);
+    expect(calls[0]!.command).toContain('gemini');
+    expect(calls[0]!.args).toEqual([]);
+    expect(calls[0]!.env.GEMINI_CLI_HOME).toBe(sandbox);
+    expect(calls[0]!.env.GEMINI_API_KEY).toBe('');
+    expect(JSON.parse(readFileSync(join(sandbox, '.gemini', 'settings.json'), 'utf8'))).toEqual({
+      security: { auth: { selectedType: 'oauth-personal' } },
+    });
+    const out = stripAnsi(io.stdout.text());
+    expect(out).toContain('Login with Google');
+    expect(out).toContain('not connected');
+  });
+
+  it('--hold waits for Enter after success and after errors', async () => {
+    const id = await addLocal('gemini-cli');
+    const { spawn } = recordingSpawn();
+    let waits = 0;
+    const waitForEnter = async () => {
+      waits++;
+    };
+    const ok = createContext({}, testIO(), {
+      env: testEnv(home, { PATH: fakeOnPath('gemini') }),
+      cwd: home,
+    });
+    expect(
+      await accountsLogin(ok, id, [], { local: true, hold: true }, { spawn, waitForEnter }),
+    ).toBe(0);
+    const io = testIO();
+    const missing = createContext({}, io, {
+      env: testEnv(home, { PATH: join(tmp.path, 'empty') }),
+      cwd: home,
+    });
+    const code = await accountsLogin(
+      missing,
+      id,
+      [],
+      { local: true, hold: true },
+      { waitForEnter },
+    );
+    expect(code).toBe(1);
+    expect(io.stderr.text()).toContain('Cannot find `gemini`');
+    expect(waits).toBe(2);
+  });
 
   it('launches the CLI with CLAUDE_CONFIG_DIR set to the account sandbox', async () => {
     const add = await cli(
@@ -207,7 +283,7 @@ describe('davecode accounts login', () => {
     expect(code).toBe(0);
     expect(calls).toHaveLength(1);
     expect(calls[0]!.command).toContain('claude');
-    expect(calls[0]!.args).toEqual([]);
+    expect(calls[0]!.args).toEqual(['auth', 'login']);
     expect(calls[0]!.env.CLAUDE_CONFIG_DIR).toBe(join(home, 'sandboxes', account.id));
     expect(io.stdout.text()).toContain('is ready');
   });
@@ -235,5 +311,58 @@ describe('davecode accounts login', () => {
     const wrong = await cli(['accounts', 'login', 'OpenAI', '--local'], { home });
     expect(wrong.code).toBe(1);
     expect(wrong.stderr).toContain('do not use a CLI login');
+  });
+});
+
+describe('davecode accounts connect', () => {
+  it('reports the connection state with --check', async () => {
+    const add = await cli(
+      ['accounts', 'add', '--provider', 'gemini-cli', '--yes', '--json', '--local'],
+      { home },
+    );
+    const { account } = JSON.parse(add.stdout);
+    const res = await cli(['accounts', 'connect', account.id, '--check', '--json', '--local'], {
+      home,
+    });
+    expect(res.code).toBe(0);
+    expect(JSON.parse(res.stdout).connection).toMatchObject({
+      accountId: account.id,
+      method: 'cli-login',
+      status: 'not_connected',
+      loginCommand: `davecode accounts login ${account.id}`,
+    });
+  });
+
+  it('explains how to connect an API-key account without a key', async () => {
+    const engine = createEngine({ home, env: testEnv(home) });
+    engine.accounts.create({ provider: 'anthropic', label: 'Keyless' });
+    engine.close();
+    const res = await cli(['accounts', 'connect', 'Keyless', '--local'], { home });
+    expect(res.code).toBe(1);
+    expect(stripAnsi(res.stdout)).toContain('not connected');
+    expect(stripAnsi(res.stdout)).toContain('Store a key');
+  });
+
+  it('runs the official login for a CLI account that is not connected', async () => {
+    const add = await cli(
+      ['accounts', 'add', '--provider', 'gemini-cli', '--yes', '--json', '--local'],
+      { home },
+    );
+    const { account } = JSON.parse(add.stdout);
+    const bin = join(tmp.path, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, process.platform === 'win32' ? 'gemini.cmd' : 'gemini'), '');
+    const calls: string[] = [];
+    const spawn: SpawnFn = (command) => {
+      calls.push(command);
+      const child = new EventEmitter();
+      setImmediate(() => child.emit('exit', 0, null));
+      return child;
+    };
+    const io = testIO();
+    const ctx = createContext({}, io, { env: testEnv(home, { PATH: bin }), cwd: home });
+    expect(await accountsConnect(ctx, account.id, { local: true }, { spawn })).toBe(0);
+    expect(calls).toHaveLength(1);
+    expect(stripAnsi(io.stdout.text())).toContain('Logging in');
   });
 });

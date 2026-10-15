@@ -110,6 +110,19 @@ upstream errors are forwarded as a final error chunk.
 | `POST` | `/api/accounts` | `AccountCreate` | `201 { "account": Account }` |
 | `PATCH` | `/api/accounts/:id` | `AccountPatch` | `{ "account": Account }` |
 | `DELETE` | `/api/accounts/:id` | — | `204` |
+| `GET` | `/api/accounts/:id/connection` | — | `{ "connection": AccountConnection }` |
+| `POST` | `/api/accounts/:id/connect` | `{}` (JSON) | `{ "connect": ConnectResult }` |
+
+`POST /api/accounts/:id/connect` ("Connect subscription") starts the vendor's **official** login
+for a `cli-login` account (`claude auth login`, `codex login`, Gemini CLI's "Login with Google")
+via `davecode accounts login <id>`, isolated in the account sandbox. DaveCode never sees or
+stores the password or the resulting tokens; they stay in the vendor CLI's own store inside the
+sandbox. When the gateway was started with a `loginLauncher` (`davecode start` injects one when
+bound to a loopback address), it opens a terminal window on the gateway machine and answers
+`launched: true`; otherwise `launched: false` and `command` tells the user what to run. Poll
+`GET …/connection` to see when the login lands. Errors: `415 json_required` without
+`Content-Type: application/json` (blocks cross-site form posts), `400 not_cli_login` for API-key
+and `gemini-web` accounts, `404 not_found`.
 
 ```ts
 interface AccountCreate {
@@ -119,10 +132,17 @@ interface AccountCreate {
   weight?: number;            // default 1
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
+  subscription?: SubscriptionInfo; // plan, paid/renewal dates, optional price
   secret?: string;            // API key / token — encrypted at rest, never returned
 }
-type AccountPatch = Partial<Omit<AccountCreate, 'provider'>> & { enabled?: boolean };
+type AccountPatch = Partial<Omit<AccountCreate, 'provider' | 'subscription'>> & {
+  enabled?: boolean;
+  subscription?: SubscriptionInfo | null; // replaces; null clears
+};
 ```
+
+`subscription` is validated strictly: dates are `YYYY-MM-DD` or ISO timestamps, `price.currency`
+is a 3-letter code (upper-cased), `price.period` is `month` or `year`, unknown keys are rejected.
 
 Secrets are write-only: no endpoint ever returns them. `Account.hasSecret` tells you whether one is stored. Creating a `gemini-web` account while
 `experimental.geminiWeb` is off returns `400` with code `experimental_disabled`. Unknown body
@@ -133,6 +153,103 @@ with `400 invalid_body`; send credentials in `secret`. `AccountCreate` also acce
 `PATCH` with `enabled: false` sets `status: "disabled"`. `enabled: true` or a new `secret`
 resets an enabled account to `active` and clears `cooldownUntil` and `lastError`.
 
+`ProviderKind` is one of `anthropic`, `openai`, `gemini`, `openai-compatible` (API keys),
+`claude-cli`, `codex-cli`, `gemini-cli` (subscription logins held by the vendor's own CLI inside
+the account's sandbox: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`) and the
+experimental `gemini-web`. `gemini-cli` runs the official Gemini CLI with "Login with Google";
+a fresh sandbox is seeded with `.gemini/settings.json` selecting `oauth-personal`.
+
+#### Subscription & budget contracts
+
+`Account.subscription?: SubscriptionInfo` records what the user pays for the account. It is
+entered by hand: DaveCode never scrapes billing pages. It is omitted when nothing was entered.
+
+```ts
+interface SubscriptionInfo {
+  plan?: string;       // "Claude Pro", "ChatGPT Plus", "API pay-as-you-go"…
+  paidAt?: string;     // YYYY-MM-DD or ISO timestamp
+  renewsAt?: string;   // YYYY-MM-DD or ISO timestamp
+  price?: { amount: number; currency: string; period: 'month' | 'year' };
+  notes?: string;
+}
+
+// Rate-limit state the provider itself reported: response headers (Anthropic
+// `anthropic-ratelimit-*`, OpenAI `x-ratelimit-*`) or a quota/limit error, including the
+// subscription CLIs' "usage limit reached… resets at" messages.
+interface ReportedLimits {
+  tokensRemaining?: number;
+  tokensLimit?: number;
+  requestsRemaining?: number;
+  requestsLimit?: number;
+  resetAt?: string;     // ISO
+  exhausted?: boolean;  // refused until resetAt
+  source: 'headers' | 'error';
+  observedAt: string;   // ISO
+}
+
+interface AccountBudget {
+  accountId: string;
+  label: string;
+  provider: ProviderKind;
+  enabled: boolean;
+  subscription?: SubscriptionInfo;
+  renewsInDays?: number;           // negative when overdue
+  remaining: number | null;        // 0..1 of the tightest known limit; null = unmetered
+  tightestWindow?: QuotaWindow;    // when `remaining` comes from DaveCode's own limits
+  usage: AccountUsage;
+  reported?: ReportedLimits;
+  available: boolean;              // would the router send traffic there now?
+  unavailableReason?: string;      // disabled, error, cooldown, exhausted…
+}
+
+interface BudgetSnapshot {
+  generatedAt: string;
+  accounts: AccountBudget[];
+  context: string;                 // compact text injected into agent prompts
+}
+```
+
+`ProviderCallContext.reportLimits?(limits)` is how adapters hand reported limits to the router.
+It receives the same fields without `source`/`observedAt`.
+
+#### Connection contracts
+
+Whether an account can authenticate, checked without reading or returning credentials.
+
+```ts
+type ConnectionMethod = 'api-key' | 'cli-login' | 'browser';
+type ConnectionStatus = 'connected' | 'not_connected' | 'unknown';
+
+interface AccountConnection {
+  accountId: string;
+  provider: ProviderKind;
+  method: ConnectionMethod;
+  status: ConnectionStatus;
+  detail?: string;        // explanation or caveat; never credentials or account emails
+  loginCommand?: string;  // `davecode accounts login <id>` (cli-login only)
+  checkedAt: string;      // ISO
+}
+
+interface ConnectResult {
+  connection: AccountConnection;
+  launched: boolean;      // the gateway opened a terminal running the official login
+  command: string;        // what to run by hand otherwise
+  message: string;
+}
+```
+
+How each method is checked (core `ConnectionChecker`, exposed as `engine.connections`):
+
+| Provider | Check |
+| :------- | :---- |
+| API-key kinds | `hasSecret` (keyring). `openai-compatible` without a key counts as connected. |
+| `claude-cli` | `claude auth status --json` (`loggedIn`) with `CLAUDE_CONFIG_DIR` set. When it reports a login but the sandbox holds no `.credentials.json` (outside macOS, where the keychain is used), `detail` warns that it is probably the global Claude Code login and the account is not isolated. |
+| `codex-cli` | exit code of `codex login status` with `CODEX_HOME` set. |
+| `gemini-cli` | presence of `<sandbox>/.gemini/oauth_creds.json` (written by Gemini CLI; never read). |
+| `gemini-web` | `unknown`: checking would mean opening the browser profile. |
+
+Vendor output is parsed for the logged-in flag only and never returned.
+
 ### Usage
 
 `GET /api/usage`
@@ -140,6 +257,18 @@ resets an enabled account to `active` and clears `cooldownUntil` and `lastError`
 ```json
 { "usage": AccountUsage[] }
 ```
+
+`GET /api/budget`
+
+```json
+{ "budget": BudgetSnapshot }
+```
+
+One `AccountBudget` per account (see *Subscription & budget contracts*): subscription details,
+days to renewal, the remaining share of the tightest known limit (DaveCode's own windows and the
+limits the provider reported, whichever is lower), and whether the router would use the account
+right now, with a human reason when it would not. `context` is the compact summary that the
+autonomous runner and goal mode append to their prompts. Secrets are never included.
 
 `GET /api/usage/timeseries?minutes=60&bucketSec=60`
 
@@ -358,6 +487,80 @@ Runner configuration (`runner.*`, all optional):
 | `validate.lint` / `typecheck` / `test` | unset | Quality-gate commands (split into argv, run without a shell) |
 | `judge.kind` | `none` | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |
 | `judge.model` / `baseUrl` / `threshold` | `typesafe/jev-1.13` or `runner.route` / `https://openrouter.ai/api/alpha` / `0.7` | Judge model, Decisions API base URL, minimum confidence |
+
+### Goals
+
+| Method | Path | Body | Response |
+| :----- | :--- | :--- | :------- |
+| `GET` | `/api/goals` | — | `{ "goals": Goal[] }` |
+| `GET` | `/api/goals/:id` | — | `{ "goal": Goal }` |
+| `POST` | `/api/goals` | `GoalStartInput` | `202 { "goal": Goal }` |
+| `POST` | `/api/goals/:id/cancel` | — | `{ "goal": Goal }` (once it has stopped) |
+
+```ts
+interface GoalStartInput {
+  objective: string;   // 1–4000 chars
+  maxRounds?: number;  // 1–20, overrides goal.maxRounds
+  maxTasks?: number;   // 1–100
+  maxTokens?: number;  // ≥ 1000
+  dryRun?: boolean;    // plan only: no task is executed
+}
+```
+
+`POST /api/goals` persists the goal and starts it in the background; follow it with
+`goal.updated` / `goal.log` events or by polling `GET /api/goals/:id`. One goal runs at a time,
+and a non-dry-run goal takes the same workspace lock as the autonomous runner, so a busy
+repository answers `409 busy`. Other errors: `404 not_found`, `400 invalid` / `invalid_body`.
+Without a project brain (gateway started outside an initialised repository) every route returns
+`501 goals_unavailable`. Goals are stored under `<repo>/.davecode/goals/<goal-id>/` (`goal.json`
+plus one markdown artifact per task). Goal mode never acts outside the machine: tasks that ask
+for an outbound action (sending email, posting, payments, sign-ups, deployments) are turned into
+draft artifacts for a human to review and execute.
+
+### Goal mode contracts
+
+Goal mode turns one high-level objective into a plan of role-based tasks and executes it
+(see `Goal`, `GoalTask`, `GoalRole`, `GoalStatus` and `GoalLimits` in `types.ts`).
+
+```ts
+type GoalTaskKind = 'code' | 'artifact';
+interface GoalTask {
+  id: string; title: string; description?: string;
+  role: string;               // a GoalRole id: planner, researcher, implementer, reviewer, writer…
+  kind: GoalTaskKind;         // code → autonomous runner; artifact → markdown document
+  status: TaskStatus;         // PENDING | IN_PROGRESS | SUCCESS | FAILED
+  dependsOn: string[]; acceptance?: string[];
+  round: number;              // planning round that created it
+  attempts: number;
+  artifact?: string;          // workspace-relative markdown path
+  runnerTaskId?: string;      // project task-graph id (code tasks)
+  notes?: string;
+}
+type GoalStatus = 'planning' | 'running' | 'reviewing' | 'planned' | 'succeeded' | 'failed'
+  | 'cancelled' | 'budget_exhausted';
+interface Goal {
+  id: string; objective: string; status: GoalStatus; round: number;
+  limits: { maxRounds: number; maxTasks: number; maxTokens: number; tokensUsed: number };
+  roles: GoalRole[]; tasks: GoalTask[]; activeTaskId?: string;
+  summary?: string; lastError?: string; dryRun?: boolean;
+  createdAt: string; updatedAt: string; finishedAt?: string;
+}
+```
+
+Goal progress is streamed on `/api/events` as `goal.updated` (`{ goal: Goal }`, after every
+state change) and `goal.log` (`{ goalId, level, message, role?, taskId? }`).
+
+Configuration (`goal.*`, all optional):
+
+| Key | Default | Meaning |
+| :-- | :------ | :------ |
+| `route` | `auto` | Route or model id for roles without their own route |
+| `maxRounds` | `4` | Plan → execute → review rounds |
+| `maxTasks` | `12` | Tasks across all rounds |
+| `maxTokens` | `1000000` | Token cap across every agent call and runner pass |
+| `maxTaskAttempts` | `2` | Attempts per task |
+| `codeTasks` | `true` | Hand `code` tasks to the autonomous runner; off → artifacts only |
+| `roles` | `{}` | Extra or overridden roles: `{ "<id>": { description?, route?, instructions?, kind? } }` |
 
 ### Live events
 

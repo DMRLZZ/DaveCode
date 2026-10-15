@@ -20,6 +20,7 @@ import { Git, GitError } from './git';
 import { createJudge, type Judge, JudgeError, type JudgeVerdict } from './judge';
 import { truncateHead } from './process';
 import { type ValidationReport, Validator } from './validator';
+import type { WorkspaceLock } from './workspace-lock';
 
 export type RunnerConfig = DaveConfig['runner'];
 
@@ -78,6 +79,13 @@ export interface AutonomousRunnerOptions {
   events?: EventBus;
   /** Character budget for `buildTaskContext`. */
   contextBudgetChars?: number;
+  /**
+   * Shared with other users of the same working tree (goal mode). While another owner holds it,
+   * `start()` and `runOnce()` reject with `busy`.
+   */
+  lock?: { lock: WorkspaceLock; owner: string };
+  /** Extra text appended to every task context (e.g. the budget summary). */
+  contextExtras?: () => string | Promise<string>;
 }
 
 /** Options for {@link AutonomousRunner.runOnce} and {@link AutonomousRunner.start}. */
@@ -136,6 +144,8 @@ export class AutonomousRunner {
   private readonly git: Git;
   private readonly global: Pick<GlobalBrain, 'compose'> | undefined;
   private readonly contextBudgetChars: number | undefined;
+  private readonly lock: AutonomousRunnerOptions['lock'];
+  private readonly contextExtras: AutonomousRunnerOptions['contextExtras'];
 
   private current: RunnerStatus = { state: 'idle' };
   /** The running continuous loop or single run, if any. */
@@ -165,6 +175,23 @@ export class AutonomousRunner {
     this.judge = options.judge ?? createJudge(options.config.judge);
     this.global = options.global;
     this.contextBudgetChars = options.contextBudgetChars;
+    this.lock = options.lock;
+    this.contextExtras = options.contextExtras;
+  }
+
+  /** Takes the workspace lock, or throws `busy` naming the current holder. */
+  private acquireLock(): void {
+    if (!this.lock) return;
+    if (!this.lock.lock.acquire(this.lock.owner)) {
+      throw new RunnerError(
+        'busy',
+        `the working tree is busy (${this.lock.lock.holder ?? 'another task'} is running)`,
+      );
+    }
+  }
+
+  private releaseLock(): void {
+    if (this.lock) this.lock.lock.release(this.lock.owner);
   }
 
   // -- public control surface -------------------------------------------------
@@ -193,6 +220,7 @@ export class AutonomousRunner {
       return;
     }
     if (this.active) return;
+    this.acquireLock();
     this.stopRequested = false;
     let started: () => void = () => undefined;
     let refused: (err: unknown) => void = () => undefined;
@@ -213,6 +241,7 @@ export class AutonomousRunner {
       await this.loop(opts.taskId);
     })().finally(() => {
       this.active = undefined;
+      this.releaseLock();
     });
     // Resolve once started; the loop keeps running in the background.
     await ready;
@@ -224,6 +253,7 @@ export class AutonomousRunner {
    */
   async runOnce(opts: RunTaskOptions = {}): Promise<RunOnceResult> {
     if (this.active) throw new RunnerError('busy', 'the runner is already running');
+    this.acquireLock();
     this.stopRequested = false;
     let resolveDone: () => void = () => undefined;
     this.active = new Promise<void>((r) => {
@@ -248,6 +278,7 @@ export class AutonomousRunner {
     } finally {
       this.endSession();
       this.active = undefined;
+      this.releaseLock();
       resolveDone();
     }
   }
@@ -465,12 +496,14 @@ export class AutonomousRunner {
     try {
       await this.transition('preparing', { taskId: id, repairCycle: 0 });
       await this.prepareBranch(branch);
-      const context = await buildTaskContext({
+      const base = await buildTaskContext({
         project: this.brain,
         task,
         ...(this.global ? { global: this.global } : {}),
         ...(this.contextBudgetChars ? { budgetChars: this.contextBudgetChars } : {}),
       });
+      const extras = this.contextExtras ? (await this.contextExtras()).trim() : '';
+      const context = extras ? `${base}\n\n${extras}` : base;
       const session = this.executor.createSession({
         task,
         context,

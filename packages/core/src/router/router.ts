@@ -4,6 +4,7 @@ import type { EventBus } from '../events';
 import type { ChromiumProfileManager } from '../identity/chromium';
 import { type Keyring, KeyringError } from '../identity/keyring';
 import type { SandboxManager } from '../identity/sandbox';
+import { type ReportedLimitsStore, reportedFraction } from '../rate-limiter/reported';
 import { countTextTokens, estimateTokens } from '../rate-limiter/tokens';
 import type { UsageTracker } from '../rate-limiter/tracker';
 import type { Clock, QuotaEngine } from '../rate-limiter/window';
@@ -43,6 +44,8 @@ export interface RouterOptions {
   clock?: Clock;
   /** Uniform [0, 1) source used for weighted balancing (inject for deterministic tests). */
   random?: () => number;
+  /** Provider-reported limits: exhausted accounts are skipped, the rest weighted by what is left. */
+  reported?: ReportedLimitsStore;
   /** Defaults: 5 consecutive failures, reset after `routing.cooldownMs`. */
   breaker?: CircuitBreakerOptions;
 }
@@ -209,7 +212,14 @@ export class Router {
     if (account.cooldownUntil && Date.parse(account.cooldownUntil) > now) return 'cooldown';
     if (!this.breaker.allow(account.id)) return 'circuit_open';
     if (this.options.quota.wouldExceed(account, estimate)) return 'quota';
+    if (this.options.reported?.exhausted(account.id)) return 'quota';
     return undefined;
+  }
+
+  /** Why the router would not send a request to `account` right now; `undefined` if it would. */
+  unavailableReason(account: Account, accounts?: readonly Account[]): SkipReason | undefined {
+    const primaries = this.primarySubscriptionAccounts(accounts ?? this.options.accounts.list());
+    return this.skipReason(account, 0, primaries, this.clock());
   }
 
   /** Resolve, filter and rank the accounts that could serve `req`, best first. */
@@ -239,7 +249,9 @@ export class Router {
         usage.windows['5h'].utilization,
         usage.windows['24h'].utilization,
       );
-      const headroom = Math.min(1, Math.max(0, 1 - maxUtil));
+      const reported = this.options.reported?.get(account.id);
+      const reportedLeft = reported ? (reportedFraction(reported) ?? 1) : 1;
+      const headroom = Math.min(1, Math.max(0, 1 - maxUtil), reportedLeft);
       const bp = routing.backpressureThreshold;
       const backpressure = maxUtil > bp ? (bp >= 1 ? 0 : Math.max(0, (1 - maxUtil) / (1 - bp))) : 1;
       const effectiveWeight = Math.max(0, account.weight) * headroom * backpressure;
@@ -300,6 +312,8 @@ export class Router {
     const secret = keyring?.get(account.id);
     if (secret !== undefined) ctx.secret = secret;
     if (signal) ctx.signal = signal;
+    const { reported } = this.options;
+    if (reported) ctx.reportLimits = (limits) => reported.report(account.id, limits, 'headers');
     return ctx;
   }
 
@@ -342,6 +356,8 @@ export class Router {
     const { account } = candidate;
     const latencyMs = Math.max(0, this.clock() - startedAt);
     this.breaker.onSuccess(account.id);
+    const { reported } = this.options;
+    if (reported?.get(account.id)?.source === 'error') reported.forget(account.id);
     this.recordUsage(candidate, requestId, 'success', promptTokens, completionTokens, latencyMs);
     const current = this.options.accounts.get(account.id);
     if (current && (current.status === 'cooldown' || current.lastError || current.cooldownUntil)) {
@@ -415,6 +431,18 @@ export class Router {
       },
     });
     if (BREAKER_KINDS.has(error.kind)) this.breaker.onFailure(account.id);
+    if (error.kind === 'quota_exhausted' && this.options.reported) {
+      // Subscription limits ("usage limit reached… resets 3pm") last until the provider's reset.
+      const resetAt =
+        error.retryAfterMs !== undefined
+          ? new Date(this.clock() + error.retryAfterMs).toISOString()
+          : undefined;
+      this.options.reported.report(
+        account.id,
+        { exhausted: true, ...(resetAt ? { resetAt } : {}) },
+        'error',
+      );
+    }
 
     if (error.kind === 'auth') {
       this.emitAccount(

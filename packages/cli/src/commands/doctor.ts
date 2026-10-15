@@ -177,6 +177,13 @@ export async function runDoctor(input: DoctorInput, probes: DoctorProbes): Promi
         fix: 'npm install -g @openai/codex',
       },
       {
+        cmd: 'gemini',
+        label: 'Gemini CLI',
+        required: false,
+        why: 'only for gemini-cli accounts',
+        fix: 'npm install -g @google/gemini-cli',
+      },
+      {
         cmd: 'gh',
         label: 'GitHub CLI',
         required: false,

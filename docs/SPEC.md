@@ -4,6 +4,11 @@
 > including the decisions taken where this document left options open, lives in
 > [ARCHITECTURE.md](ARCHITECTURE.md). Features flagged as Terms-of-Service-sensitive ship
 > disabled by default. See the "Experimental" section there.
+>
+> Where this spec mentions Google Antigravity sessions: Antigravity has no public API or CLI and
+> reusing its tokens violates Google's terms, so it is not implemented. Google subscriptions are
+> supported through the official Gemini CLI (`gemini-cli`), and every subscription is signed in
+> with the vendor's own login ("Connect subscription"), never by storing passwords.
 
 ## 1. Executive Summary & Mission Statement
 

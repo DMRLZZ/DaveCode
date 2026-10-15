@@ -258,7 +258,12 @@ export class AnthropicProvider implements Provider {
   readonly kind = 'anthropic' as const;
 
   private scope(ctx: ProviderCallContext): ErrorScope {
-    return { provider: this.kind, accountId: ctx.account.id, secret: ctx.secret };
+    return {
+      provider: this.kind,
+      accountId: ctx.account.id,
+      secret: ctx.secret,
+      reportLimits: ctx.reportLimits,
+    };
   }
 
   private baseUrl(ctx: ProviderCallContext): string {

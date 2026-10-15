@@ -1,5 +1,5 @@
 import { errorKindFromStatus, ProviderError, parseRetryAfter } from '../../errors';
-import type { ProviderErrorKind, ProviderKind } from '../../types';
+import type { ProviderErrorKind, ProviderKind, ReportedLimitsInput } from '../../types';
 import { asString, isRecord } from './util';
 
 export interface ErrorScope {
@@ -7,6 +7,8 @@ export interface ErrorScope {
   accountId: string;
   /** Secret to scrub from any message we surface. */
   secret?: string;
+  /** Receives rate-limit state parsed from successful responses' headers. */
+  reportLimits?: (limits: ReportedLimitsInput) => void;
 }
 
 const CONTEXT_PATTERNS = [

@@ -17,6 +17,7 @@ describe('createProviders', () => {
       'openai-compatible',
       'claude-cli',
       'codex-cli',
+      'gemini-cli',
       'gemini-web',
     ];
     expect([...providers.keys()].sort()).toEqual([...kinds].sort());

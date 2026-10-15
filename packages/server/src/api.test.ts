@@ -289,6 +289,163 @@ describe('usage and logs', () => {
   });
 });
 
+describe('subscriptions and budget', () => {
+  it('validates, stores and clears subscription details', async () => {
+    const seen = await setup();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/accounts',
+      payload: {
+        provider: 'claude-cli',
+        label: 'Claude Pro',
+        subscription: {
+          plan: 'Claude Pro',
+          paidAt: '2026-10-01',
+          renewsAt: '2026-11-01',
+          price: { amount: 20, currency: 'usd', period: 'month' },
+        },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const { account } = created.json();
+    expect(account.subscription).toEqual({
+      plan: 'Claude Pro',
+      paidAt: '2026-10-01',
+      renewsAt: '2026-11-01',
+      price: { amount: 20, currency: 'USD', period: 'month' },
+    });
+
+    for (const subscription of [
+      { renewsAt: 'next week' },
+      { price: { amount: -1, currency: 'USD', period: 'month' } },
+      { price: { amount: 5, currency: 'dollars', period: 'month' } },
+      { plan: 'x', password: 'nope' },
+    ]) {
+      const bad = await app.inject({
+        method: 'PATCH',
+        url: `/api/accounts/${account.id}`,
+        payload: { subscription },
+      });
+      expect(bad.statusCode).toBe(400);
+      expect(bad.json().error.code).toBe('invalid_body');
+    }
+
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: `/api/accounts/${account.id}`,
+      payload: { subscription: null },
+    });
+    expect(cleared.json().account.subscription).toBeUndefined();
+    expect(seen.filter((e) => e.type === 'account.updated')).toHaveLength(2);
+  });
+
+  it('serves the budget snapshot with its prompt context', async () => {
+    await setup();
+    const account = t.engine.accounts.create({
+      provider: 'openai',
+      label: 'Plus',
+      limits: { requestsDaily: 10 },
+      subscription: { plan: 'ChatGPT Plus' },
+    });
+    t.engine.keyring.set(account.id, SECRET);
+    await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      payload: { model: 'openai/gpt-x', messages: [{ role: 'user', content: 'hi' }] },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/budget' });
+    expect(res.statusCode).toBe(200);
+    const { budget } = res.json();
+    expect(budget.accounts).toEqual([
+      expect.objectContaining({
+        accountId: account.id,
+        remaining: 0.9,
+        tightestWindow: '24h',
+        available: true,
+        subscription: { plan: 'ChatGPT Plus' },
+      }),
+    ]);
+    expect(budget.context).toContain('- Plus [openai] (ChatGPT Plus): 90% left (24h window)');
+    expect(res.payload).not.toContain(SECRET);
+  });
+});
+
+describe('connect subscription', () => {
+  it('reports connection state without exposing credentials', async () => {
+    await setup();
+    const keyed = t.engine.accounts.create({ provider: 'openai', label: 'key' });
+    t.engine.keyring.set(keyed.id, SECRET);
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+
+    const ok = await app.inject({ method: 'GET', url: `/api/accounts/${keyed.id}/connection` });
+    expect(ok.json().connection).toMatchObject({ method: 'api-key', status: 'connected' });
+    expect(ok.payload).not.toContain(SECRET);
+
+    const cli = await app.inject({ method: 'GET', url: `/api/accounts/${gemini.id}/connection` });
+    expect(cli.json().connection).toMatchObject({
+      method: 'cli-login',
+      status: 'not_connected',
+      loginCommand: `davecode accounts login ${gemini.id}`,
+    });
+    const missing = await app.inject({ method: 'GET', url: '/api/accounts/nope/connection' });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('returns the official login command when no launcher is available', async () => {
+    await setup();
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${gemini.id}/connect`,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().connect).toMatchObject({
+      launched: false,
+      command: `davecode accounts login ${gemini.id}`,
+      connection: { status: 'not_connected' },
+    });
+    expect(t.engine.audit.list({ limit: 5 }).map((e) => e.action)).toContain('account.connect');
+  });
+
+  it('launches the login through the injected launcher, only for CLI-login accounts', async () => {
+    const launch = vi.fn(async () => ({ launched: true }));
+    await setup(undefined, { loginLauncher: { launch } });
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${gemini.id}/connect`,
+      payload: {},
+    });
+    expect(res.json().connect.launched).toBe(true);
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ id: gemini.id }));
+
+    const keyed = t.engine.accounts.create({ provider: 'anthropic', label: 'key' });
+    const refused = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${keyed.id}/connect`,
+      payload: {},
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error.code).toBe('not_cli_login');
+    expect(launch).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses requests without a JSON content type (cross-site forms)', async () => {
+    const launch = vi.fn(async () => ({ launched: true }));
+    await setup(undefined, { loginLauncher: { launch } });
+    const gemini = t.engine.accounts.create({ provider: 'gemini-cli', label: 'Google' });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/accounts/${gemini.id}/connect`,
+      headers: { 'content-type': 'text/plain' },
+      payload: 'x',
+    });
+    expect(res.statusCode).toBe(415);
+    expect(launch).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /api/routes', () => {
   it('returns the default route and configured routes', async () => {
     const routes = [{ name: 'fast', targets: [{ provider: 'openai' as const, model: 'gpt-x' }] }];

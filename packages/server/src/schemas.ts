@@ -87,6 +87,39 @@ const accountConfig = z
     message: 'config must not contain credentials; send them in "secret" instead',
   });
 
+/** `YYYY-MM-DD` or a full ISO 8601 timestamp. */
+const subscriptionDate = z
+  .string()
+  .trim()
+  .refine(
+    (value) =>
+      /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/.test(value) &&
+      !Number.isNaN(Date.parse(value)),
+    { message: 'expected a date (YYYY-MM-DD) or an ISO timestamp' },
+  );
+
+/** Plan, payment and renewal details for an account (`SubscriptionInfo`). */
+export const subscriptionSchema = z
+  .object({
+    plan: z.string().trim().min(1).max(120).optional(),
+    paidAt: subscriptionDate.optional(),
+    renewsAt: subscriptionDate.optional(),
+    price: z
+      .object({
+        amount: z.number().min(0).max(1_000_000),
+        currency: z
+          .string()
+          .trim()
+          .regex(/^[A-Za-z]{3}$/, 'expected a 3-letter currency code')
+          .transform((c) => c.toUpperCase()),
+        period: z.enum(['month', 'year']),
+      })
+      .strict()
+      .optional(),
+    notes: z.string().trim().max(1000).optional(),
+  })
+  .strict();
+
 const accountFields = {
   label: z.string().trim().min(1).max(200),
   enabled: z.boolean().optional(),
@@ -99,11 +132,17 @@ const accountFields = {
 };
 
 /** `POST /api/accounts` body (`AccountCreate`). */
-export const accountCreateSchema = z.object({ provider: providerKind, ...accountFields }).strict();
+export const accountCreateSchema = z
+  .object({ provider: providerKind, ...accountFields, subscription: subscriptionSchema.optional() })
+  .strict();
 
-/** `PATCH /api/accounts/:id` body (`AccountPatch`). */
+/** `PATCH /api/accounts/:id` body (`AccountPatch`); `subscription: null` clears it. */
 export const accountPatchSchema = z
-  .object({ ...accountFields, label: accountFields.label.optional() })
+  .object({
+    ...accountFields,
+    label: accountFields.label.optional(),
+    subscription: subscriptionSchema.nullable().optional(),
+  })
   .strict();
 
 /**
@@ -176,6 +215,17 @@ export const taskPatchSchema = z
 
 /** `POST /api/runner/start` body: optional, `{}` or empty means "pick the next task". */
 export const runnerStartSchema = z.object({ taskId: z.string().min(1).optional() }).strict();
+
+/** `POST /api/goals` body. Limits are further clamped to the `goal.*` config. */
+export const goalStartSchema = z
+  .object({
+    objective: z.string().trim().min(1).max(4_000),
+    maxRounds: z.number().int().min(1).max(20).optional(),
+    maxTasks: z.number().int().min(1).max(100).optional(),
+    maxTokens: z.number().int().min(1_000).optional(),
+    dryRun: z.boolean().optional(),
+  })
+  .strict();
 
 export const timeseriesQuerySchema = z.object({
   minutes: z.coerce

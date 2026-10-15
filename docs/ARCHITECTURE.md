@@ -31,6 +31,7 @@ flowchart TB
     ID[Identity: sandboxes, keyring, Chromium profiles]
     BRAIN[Dual brain: global + project]
     RUNNER[Autonomous runner]
+    GOAL[Goal mode: plan, execute, review]
     BUS[(EventBus)]
     DB[(SQLite WAL state.db)]
   end
@@ -42,6 +43,7 @@ flowchart TB
     OC[OpenAI-compatible: OpenRouter, Ollama, LM Studio…]
     CC[Claude Code CLI]
     CX[Codex CLI]
+    GC[Gemini CLI]
     GW[Gemini web, experimental]
   end
 
@@ -51,23 +53,27 @@ flowchart TB
   WEB --> API
   V1 --> ROUTER
   API --> RUNNER
+  API --> GOAL
   API --> BUS
+  GOAL --> RUNNER
+  GOAL --> ROUTER
   RUNNER --> BRAIN
   RUNNER --> ROUTER
   ROUTER --> QUOTA
   ROUTER --> ID
   QUOTA --> DB
   ID --> DB
-  ROUTER --> ANT & OAI & GEM & OC & CC & CX & GW
+  ROUTER --> ANT & OAI & GEM & OC & CC & CX & GC & GW
   ROUTER --> BUS
   RUNNER --> BUS
+  GOAL --> BUS
 ```
 
 ## Packages
 
 | Package | Responsibility |
 | :------ | :------------- |
-| [`@davecode/core`](../packages/core) | Domain contracts, config, SQLite storage, keyring, sandboxes, quota engine, providers, router, dual brain, task graph, autonomous runner |
+| [`@davecode/core`](../packages/core) | Domain contracts, config, SQLite storage, keyring, sandboxes, connection checks, quota engine, budget, providers, router, dual brain, task graph, autonomous runner, goal mode |
 | [`@davecode/server`](../packages/server) | Fastify gateway: `/v1` proxy, `/api` REST, SSE event stream, serves the built dashboard |
 | [`davecode`](../packages/cli) | The published CLI (`davecode start`, `status`, `add-account`, `run`) and the Ink-based TUI |
 | [`@davecode/ui`](../packages/ui) | Vite + React + Tailwind dashboard (dark by default) |
@@ -85,12 +91,14 @@ src/
 ├── paths.ts            # ~/.davecode and <repo>/.davecode layout
 ├── config/             # zod schema + layered loader
 ├── storage/            # better-sqlite3 (WAL), migrations, repositories
-├── identity/           # sandbox.ts, keyring.ts, chromium.ts
-├── rate-limiter/       # window.ts (sliding windows), tracker.ts (SQLite-backed)
+├── identity/           # sandbox.ts, keyring.ts, chromium.ts, connect.ts (login specs + checks)
+├── rate-limiter/       # window.ts (sliding windows), tracker.ts (SQLite-backed), reported.ts
+├── budget/             # service.ts: BudgetSnapshot + compact context for agent prompts
 ├── providers/          # one adapter per ProviderKind
 ├── router/             # account selection, balancing, hot failover, circuit breaker
 ├── brain/              # global.ts, project.ts, graph.ts (DAG resolver)
-└── autonomous/         # runner.ts, executor.ts, tools.ts, validator.ts, git.ts, judge.ts
+├── autonomous/         # runner.ts, executor.ts, tools.ts, validator.ts, git.ts, judge.ts
+└── goal/               # plan.ts, orchestrator.ts, service.ts, store.ts, code-tasks.ts
 ```
 
 ## Key design decisions
@@ -125,14 +133,36 @@ Each account is tracked in four sliding windows: **TPM** and **RPM** (60 s), **5
    at fault.) `auth` errors never fail over and mark the account `error`; a per-account circuit
    breaker skips accounts after repeated consecutive failures until a half-open probe succeeds.
 
-Subscription providers (`claude-cli`, `codex-cli`, `gemini-web`) only rotate across multiple
-accounts of the same provider when `experimental.multiAccountRotation` is enabled.
+Subscription providers (`claude-cli`, `codex-cli`, `gemini-cli`, `gemini-web`) only rotate
+across multiple accounts of the same provider when `experimental.multiAccountRotation` is enabled.
+
+Providers also report their own limits: rate-limit headers (`anthropic-ratelimit-*`,
+`x-ratelimit-*`) and quota errors such as the subscription CLIs' "usage limit reached… resets at"
+are parsed (`rate-limiter/reported.ts`) and handed to the router through
+`ProviderCallContext.reportLimits`. An account reported as exhausted is skipped until its reset
+time. `BudgetService` (`engine.budget`) merges those reports with DaveCode's own windows and the
+hand-entered `Account.subscription` (plan, price, renewal) into a `BudgetSnapshot`; its compact
+`context` text is appended to runner task contexts and goal agent prompts so agents can pace
+themselves.
 
 ## Identity isolation
 
 - **CLI providers**: each account gets `~/.davecode/sandboxes/<accountId>/`, passed to the child
-  process as `CLAUDE_CONFIG_DIR` (Claude Code) or `CODEX_HOME` (Codex). Accounts never share
-  credentials, caches or rate-limit state.
+  process as `CLAUDE_CONFIG_DIR` (Claude Code), `CODEX_HOME` (Codex) or `GEMINI_CLI_HOME` plus
+  `HOME`/`USERPROFILE` (Gemini CLI, seeded with `.gemini/settings.json` selecting "Login with
+  Google"). Accounts never share credentials, caches or rate-limit state. Exception: on Windows
+  and Linux Claude Code can resolve the global `~/.claude` login even with `CLAUDE_CONFIG_DIR`
+  set; the connection check reports that case instead of claiming isolation.
+- **Connecting a subscription** (`identity/connect.ts`): DaveCode never handles a password or a
+  token for CLI accounts. `davecode accounts login|connect <id>` runs the vendor's official
+  sign-in (`claude auth login`, `codex login`, Gemini CLI's "Login with Google") with the sandbox
+  environment, and the vendor CLI stores the result. `ConnectionChecker` (`engine.connections`)
+  answers "is this account signed in?" through the vendor's status command (`claude auth status
+  --json`, `codex login status`) or the presence of Gemini CLI's credential file, parsing only the
+  logged-in flag. The dashboard's **Connect subscription** button calls
+  `POST /api/accounts/:id/connect`; the gateway has no login logic, it delegates to a
+  `LoginLauncher` that the CLI injects only when bound to loopback, which opens a terminal running
+  `davecode accounts login <id> --hold` on the same machine.
 - **Browser providers** (experimental): a dedicated Chromium `userDataDir` under
   `~/.davecode/profiles/<accountId>/`. `playwright-core` is an optional peer dependency.
 - **Secrets**: stored in the `secrets` table encrypted with AES-256-GCM. Secrets are write-only
@@ -244,6 +274,28 @@ One task, step by step:
 Every transition emits `runner.status`; progress lines (tool names and paths, check results,
 never file contents or secrets) are emitted as `runner.log`.
 
+## Goal mode
+
+`davecode goal "<objective>"` (or `POST /api/goals`) runs a small team of role-based agents over
+one objective:
+
+1. **Plan**: the planner answers with a zod-validated JSON task list (role, kind, dependencies,
+   acceptance criteria).
+2. **Execute** ready tasks in dependency order. `artifact` tasks (research, writing, review) call
+   the router with the role's instructions and write markdown to
+   `<repo>/.davecode/goals/<goal-id>/`. `code` tasks are added to the project task graph and run
+   by the autonomous runner (branch, validation, repair, merge).
+3. **Review**: the reviewer decides whether the objective is met, which failed tasks to retry,
+   and which new tasks to add for the next round.
+
+Rounds, total tasks, attempts per task and tokens are capped (`goal.*`, overridable per goal
+downwards); hitting the token cap ends the goal as `budget_exhausted`. One goal runs at a time
+and non-dry-run goals share the runner's workspace lock (`autonomous/workspace-lock.ts`), so the
+two never edit the tree concurrently. A deterministic safety guard (`applySafetyGuard`) rewrites
+any task that asks for an outbound action (email, posting, payments, sign-ups, deployments) into a
+draft artifact for a human: goal mode never acts outside the machine. Progress is emitted as
+`goal.updated` and `goal.log`.
+
 ## Experimental & Terms-of-Service-sensitive features
 
 Two capabilities described in the [original specification](SPEC.md) automate consumer
@@ -256,3 +308,10 @@ opt-in in `config.json`:
 | `experimental.multiAccountRotation` | Balancing across several subscription logins of one provider | May violate Anthropic/OpenAI consumer terms; accounts can be suspended |
 
 API-key providers and cross-provider failover are unaffected by these flags.
+
+Deliberately not implemented: **Google Antigravity**. It has no public API or CLI, and reusing
+its OAuth tokens from another program (what community plugins do) violates Google's terms, so
+it cannot be offered even behind a flag. Google AI subscriptions are supported through the
+official Gemini CLI (`gemini-cli`). Likewise, Anthropic, OpenAI and Google offer no OAuth flow
+that lets a third-party app use a consumer subscription, which is why "Connect subscription"
+runs the vendor CLI's own login instead of a web consent screen.

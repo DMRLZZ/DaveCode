@@ -160,6 +160,18 @@ function registerCommands(program: Command, run: Runner): void {
   registerProject(program, run);
 
   program
+    .command('budget')
+    .description('plans, renewals and remaining quota per account (what agents are told)')
+    .option('--context', 'print only the summary injected into agent prompts')
+    .option('--local', 'read the local database even if a gateway is running')
+    .action(
+      run(async (ctx, opts: import('./commands/budget').BudgetFlags) => {
+        const { budgetCommand } = await import('./commands/budget');
+        return budgetCommand(ctx, opts);
+      }),
+    );
+
+  program
     .command('doctor')
     .description('check the environment and print fixes')
     .action(
@@ -188,6 +200,80 @@ Ctrl+C stops safely: partial work stays on the task branch and the task goes bac
       run(async (ctx, opts: import('./commands/run').RunOptions) => {
         const { runCommand } = await import('./commands/run');
         return runCommand(ctx, opts);
+      }),
+    );
+
+  registerGoals(program, run);
+}
+
+function registerGoals(program: Command, run: Runner): void {
+  const limit = (flag: string, description: string) =>
+    new Option(flag, description).argParser((value) => {
+      const n = parseInteger(value);
+      if (n < 1) throw new InvalidArgumentError('expected a positive integer');
+      return n;
+    });
+
+  program
+    .command('goal <objective...>')
+    .description('pursue an objective with a team of agents (plan, execute, review, re-plan)')
+    .addOption(
+      limit('--max-rounds <n>', 'plan → execute → review rounds (capped by goal.maxRounds)'),
+    )
+    .addOption(limit('--max-tasks <n>', 'tasks across all rounds (capped by goal.maxTasks)'))
+    .addOption(
+      limit('--max-tokens <n>', 'token budget for the whole goal (capped by goal.maxTokens)'),
+    )
+    .option('--dry-run', 'plan only: print the task graph without executing it')
+    .option('--project <dir>', 'repository to work in (default: detected)')
+    .addHelpText(
+      'after',
+      `
+Agents never send emails, post, pay or sign up for anything: such steps become drafts in
+.davecode/goals/<goal-id>/. Code tasks go through the autonomous runner (branch, checks, merge).
+Ctrl+C cancels. Exit codes: 0 succeeded or planned, 1 failed or out of budget, 130 cancelled.
+
+Examples:
+  davecode goal "Write positioning and landing copy for this app" --dry-run
+  davecode goal "Add a /health endpoint with tests" --max-rounds 2`,
+    )
+    .action(
+      run(async (ctx, words: string[], opts: import('./commands/goal').GoalOptions) => {
+        const { goalCommand } = await import('./commands/goal');
+        return goalCommand(ctx, words, opts);
+      }),
+    );
+
+  const goals = program.command('goals').description('goals of this repository');
+  goals
+    .command('list', { isDefault: true })
+    .alias('ls')
+    .description('goals, newest first')
+    .option('--project <dir>', 'repository (default: detected)')
+    .action(
+      run(async (ctx, opts: { project?: string }) => {
+        const { goalsList } = await import('./commands/goal');
+        return goalsList(ctx, opts);
+      }),
+    );
+  goals
+    .command('show <id>')
+    .description('tasks, artifacts and summary of a goal')
+    .option('--project <dir>', 'repository (default: detected)')
+    .action(
+      run(async (ctx, id: string, opts: { project?: string }) => {
+        const { goalsShow } = await import('./commands/goal');
+        return goalsShow(ctx, id, opts);
+      }),
+    );
+  goals
+    .command('cancel <id>')
+    .description('cancel a running goal')
+    .option('--project <dir>', 'repository (default: detected)')
+    .action(
+      run(async (ctx, id: string, opts: { project?: string }) => {
+        const { goalsCancel } = await import('./commands/goal');
+        return goalsCancel(ctx, id, opts);
       }),
     );
 }
@@ -297,7 +383,7 @@ function addAccountOptions(command: Command, run: Runner): Command {
   return command
     .option(
       '--provider <kind>',
-      'anthropic | openai | gemini | openai-compatible | claude-cli | codex-cli | gemini-web',
+      'anthropic | openai | gemini | openai-compatible | claude-cli | codex-cli | gemini-cli | gemini-web',
     )
     .option('--label <name>', 'human-friendly name')
     .addOption(
@@ -312,7 +398,7 @@ function addAccountOptions(command: Command, run: Runner): Command {
     .option('--base-url <url>', 'endpoint for openai-compatible accounts')
     .option('--model <id>', 'advertised model (repeatable or comma-separated)', collect)
     .option('--default-model <id>', 'model used for davecode/auto without a route')
-    .option('--binary-path <path>', 'CLI binary for claude-cli / codex-cli')
+    .option('--binary-path <path>', 'CLI binary for claude-cli / codex-cli / gemini-cli')
     .option('--limit <key=value>', 'quota limit, e.g. tokens5h=500000 (repeatable)', collect)
     .option('--disabled', 'add the account disabled')
     .option('-y, --yes', 'never prompt: take everything from flags')
@@ -386,20 +472,72 @@ function registerAccounts(program: Command, run: Runner): void {
   }
 
   accounts
+    .command('plan <id>')
+    .description('show or set what you pay for an account (plan, price, paid/renewal dates)')
+    .option('--plan <name>', 'plan name, e.g. "Claude Pro" or "API pay-as-you-go"')
+    .option('--price <amount>', 'price per period, e.g. 20')
+    .option('--currency <code>', '3-letter currency code (default USD)')
+    .option('--period <period>', 'month | year (default month)')
+    .option('--paid <date>', 'last payment date (YYYY-MM-DD)')
+    .option('--renews <date>', 'next renewal date (YYYY-MM-DD)')
+    .option('--notes <text>', 'free-form note')
+    .option('--clear', 'remove the recorded plan')
+    .option('--local', 'write to the local database even if a gateway is running')
+    .addHelpText(
+      'after',
+      `
+Entered by hand: DaveCode never reads billing pages. Example:
+  davecode accounts plan acc_123 --plan "Claude Pro" --price 20 --renews 2026-11-01`,
+    )
+    .action(
+      run(async (ctx, id: string, opts: import('./commands/accounts').PlanFlags) => {
+        const { accountsPlan } = await import('./commands/accounts');
+        return accountsPlan(ctx, id, opts);
+      }),
+    );
+
+  accounts
     .command('login <id> [args...]')
-    .description('log a claude-cli / codex-cli account in, inside its own isolated config dir')
+    .description(
+      'log a claude-cli / codex-cli / gemini-cli account in, inside its own isolated config dir',
+    )
     .allowUnknownOption()
+    .option('--local', 'read the local database even if a gateway is running')
+    .option('--hold', 'wait for Enter before exiting (for windows opened by the dashboard)')
+    .addHelpText(
+      'after',
+      `
+Runs the vendor's official sign-in (claude auth login, codex login, Gemini CLI's
+"Login with Google") with CLAUDE_CONFIG_DIR / CODEX_HOME / GEMINI_CLI_HOME pointing at the
+account's sandbox, so every account keeps a separate login. DaveCode never sees the password.
+Extra arguments after -- replace the default ones (e.g. -- login --device-auth for Codex).`,
+    )
+    .action(
+      run(
+        async (ctx, id: string, args: string[], opts: import('./commands/accounts').LoginFlags) => {
+          const { accountsLogin } = await import('./commands/accounts');
+          return accountsLogin(ctx, id, args, opts);
+        },
+      ),
+    );
+
+  accounts
+    .command('connect <id>')
+    .description('connect a subscription: check its login and run the official sign-in if needed')
+    .option('--check', 'only report whether the account is connected')
     .option('--local', 'read the local database even if a gateway is running')
     .addHelpText(
       'after',
       `
-Launches the real CLI with CLAUDE_CONFIG_DIR / CODEX_HOME pointing at the account's sandbox,
-so every account keeps a separate login. Extra arguments after -- replace the default ones.`,
+API-key accounts are connected when a key is stored. CLI accounts (claude-cli, codex-cli,
+gemini-cli) ask the vendor CLI for its login status inside the account sandbox and, when not
+connected, start the vendor's own sign-in. Example:
+  davecode accounts connect acc_123 --check`,
     )
     .action(
-      run(async (ctx, id: string, args: string[], opts: { local?: boolean }) => {
-        const { accountsLogin } = await import('./commands/accounts');
-        return accountsLogin(ctx, id, args, opts);
+      run(async (ctx, id: string, opts: import('./commands/accounts').ConnectFlags) => {
+        const { accountsConnect } = await import('./commands/accounts');
+        return accountsConnect(ctx, id, opts);
       }),
     );
 

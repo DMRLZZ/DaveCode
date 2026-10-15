@@ -91,7 +91,12 @@ export class OpenAIProvider implements Provider {
   }
 
   protected scope(ctx: ProviderCallContext): ErrorScope {
-    return { provider: this.kind, accountId: ctx.account.id, secret: ctx.secret };
+    return {
+      provider: this.kind,
+      accountId: ctx.account.id,
+      secret: ctx.secret,
+      reportLimits: ctx.reportLimits,
+    };
   }
 
   protected baseUrl(ctx: ProviderCallContext): string {
