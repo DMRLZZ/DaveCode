@@ -139,6 +139,41 @@ describe('AccountRepository', () => {
     expect(repo.update('acc_missing', { label: 'z' })).toBeUndefined();
   });
 
+  it('stores subscription details and clears them with null', () => {
+    const repo = new AccountRepository(db);
+    const subscription = {
+      plan: 'Claude Pro',
+      renewsAt: '2026-11-01',
+      price: { amount: 20, currency: 'USD', period: 'month' as const },
+    };
+    const account = repo.create({ provider: 'claude-cli', label: 'x', subscription });
+    expect(repo.get(account.id)?.subscription).toEqual(subscription);
+    expect(repo.create({ provider: 'openai', label: 'y' }).subscription).toBeUndefined();
+    expect(repo.update(account.id, { subscription: null })?.subscription).toBeUndefined();
+  });
+
+  it('upgrades a v1 database with existing accounts', () => {
+    const old = openDatabase(':memory:');
+    try {
+      old.pragma('user_version = 0');
+      old.exec('DROP TABLE audit_logs; DROP TABLE token_usage; DROP TABLE sessions;');
+      old.exec('DROP TABLE secrets; DROP TABLE accounts;');
+      migrate(old, MIGRATIONS.slice(0, 1));
+      old
+        .prepare(
+          `INSERT INTO accounts (id, provider, label, created_at, updated_at)
+           VALUES ('acc_old', 'openai', 'old', 'x', 'x')`,
+        )
+        .run();
+      migrate(old);
+      const account = new AccountRepository(old).get('acc_old');
+      expect(account?.label).toBe('old');
+      expect(account?.subscription).toBeUndefined();
+    } finally {
+      old.close();
+    }
+  });
+
   it('deletes accounts and cascades to secrets and sessions', () => {
     const repo = new AccountRepository(db);
     const account = repo.create({ provider: 'openai', label: 'x' });

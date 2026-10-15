@@ -146,6 +146,29 @@ export interface QuotaLimits {
 
 export type AccountStatus = 'active' | 'cooldown' | 'disabled' | 'error';
 
+export interface SubscriptionPrice {
+  /** Amount per period in `currency`, e.g. 20. */
+  amount: number;
+  /** ISO 4217 code, e.g. "USD". */
+  currency: string;
+  period: 'month' | 'year';
+}
+
+/**
+ * What the user pays for an account, entered by hand (DaveCode never reads billing pages).
+ * Dates are `YYYY-MM-DD` or full ISO timestamps.
+ */
+export interface SubscriptionInfo {
+  /** Plan name as the vendor calls it, e.g. "Claude Pro", "ChatGPT Plus", "API pay-as-you-go". */
+  plan?: string;
+  /** Last payment date. */
+  paidAt?: string;
+  /** Next renewal (or quota reset) date. */
+  renewsAt?: string;
+  price?: SubscriptionPrice;
+  notes?: string;
+}
+
 export interface Account {
   id: string;
   provider: ProviderKind;
@@ -157,6 +180,8 @@ export interface Account {
   /** Relative share of traffic among accounts with equal priority. */
   weight: number;
   limits: QuotaLimits;
+  /** Plan, payment and renewal details; omitted when none were entered. */
+  subscription?: SubscriptionInfo;
   /**
    * Non-secret provider settings (baseUrl, model allow-list, CLI binary path…).
    * Secrets (API keys, cookies, OAuth tokens) live encrypted in the keyring, never here.
@@ -179,6 +204,8 @@ export interface ProviderCallContext {
   /** Isolated per-account directory (CLAUDE_CONFIG_DIR, CODEX_HOME, Chromium userDataDir). */
   sandboxDir: string;
   signal?: AbortSignal;
+  /** Called with rate-limit state the upstream reported (response headers), if any. */
+  reportLimits?: (limits: ReportedLimitsInput) => void;
 }
 
 export interface Provider {
@@ -226,6 +253,56 @@ export interface WindowUsage {
 export interface AccountUsage {
   accountId: string;
   windows: Record<QuotaWindow, WindowUsage>;
+}
+
+/** Rate-limit state as a provider reports it (headers, CLI limit messages). */
+export interface ReportedLimitsInput {
+  tokensRemaining?: number;
+  tokensLimit?: number;
+  requestsRemaining?: number;
+  requestsLimit?: number;
+  /** ISO timestamp when the reported window resets. */
+  resetAt?: string;
+  /** The provider refused the request because the quota is used up (until `resetAt`). */
+  exhausted?: boolean;
+}
+
+export interface ReportedLimits extends ReportedLimitsInput {
+  source: 'headers' | 'error';
+  /** ISO timestamp of the observation. */
+  observedAt: string;
+}
+
+/** One account in `GET /api/budget`: subscription details plus remaining capacity. */
+export interface AccountBudget {
+  accountId: string;
+  label: string;
+  provider: ProviderKind;
+  enabled: boolean;
+  subscription?: SubscriptionInfo;
+  /** Whole days until `subscription.renewsAt` (negative when overdue). */
+  renewsInDays?: number;
+  /**
+   * Remaining fraction 0..1 of the tightest limit, combining DaveCode's own windows and the
+   * provider-reported limits. `null` when no limit is known (unmetered).
+   */
+  remaining: number | null;
+  /** Window behind `remaining` when it comes from DaveCode's own limits. */
+  tightestWindow?: QuotaWindow;
+  usage: AccountUsage;
+  reported?: ReportedLimits;
+  /** Whether the router would currently send traffic to the account. */
+  available: boolean;
+  /** Why not, when `available` is false (disabled, cooldown, exhausted…). */
+  unavailableReason?: string;
+}
+
+export interface BudgetSnapshot {
+  /** ISO timestamp. */
+  generatedAt: string;
+  accounts: AccountBudget[];
+  /** Compact plain-text summary injected into the orchestrator and agent prompts. */
+  context: string;
 }
 
 /** `cancelled`: the client aborted (disconnect, Esc in the TUI); never counts against the account. */

@@ -133,6 +133,59 @@ with `400 invalid_body`; send credentials in `secret`. `AccountCreate` also acce
 `PATCH` with `enabled: false` sets `status: "disabled"`. `enabled: true` or a new `secret`
 resets an enabled account to `active` and clears `cooldownUntil` and `lastError`.
 
+#### Subscription & budget contracts
+
+`Account.subscription?: SubscriptionInfo` records what the user pays for the account. It is
+entered by hand: DaveCode never scrapes billing pages. It is omitted when nothing was entered.
+
+```ts
+interface SubscriptionInfo {
+  plan?: string;       // "Claude Pro", "ChatGPT Plus", "API pay-as-you-go"…
+  paidAt?: string;     // YYYY-MM-DD or ISO timestamp
+  renewsAt?: string;   // YYYY-MM-DD or ISO timestamp
+  price?: { amount: number; currency: string; period: 'month' | 'year' };
+  notes?: string;
+}
+
+// Rate-limit state the provider itself reported: response headers (Anthropic
+// `anthropic-ratelimit-*`, OpenAI `x-ratelimit-*`) or a quota/limit error, including the
+// subscription CLIs' "usage limit reached… resets at" messages.
+interface ReportedLimits {
+  tokensRemaining?: number;
+  tokensLimit?: number;
+  requestsRemaining?: number;
+  requestsLimit?: number;
+  resetAt?: string;     // ISO
+  exhausted?: boolean;  // refused until resetAt
+  source: 'headers' | 'error';
+  observedAt: string;   // ISO
+}
+
+interface AccountBudget {
+  accountId: string;
+  label: string;
+  provider: ProviderKind;
+  enabled: boolean;
+  subscription?: SubscriptionInfo;
+  renewsInDays?: number;           // negative when overdue
+  remaining: number | null;        // 0..1 of the tightest known limit; null = unmetered
+  tightestWindow?: QuotaWindow;    // when `remaining` comes from DaveCode's own limits
+  usage: AccountUsage;
+  reported?: ReportedLimits;
+  available: boolean;              // would the router send traffic there now?
+  unavailableReason?: string;      // disabled, error, cooldown, exhausted…
+}
+
+interface BudgetSnapshot {
+  generatedAt: string;
+  accounts: AccountBudget[];
+  context: string;                 // compact text injected into agent prompts
+}
+```
+
+`ProviderCallContext.reportLimits?(limits)` is how adapters hand reported limits to the router.
+It receives the same fields without `source`/`observedAt`.
+
 ### Usage
 
 `GET /api/usage`

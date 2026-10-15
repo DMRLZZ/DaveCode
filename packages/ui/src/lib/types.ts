@@ -47,6 +47,22 @@ export interface QuotaLimits {
 
 export type AccountStatus = 'active' | 'cooldown' | 'disabled' | 'error';
 
+export interface SubscriptionPrice {
+  amount: number;
+  /** ISO 4217 code, e.g. "USD". */
+  currency: string;
+  period: 'month' | 'year';
+}
+
+/** Plan, payment and renewal details entered by the user. Dates: YYYY-MM-DD or ISO. */
+export interface SubscriptionInfo {
+  plan?: string;
+  paidAt?: string;
+  renewsAt?: string;
+  price?: SubscriptionPrice;
+  notes?: string;
+}
+
 export interface Account {
   id: string;
   provider: ProviderKind;
@@ -56,6 +72,7 @@ export interface Account {
   priority: number;
   weight: number;
   limits: QuotaLimits;
+  subscription?: SubscriptionInfo;
   /** Non-secret provider settings (baseUrl, models…). Secrets are never returned. */
   config: Record<string, unknown>;
   status: AccountStatus;
@@ -94,6 +111,45 @@ export interface WindowUsage {
 export interface AccountUsage {
   accountId: string;
   windows: Record<QuotaWindow, WindowUsage>;
+}
+
+export interface ReportedLimitsInput {
+  tokensRemaining?: number;
+  tokensLimit?: number;
+  requestsRemaining?: number;
+  requestsLimit?: number;
+  resetAt?: string;
+  exhausted?: boolean;
+}
+
+/** Rate-limit state as the provider reported it (headers or a limit error). */
+export interface ReportedLimits extends ReportedLimitsInput {
+  source: 'headers' | 'error';
+  observedAt: string;
+}
+
+/** One account in `GET /api/budget`. */
+export interface AccountBudget {
+  accountId: string;
+  label: string;
+  provider: ProviderKind;
+  enabled: boolean;
+  subscription?: SubscriptionInfo;
+  renewsInDays?: number;
+  /** Remaining fraction 0..1 of the tightest known limit; null when unmetered. */
+  remaining: number | null;
+  tightestWindow?: QuotaWindow;
+  usage: AccountUsage;
+  reported?: ReportedLimits;
+  available: boolean;
+  unavailableReason?: string;
+}
+
+export interface BudgetSnapshot {
+  generatedAt: string;
+  accounts: AccountBudget[];
+  /** Compact summary injected into agent prompts. */
+  context: string;
 }
 
 /** `cancelled`: the client aborted (disconnect, Esc in the TUI); never counts against the account. */
