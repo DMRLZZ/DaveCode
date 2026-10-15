@@ -283,5 +283,6 @@ export {
   Validator,
   type ValidatorOptions,
 } from './autonomous/validator';
+export { WorkspaceLock } from './autonomous/workspace-lock';
 export { ProjectBrainSource } from './brain/source';
 // --- end phase 4 ---
