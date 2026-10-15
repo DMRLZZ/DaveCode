@@ -289,6 +289,87 @@ describe('usage and logs', () => {
   });
 });
 
+describe('subscriptions and budget', () => {
+  it('validates, stores and clears subscription details', async () => {
+    const seen = await setup();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/accounts',
+      payload: {
+        provider: 'claude-cli',
+        label: 'Claude Pro',
+        subscription: {
+          plan: 'Claude Pro',
+          paidAt: '2026-10-01',
+          renewsAt: '2026-11-01',
+          price: { amount: 20, currency: 'usd', period: 'month' },
+        },
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    const { account } = created.json();
+    expect(account.subscription).toEqual({
+      plan: 'Claude Pro',
+      paidAt: '2026-10-01',
+      renewsAt: '2026-11-01',
+      price: { amount: 20, currency: 'USD', period: 'month' },
+    });
+
+    for (const subscription of [
+      { renewsAt: 'next week' },
+      { price: { amount: -1, currency: 'USD', period: 'month' } },
+      { price: { amount: 5, currency: 'dollars', period: 'month' } },
+      { plan: 'x', password: 'nope' },
+    ]) {
+      const bad = await app.inject({
+        method: 'PATCH',
+        url: `/api/accounts/${account.id}`,
+        payload: { subscription },
+      });
+      expect(bad.statusCode).toBe(400);
+      expect(bad.json().error.code).toBe('invalid_body');
+    }
+
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: `/api/accounts/${account.id}`,
+      payload: { subscription: null },
+    });
+    expect(cleared.json().account.subscription).toBeUndefined();
+    expect(seen.filter((e) => e.type === 'account.updated')).toHaveLength(2);
+  });
+
+  it('serves the budget snapshot with its prompt context', async () => {
+    await setup();
+    const account = t.engine.accounts.create({
+      provider: 'openai',
+      label: 'Plus',
+      limits: { requestsDaily: 10 },
+      subscription: { plan: 'ChatGPT Plus' },
+    });
+    t.engine.keyring.set(account.id, SECRET);
+    await app.inject({
+      method: 'POST',
+      url: '/v1/chat/completions',
+      payload: { model: 'openai/gpt-x', messages: [{ role: 'user', content: 'hi' }] },
+    });
+    const res = await app.inject({ method: 'GET', url: '/api/budget' });
+    expect(res.statusCode).toBe(200);
+    const { budget } = res.json();
+    expect(budget.accounts).toEqual([
+      expect.objectContaining({
+        accountId: account.id,
+        remaining: 0.9,
+        tightestWindow: '24h',
+        available: true,
+        subscription: { plan: 'ChatGPT Plus' },
+      }),
+    ]);
+    expect(budget.context).toContain('- Plus [openai] (ChatGPT Plus): 90% left (24h window)');
+    expect(res.payload).not.toContain(SECRET);
+  });
+});
+
 describe('GET /api/routes', () => {
   it('returns the default route and configured routes', async () => {
     const routes = [{ name: 'fast', targets: [{ provider: 'openai' as const, model: 'gpt-x' }] }];

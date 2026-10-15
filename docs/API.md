@@ -119,10 +119,17 @@ interface AccountCreate {
   weight?: number;            // default 1
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
+  subscription?: SubscriptionInfo; // plan, paid/renewal dates, optional price
   secret?: string;            // API key / token — encrypted at rest, never returned
 }
-type AccountPatch = Partial<Omit<AccountCreate, 'provider'>> & { enabled?: boolean };
+type AccountPatch = Partial<Omit<AccountCreate, 'provider' | 'subscription'>> & {
+  enabled?: boolean;
+  subscription?: SubscriptionInfo | null; // replaces; null clears
+};
 ```
+
+`subscription` is validated strictly: dates are `YYYY-MM-DD` or ISO timestamps, `price.currency`
+is a 3-letter code (upper-cased), `price.period` is `month` or `year`, unknown keys are rejected.
 
 Secrets are write-only: no endpoint ever returns them. `Account.hasSecret` tells you whether one is stored. Creating a `gemini-web` account while
 `experimental.geminiWeb` is off returns `400` with code `experimental_disabled`. Unknown body
@@ -193,6 +200,18 @@ It receives the same fields without `source`/`observedAt`.
 ```json
 { "usage": AccountUsage[] }
 ```
+
+`GET /api/budget`
+
+```json
+{ "budget": BudgetSnapshot }
+```
+
+One `AccountBudget` per account (see *Subscription & budget contracts*): subscription details,
+days to renewal, the remaining share of the tightest known limit (DaveCode's own windows and the
+limits the provider reported, whichever is lower), and whether the router would use the account
+right now, with a human reason when it would not. `context` is the compact summary that the
+autonomous runner and goal mode append to their prompts. Secrets are never included.
 
 `GET /api/usage/timeseries?minutes=60&bucketSec=60`
 

@@ -87,15 +87,17 @@ export function wireProject(
 ): ProjectWiring {
   const brain = new ProjectBrain(root, { events: engine.events });
   const lock = new WorkspaceLock();
+  const budgetContext = () => engine.budget.context();
   return {
     brain,
     source: new ProjectBrainSource(brain, options.name),
     runner: createRunner(engine, {
       brain,
       lock: { lock, owner: 'runner' },
+      contextExtras: budgetContext,
       ...(options.env ? { env: options.env } : {}),
     }),
-    goals: createGoalService(engine, { brain, lock }),
+    goals: createGoalService(engine, { brain, lock, budgetContext }),
     lock,
   };
 }

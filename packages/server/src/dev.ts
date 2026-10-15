@@ -26,8 +26,13 @@ const project = await ProjectBrain.find(cwd, { events: engine.events });
 if (project && (await project.isInitialised())) {
   const lock = new WorkspaceLock();
   brain = new ProjectBrainSource(project);
-  runner = createRunner(engine, { brain: project, lock: { lock, owner: 'runner' } });
-  goals = createGoalService(engine, { brain: project, lock });
+  const budgetContext = () => engine.budget.context();
+  runner = createRunner(engine, {
+    brain: project,
+    lock: { lock, owner: 'runner' },
+    contextExtras: budgetContext,
+  });
+  goals = createGoalService(engine, { brain: project, lock, budgetContext });
 }
 
 const app = await startGateway(engine, {

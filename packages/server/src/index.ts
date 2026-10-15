@@ -14,4 +14,5 @@ export {
   accountPatchSchema,
   chatRequestSchema,
   goalStartSchema,
+  subscriptionSchema,
 } from './schemas';

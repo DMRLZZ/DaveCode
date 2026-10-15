@@ -138,6 +138,8 @@ export function registerApiRoutes(
     usage: accounts.list().map((account) => quota.usage(account)),
   }));
 
+  app.get('/api/budget', async () => ({ budget: engine.budget.snapshot() }));
+
   app.get('/api/usage/timeseries', async (request, reply) => {
     const parsed = timeseriesQuerySchema.safeParse(request.query);
     if (!parsed.success) return invalid(reply, parsed.error);
