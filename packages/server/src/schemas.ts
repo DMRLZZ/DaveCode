@@ -177,6 +177,17 @@ export const taskPatchSchema = z
 /** `POST /api/runner/start` body: optional, `{}` or empty means "pick the next task". */
 export const runnerStartSchema = z.object({ taskId: z.string().min(1).optional() }).strict();
 
+/** `POST /api/goals` body. Limits are further clamped to the `goal.*` config. */
+export const goalStartSchema = z
+  .object({
+    objective: z.string().trim().min(1).max(4_000),
+    maxRounds: z.number().int().min(1).max(20).optional(),
+    maxTasks: z.number().int().min(1).max(100).optional(),
+    maxTokens: z.number().int().min(1_000).optional(),
+    dryRun: z.boolean().optional(),
+  })
+  .strict();
+
 export const timeseriesQuerySchema = z.object({
   minutes: z.coerce
     .number()

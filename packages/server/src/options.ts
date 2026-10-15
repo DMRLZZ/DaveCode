@@ -1,5 +1,6 @@
 import type {
   ClearableTaskField,
+  Goal,
   NewTask,
   RunnerStatus,
   TaskGraph,
@@ -50,6 +51,28 @@ export interface RunnerControl {
   stop(): void | Promise<void>;
 }
 
+/** Body of `POST /api/goals` once validated. */
+export interface GoalStartInput {
+  objective: string;
+  maxRounds?: number;
+  maxTasks?: number;
+  maxTokens?: number;
+  dryRun?: boolean;
+}
+
+/**
+ * Goal mode control surface used by `/api/goals*` (core's `GoalService` satisfies it).
+ * `start()` resolves with the new goal while it keeps running in the background.
+ * Refusals throw errors carrying `statusCode` and `code` (e.g. 409 `busy`).
+ */
+export interface GoalControl {
+  list(): Promise<Goal[]>;
+  get(id: string): Promise<Goal | undefined>;
+  start(input: GoalStartInput): Promise<Goal>;
+  /** Resolves with the goal once it has stopped. */
+  cancel(id: string): Promise<Goal>;
+}
+
 export interface GatewayOptions {
   /** Fastify logging: `false` (default), `true`, or `{ level }`. Bearer tokens are redacted. */
   logger?: boolean | { level?: string };
@@ -57,6 +80,7 @@ export interface GatewayOptions {
   dashboardDir?: string;
   brain?: BrainSource;
   runner?: RunnerControl;
+  goals?: GoalControl;
   /** SSE heartbeat interval for `/api/events` (default 15 000 ms). */
   heartbeatMs?: number;
   /** Extra CORS origins on top of the Vite dev server (`http://localhost:5173`). */

@@ -3,8 +3,15 @@ export { buildGateway, DEFAULT_CORS_ORIGINS, redactUrl, startGateway } from './g
 export type {
   BrainSource,
   GatewayOptions,
+  GoalControl,
+  GoalStartInput,
   ProjectInfo,
   RunnerControl,
   StartGatewayOptions,
 } from './options';
-export { accountCreateSchema, accountPatchSchema, chatRequestSchema } from './schemas';
+export {
+  accountCreateSchema,
+  accountPatchSchema,
+  chatRequestSchema,
+  goalStartSchema,
+} from './schemas';

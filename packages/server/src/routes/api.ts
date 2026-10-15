@@ -19,6 +19,7 @@ import {
   runnerStartSchema,
   timeseriesQuerySchema,
 } from '../schemas';
+import { registerGoalRoutes } from './goals';
 import { registerTaskRoutes } from './tasks';
 
 const EMPTY_GRAPH: TaskGraph = { version: 1, tasks: [] };
@@ -220,6 +221,7 @@ export function registerApiRoutes(
   });
 
   registerTaskRoutes(app, engine, options);
+  registerGoalRoutes(app, engine, options);
 
   app.get('/api/brain', async () => {
     const { brain } = options;

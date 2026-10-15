@@ -2,9 +2,12 @@ import { fileURLToPath } from 'node:url';
 import {
   type AutonomousRunner,
   createEngine,
+  createGoalService,
   createRunner,
+  type GoalService,
   ProjectBrain,
   ProjectBrainSource,
+  WorkspaceLock,
 } from '@davecode/core';
 import { startGateway } from './gateway';
 import type { BrainSource } from './options';
@@ -13,14 +16,18 @@ import type { BrainSource } from './options';
 const cwd = process.env.INIT_CWD ?? process.cwd();
 const engine = createEngine({ projectRoot: cwd });
 
-// When the invoking directory belongs to a DaveCode project, expose its brain and runner.
-// The runner only starts when asked (`POST /api/runner/start`).
+// When the invoking directory belongs to a DaveCode project, expose its brain, runner and goal
+// mode. The runner only starts when asked (`POST /api/runner/start`); runner and goals share one
+// workspace lock so they never edit the working tree at the same time.
 let brain: BrainSource | undefined;
 let runner: AutonomousRunner | undefined;
+let goals: GoalService | undefined;
 const project = await ProjectBrain.find(cwd, { events: engine.events });
 if (project && (await project.isInitialised())) {
+  const lock = new WorkspaceLock();
   brain = new ProjectBrainSource(project);
-  runner = createRunner(engine, { brain: project });
+  runner = createRunner(engine, { brain: project, lock: { lock, owner: 'runner' } });
+  goals = createGoalService(engine, { brain: project, lock });
 }
 
 const app = await startGateway(engine, {
@@ -28,6 +35,7 @@ const app = await startGateway(engine, {
   dashboardDir: fileURLToPath(new URL('../../ui/dist', import.meta.url)),
   ...(brain ? { brain } : {}),
   ...(runner ? { runner } : {}),
+  ...(goals ? { goals } : {}),
 });
 if (project && runner) app.log.info(`project brain: ${project.root}`);
 
@@ -35,6 +43,8 @@ let stopping = false;
 async function shutdown(): Promise<void> {
   if (stopping) return;
   stopping = true;
+  const active = goals?.activeGoalId;
+  if (active) await goals?.cancel(active);
   await runner?.stop();
   await app.close();
   engine.close();
