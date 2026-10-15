@@ -309,6 +309,87 @@ export interface RunnerStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Goal mode (a team of role-based agents working toward one objective)
+// ---------------------------------------------------------------------------
+
+/**
+ * `code` tasks are handed to the autonomous runner (branch, quality gates, merge).
+ * `artifact` tasks produce a markdown document under `.davecode/goals/<goal-id>/`.
+ */
+export type GoalTaskKind = 'code' | 'artifact';
+
+export interface GoalRole {
+  /** Lowercase id the planner assigns tasks to, e.g. `researcher`. */
+  id: string;
+  description: string;
+  /** Route or model id this role talks to (default: `goal.route`). */
+  route?: string;
+}
+
+export interface GoalTask {
+  /** Unique within the goal (task-graph id syntax). */
+  id: string;
+  title: string;
+  description?: string;
+  role: string;
+  kind: GoalTaskKind;
+  status: TaskStatus;
+  dependsOn: string[];
+  acceptance?: string[];
+  /** Planning round that created the task (1-based). */
+  round: number;
+  attempts: number;
+  /** Workspace-relative path of the markdown artifact, once written. */
+  artifact?: string;
+  /** Project task-graph id the runner worked on (`code` tasks). */
+  runnerTaskId?: string;
+  /** Result summary or failure reason. */
+  notes?: string;
+}
+
+export type GoalStatus =
+  | 'planning'
+  | 'running'
+  | 'reviewing'
+  /** Dry run: the plan was made and nothing was executed. */
+  | 'planned'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  /** A token cap was reached or no account had capacity left. */
+  | 'budget_exhausted';
+
+export interface GoalLimits {
+  /** Plan → execute → review rounds. */
+  maxRounds: number;
+  /** Tasks across all rounds. */
+  maxTasks: number;
+  /** Prompt + completion tokens across every agent and runner pass. */
+  maxTokens: number;
+  tokensUsed: number;
+}
+
+export interface Goal {
+  id: string;
+  objective: string;
+  status: GoalStatus;
+  /** Current round (1-based). */
+  round: number;
+  limits: GoalLimits;
+  roles: GoalRole[];
+  tasks: GoalTask[];
+  /** Task being executed right now. */
+  activeTaskId?: string;
+  /** Reviewer's (or planner's, for dry runs) latest summary. */
+  summary?: string;
+  lastError?: string;
+  dryRun?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Errors (kinds are mirrored by ProviderError in errors.ts)
 // ---------------------------------------------------------------------------
 

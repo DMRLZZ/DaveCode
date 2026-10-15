@@ -164,6 +164,44 @@ export const configSchema = z.object({
     })
     .prefault({}),
 
+  goal: z
+    .object({
+      /** Route (`auto` → `davecode/auto`) or model id for roles without their own route. */
+      route: z.string().default('auto'),
+      /** Plan → execute → review rounds before the goal stops. */
+      maxRounds: z.number().int().min(1).max(20).default(4),
+      /** Tasks across all rounds. */
+      maxTasks: z.number().int().min(1).max(100).default(12),
+      /** Prompt + completion tokens across every agent and runner pass. */
+      maxTokens: z.number().int().min(10_000).default(1_000_000),
+      /** Attempts per task before it stays FAILED (the reviewer may still re-plan around it). */
+      maxTaskAttempts: z.number().int().min(1).max(5).default(2),
+      /**
+       * Hand `code` tasks to the autonomous runner (task branch, quality gates, merge). When
+       * off, or when the runner cannot start, every task produces a markdown artifact instead.
+       */
+      codeTasks: z.boolean().default(true),
+      /**
+       * Extra or overridden roles, merged over the built-in planner, researcher, implementer,
+       * reviewer and writer.
+       */
+      roles: z
+        .record(
+          z.string().regex(/^[a-z][a-z0-9-]{0,39}$/, 'role ids are lowercase kebab-case'),
+          z.object({
+            description: z.string().min(1).max(500).optional(),
+            /** Route or model id this role uses. */
+            route: z.string().min(1).optional(),
+            /** Extra instructions appended to the role's system prompt. */
+            instructions: z.string().max(4_000).optional(),
+            /** Default task kind for this role. */
+            kind: z.enum(['code', 'artifact']).optional(),
+          }),
+        )
+        .default({}),
+    })
+    .prefault({}),
+
   logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
 });
 

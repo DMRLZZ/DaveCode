@@ -359,6 +359,51 @@ Runner configuration (`runner.*`, all optional):
 | `judge.kind` | `none` | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |
 | `judge.model` / `baseUrl` / `threshold` | `typesafe/jev-1.13` or `runner.route` / `https://openrouter.ai/api/alpha` / `0.7` | Judge model, Decisions API base URL, minimum confidence |
 
+### Goal mode contracts
+
+Goal mode turns one high-level objective into a plan of role-based tasks and executes it
+(see `Goal`, `GoalTask`, `GoalRole`, `GoalStatus` and `GoalLimits` in `types.ts`).
+
+```ts
+type GoalTaskKind = 'code' | 'artifact';
+interface GoalTask {
+  id: string; title: string; description?: string;
+  role: string;               // a GoalRole id: planner, researcher, implementer, reviewer, writer…
+  kind: GoalTaskKind;         // code → autonomous runner; artifact → markdown document
+  status: TaskStatus;         // PENDING | IN_PROGRESS | SUCCESS | FAILED
+  dependsOn: string[]; acceptance?: string[];
+  round: number;              // planning round that created it
+  attempts: number;
+  artifact?: string;          // workspace-relative markdown path
+  runnerTaskId?: string;      // project task-graph id (code tasks)
+  notes?: string;
+}
+type GoalStatus = 'planning' | 'running' | 'reviewing' | 'planned' | 'succeeded' | 'failed'
+  | 'cancelled' | 'budget_exhausted';
+interface Goal {
+  id: string; objective: string; status: GoalStatus; round: number;
+  limits: { maxRounds: number; maxTasks: number; maxTokens: number; tokensUsed: number };
+  roles: GoalRole[]; tasks: GoalTask[]; activeTaskId?: string;
+  summary?: string; lastError?: string; dryRun?: boolean;
+  createdAt: string; updatedAt: string; finishedAt?: string;
+}
+```
+
+Goal progress is streamed on `/api/events` as `goal.updated` (`{ goal: Goal }`, after every
+state change) and `goal.log` (`{ goalId, level, message, role?, taskId? }`).
+
+Configuration (`goal.*`, all optional):
+
+| Key | Default | Meaning |
+| :-- | :------ | :------ |
+| `route` | `auto` | Route or model id for roles without their own route |
+| `maxRounds` | `4` | Plan → execute → review rounds |
+| `maxTasks` | `12` | Tasks across all rounds |
+| `maxTokens` | `1000000` | Token cap across every agent call and runner pass |
+| `maxTaskAttempts` | `2` | Attempts per task |
+| `codeTasks` | `true` | Hand `code` tasks to the autonomous runner; off → artifacts only |
+| `roles` | `{}` | Extra or overridden roles: `{ "<id>": { description?, route?, instructions?, kind? } }` |
+
 ### Live events
 
 `GET /api/events` returns `text/event-stream`. Every event carries a strictly increasing

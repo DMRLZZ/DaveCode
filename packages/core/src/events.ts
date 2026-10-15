@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountUsage,
+  Goal,
   LogLevel,
   ProviderErrorKind,
   ProviderKind,
@@ -55,6 +56,16 @@ export type DaveEvent =
   | { type: 'task.removed'; taskId: string; ts: number }
   | { type: 'runner.status'; status: RunnerStatus; ts: number }
   | { type: 'runner.log'; level: LogLevel; message: string; taskId?: string; ts: number }
+  | { type: 'goal.updated'; goal: Goal; ts: number }
+  | {
+      type: 'goal.log';
+      goalId: string;
+      level: LogLevel;
+      message: string;
+      role?: string;
+      taskId?: string;
+      ts: number;
+    }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };
 
 export type DaveEventType = DaveEvent['type'];

@@ -156,6 +156,64 @@ export interface RunnerStatus {
   lastError?: string;
 }
 
+export type GoalTaskKind = 'code' | 'artifact';
+
+export interface GoalRole {
+  id: string;
+  description: string;
+  route?: string;
+}
+
+export interface GoalTask {
+  id: string;
+  title: string;
+  description?: string;
+  role: string;
+  kind: GoalTaskKind;
+  status: TaskStatus;
+  dependsOn: string[];
+  acceptance?: string[];
+  round: number;
+  attempts: number;
+  artifact?: string;
+  runnerTaskId?: string;
+  notes?: string;
+}
+
+export type GoalStatus =
+  | 'planning'
+  | 'running'
+  | 'reviewing'
+  | 'planned'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'budget_exhausted';
+
+export interface GoalLimits {
+  maxRounds: number;
+  maxTasks: number;
+  maxTokens: number;
+  tokensUsed: number;
+}
+
+export interface Goal {
+  id: string;
+  objective: string;
+  status: GoalStatus;
+  round: number;
+  limits: GoalLimits;
+  roles: GoalRole[];
+  tasks: GoalTask[];
+  activeTaskId?: string;
+  summary?: string;
+  lastError?: string;
+  dryRun?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+}
+
 export type ProviderErrorKind =
   | 'rate_limit'
   | 'quota_exhausted'
@@ -216,6 +274,16 @@ export type DaveEvent =
   | { type: 'task.removed'; taskId: string; ts: number }
   | { type: 'runner.status'; status: RunnerStatus; ts: number }
   | { type: 'runner.log'; level: LogLevel; message: string; taskId?: string; ts: number }
+  | { type: 'goal.updated'; goal: Goal; ts: number }
+  | {
+      type: 'goal.log';
+      goalId: string;
+      level: LogLevel;
+      message: string;
+      role?: string;
+      taskId?: string;
+      ts: number;
+    }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };
 
 export type DaveEventType = DaveEvent['type'];
