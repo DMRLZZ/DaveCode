@@ -13,7 +13,7 @@ import type { StreamStatus } from './events';
 import { type LiveState, LiveStore } from './live';
 import { getMockClient } from './mock';
 import { type DataMode, mockForced, useSettings } from './settings';
-import type { Account, AccountUsage, DaveEvent, RunnerStatus, TasksResponse } from './types';
+import type { Account, AccountUsage, DaveEvent, Goal, RunnerStatus, TasksResponse } from './types';
 
 /**
  * Chooses the data source (live gateway or in-browser mock), owns the event stream and the
@@ -182,6 +182,16 @@ export function qk(sourceKey: string, ...parts: (string | number)[]): (string | 
   return ['dc', sourceKey, ...parts];
 }
 
+/** Replaces (or prepends) a goal in a newest-first list. */
+export function upsertGoal(prev: Goal[] | undefined, goal: Goal): Goal[] {
+  if (!prev) return [goal];
+  const i = prev.findIndex((g) => g.id === goal.id);
+  if (i === -1) return [goal, ...prev];
+  const next = prev.slice();
+  next[i] = goal;
+  return next;
+}
+
 function patchQueryCache(qc: QueryClient, sourceKey: string, e: DaveEvent): void {
   switch (e.type) {
     case 'account.updated':
@@ -234,6 +244,11 @@ function patchQueryCache(qc: QueryClient, sourceKey: string, e: DaveEvent): void
       break;
     case 'runner.status':
       qc.setQueryData<RunnerStatus>(qk(sourceKey, 'runner'), e.status);
+      break;
+    case 'goal.updated':
+      qc.setQueryData<Goal[]>(qk(sourceKey, 'goals'), (prev) =>
+        prev ? upsertGoal(prev, e.goal) : prev,
+      );
       break;
     default:
       break;

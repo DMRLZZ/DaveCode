@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { RunnerAction } from './api';
-import { qk, useData } from './data';
+import { qk, upsertGoal, useData } from './data';
 import type {
   Account,
   AccountCreate,
   AccountPatch,
+  Goal,
+  GoalStart,
   RoutesUpdate,
   RunnerStatus,
   TaskCreate,
@@ -247,6 +249,41 @@ export function useRunnerAction() {
   return useMutation({
     mutationFn: (action: RunnerAction) => client.runnerAction(action),
     onSuccess: (status: RunnerStatus) => qc.setQueryData(qk(sourceKey, 'runner'), status),
+  });
+}
+
+export function useGoals() {
+  const { client, sourceKey } = useData();
+  return useQuery({
+    queryKey: qk(sourceKey, 'goals'),
+    queryFn: () => client.goals(),
+    refetchInterval: 60_000,
+    retry: (count, err) => (err as { status?: number }).status !== 501 && count < 2,
+  });
+}
+
+function useGoalsCache() {
+  const { sourceKey } = useData();
+  const qc = useQueryClient();
+  return (goal: Goal) =>
+    qc.setQueryData<Goal[]>(qk(sourceKey, 'goals'), (prev) => upsertGoal(prev, goal));
+}
+
+export function useStartGoal() {
+  const { client } = useData();
+  const upsert = useGoalsCache();
+  return useMutation({
+    mutationFn: (body: GoalStart) => client.startGoal(body),
+    onSuccess: (goal) => upsert(goal),
+  });
+}
+
+export function useCancelGoal() {
+  const { client } = useData();
+  const upsert = useGoalsCache();
+  return useMutation({
+    mutationFn: (id: string) => client.cancelGoal(id),
+    onSuccess: (goal) => upsert(goal),
   });
 }
 

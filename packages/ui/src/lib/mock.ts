@@ -9,6 +9,7 @@ import {
   mockTasks,
   ROUTE_MIX,
 } from './mock-data';
+import { MockGoals } from './mock-goals';
 import { ROUTE_NAME_PATTERN } from './route-edit';
 import { canTransition, findCyclePath, TASK_ID_PATTERN } from './task-edit';
 import type {
@@ -18,6 +19,8 @@ import type {
   AccountUsage,
   BrainResponse,
   DaveEvent,
+  Goal,
+  GoalStart,
   HealthResponse,
   LogLevel,
   ModelInfo,
@@ -164,6 +167,7 @@ export class MockEngine implements DaveClient {
   private initialResumed = false;
   private pausedFrom: RunnerState | undefined;
   private readonly pressureLogged = new Map<string, number>();
+  private readonly goalSim: MockGoals;
 
   constructor(options: MockOptions = {}) {
     this.rng = mulberry32(options.seed ?? 0xda7ec0de);
@@ -193,6 +197,13 @@ export class MockEngine implements DaveClient {
     };
     this.generateHistory();
     if (this.opts.runnerAvailable) this.seedRunnerHistory();
+    this.goalSim = new MockGoals({
+      now: () => this.clock(),
+      emit: (event) => this.emit(event),
+      later: (ms, fn) => this.later(ms, fn),
+      nextId: (prefix) => this.nextId(prefix),
+    });
+    this.goalSim.seed(this.t0);
   }
 
   // -------------------------------------------------------------------------
@@ -530,6 +541,27 @@ export class MockEngine implements DaveClient {
 
   logs(limit = 200): Promise<DaveEvent[]> {
     return this.respond(() => this.buffer.slice(-limit));
+  }
+
+  goals(): Promise<Goal[]> {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.all();
+    });
+  }
+
+  startGoal(body: GoalStart): Promise<Goal> {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.start(body);
+    });
+  }
+
+  cancelGoal(id: string): Promise<Goal> {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.cancel(id);
+    });
   }
 
   models(): Promise<ModelInfo[]> {
@@ -1053,6 +1085,16 @@ export class MockEngine implements DaveClient {
   // -------------------------------------------------------------------------
   // Autonomous runner simulation
   // -------------------------------------------------------------------------
+
+  private assertGoals(): void {
+    if (!this.opts.runnerAvailable) {
+      throw new ApiError(
+        501,
+        'goals_unavailable',
+        'Goal mode is not available; start the gateway inside a project (davecode init)',
+      );
+    }
+  }
 
   private assertRunner(): void {
     if (!this.opts.runnerAvailable) {

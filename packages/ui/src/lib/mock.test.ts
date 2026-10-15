@@ -263,5 +263,41 @@ describe('MockEngine', () => {
       stop();
       e.stop();
     });
+
+    it('plans and completes a goal with draft-only outreach, one goal at a time', async () => {
+      const e = new MockEngine({ seed: 5, latency: false });
+      const events: DaveEvent[] = [];
+      const stop = e.subscribe({ onEvent: (ev) => events.push(ev) });
+      expect((await e.goals()).map((g) => g.status)).toEqual(['succeeded']);
+
+      const goal = await e.startGoal({ objective: 'Launch a landing page' });
+      expect(goal.status).toBe('planning');
+      await expect(e.startGoal({ objective: 'Another' })).rejects.toMatchObject({
+        status: 409,
+        code: 'busy',
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      const done = (await e.goals()).find((g) => g.id === goal.id);
+      expect(done?.status).toBe('succeeded');
+      expect(done?.tasks.every((t) => t.status === 'SUCCESS')).toBe(true);
+      expect(done?.tasks.some((t) => t.kind === 'code')).toBe(true);
+      expect(done?.tasks.find((t) => t.id === 'outreach')?.title).toMatch(/^Draft:/);
+      expect(events.some((ev) => ev.type === 'goal.log' && ev.goalId === goal.id)).toBe(true);
+
+      const dry = await e.startGoal({ objective: 'Plan only', dryRun: true });
+      const running = await e.startGoal({ objective: 'x' }).catch((err: unknown) => err);
+      expect(running).toBeInstanceOf(ApiError);
+      await e.cancelGoal(dry.id);
+      expect((await e.goals()).find((g) => g.id === dry.id)?.status).toBe('cancelled');
+      await expect(e.startGoal({ objective: ' ' })).rejects.toMatchObject({ status: 400 });
+      stop();
+      e.stop();
+    });
+
+    it('answers 501 for goals when the runner is off', async () => {
+      const e = new MockEngine({ seed: 5, latency: false, runnerAvailable: false });
+      await expect(e.goals()).rejects.toMatchObject({ status: 501, code: 'goals_unavailable' });
+      e.stop();
+    });
   });
 });

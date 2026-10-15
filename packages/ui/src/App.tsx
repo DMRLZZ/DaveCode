@@ -25,6 +25,7 @@ const PAGES: Record<PageId, ComponentType> = {
   routes: lazy(() => import('./routes/RoutesPage').then((m) => ({ default: m.RoutesPage }))),
   tasks: lazy(() => import('./routes/tasks/Tasks').then((m) => ({ default: m.Tasks }))),
   runner: lazy(() => import('./routes/runner/Runner').then((m) => ({ default: m.Runner }))),
+  goals: lazy(() => import('./routes/goals/Goals').then((m) => ({ default: m.Goals }))),
   settings: lazy(() => import('./routes/Settings').then((m) => ({ default: m.Settings }))),
 };
 

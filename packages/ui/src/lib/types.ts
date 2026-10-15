@@ -350,6 +350,15 @@ export interface TaskPatch {
   status?: TaskStatus;
 }
 
+/** `POST /api/goals` body. Limits are clamped to the gateway's `goal.*` config. */
+export interface GoalStart {
+  objective: string;
+  maxRounds?: number;
+  maxTasks?: number;
+  maxTokens?: number;
+  dryRun?: boolean;
+}
+
 /** `PUT /api/routes` body. `defaultRoute` must be one of `routes`. */
 export interface RoutesUpdate {
   routes: Route[];
