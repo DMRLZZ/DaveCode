@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  type Account,
   type AutonomousRunner,
   createEngine,
   createGoalService,
@@ -18,6 +19,9 @@ import {
 } from '@davecode/core';
 import { type GatewayOptions, type ProjectInfo, startGateway } from '@davecode/server';
 import { connectHost } from './client';
+import { launchLoginTerminal } from './lib/terminal';
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
 /**
  * Process wiring shared by `davecode start`, `chat` (in-process gateway) and `run`:
@@ -210,9 +214,20 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       : undefined;
     const wantDashboard = options.dashboard !== false && engine.config.server.dashboard;
     const dashboardDir = wantDashboard ? resolveDashboardDir(options.env) : undefined;
+    const bindHost = options.host ?? engine.config.server.host;
+    // Only a gateway on loopback shares a screen with its user; elsewhere a login window
+    // would open on a machine nobody is looking at.
+    const loginLauncher = LOOPBACK_HOSTS.has(bindHost)
+      ? {
+          launch: async (account: Account) => ({
+            launched: await launchLoginTerminal(account.id, { env: options.env }),
+          }),
+        }
+      : undefined;
 
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
+      ...(loginLauncher ? { loginLauncher } : {}),
       ...(dashboardDir ? { dashboardDir } : {}),
       ...(project ? { brain: project.source, runner: project.runner, goals: project.goals } : {}),
       ...(options.host !== undefined ? { host: options.host } : {}),

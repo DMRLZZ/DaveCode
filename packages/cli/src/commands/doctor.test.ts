@@ -52,6 +52,7 @@ describe('runDoctor', () => {
       'git',
       'claude',
       'codex',
+      'gemini',
       'gh',
       'ollama',
       'dashboard',
@@ -162,7 +163,7 @@ describe('doctor output', () => {
     expect(text).toContain('✓ Node.js');
     expect(text).toContain('! Ollama');
     expect(text).toContain('fix: Start it with `ollama serve`');
-    expect(text).toContain('11 ok · 1 warning · 0 failures');
+    expect(text).toContain('12 ok · 1 warning · 0 failures');
   });
 
   it('exits 1 on failures and prints JSON', async () => {

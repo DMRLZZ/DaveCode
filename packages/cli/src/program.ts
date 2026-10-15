@@ -383,7 +383,7 @@ function addAccountOptions(command: Command, run: Runner): Command {
   return command
     .option(
       '--provider <kind>',
-      'anthropic | openai | gemini | openai-compatible | claude-cli | codex-cli | gemini-web',
+      'anthropic | openai | gemini | openai-compatible | claude-cli | codex-cli | gemini-cli | gemini-web',
     )
     .option('--label <name>', 'human-friendly name')
     .addOption(
@@ -398,7 +398,7 @@ function addAccountOptions(command: Command, run: Runner): Command {
     .option('--base-url <url>', 'endpoint for openai-compatible accounts')
     .option('--model <id>', 'advertised model (repeatable or comma-separated)', collect)
     .option('--default-model <id>', 'model used for davecode/auto without a route')
-    .option('--binary-path <path>', 'CLI binary for claude-cli / codex-cli')
+    .option('--binary-path <path>', 'CLI binary for claude-cli / codex-cli / gemini-cli')
     .option('--limit <key=value>', 'quota limit, e.g. tokens5h=500000 (repeatable)', collect)
     .option('--disabled', 'add the account disabled')
     .option('-y, --yes', 'never prompt: take everything from flags')
@@ -498,19 +498,46 @@ Entered by hand: DaveCode never reads billing pages. Example:
 
   accounts
     .command('login <id> [args...]')
-    .description('log a claude-cli / codex-cli account in, inside its own isolated config dir')
+    .description(
+      'log a claude-cli / codex-cli / gemini-cli account in, inside its own isolated config dir',
+    )
     .allowUnknownOption()
+    .option('--local', 'read the local database even if a gateway is running')
+    .option('--hold', 'wait for Enter before exiting (for windows opened by the dashboard)')
+    .addHelpText(
+      'after',
+      `
+Runs the vendor's official sign-in (claude auth login, codex login, Gemini CLI's
+"Login with Google") with CLAUDE_CONFIG_DIR / CODEX_HOME / GEMINI_CLI_HOME pointing at the
+account's sandbox, so every account keeps a separate login. DaveCode never sees the password.
+Extra arguments after -- replace the default ones (e.g. -- login --device-auth for Codex).`,
+    )
+    .action(
+      run(
+        async (ctx, id: string, args: string[], opts: import('./commands/accounts').LoginFlags) => {
+          const { accountsLogin } = await import('./commands/accounts');
+          return accountsLogin(ctx, id, args, opts);
+        },
+      ),
+    );
+
+  accounts
+    .command('connect <id>')
+    .description('connect a subscription: check its login and run the official sign-in if needed')
+    .option('--check', 'only report whether the account is connected')
     .option('--local', 'read the local database even if a gateway is running')
     .addHelpText(
       'after',
       `
-Launches the real CLI with CLAUDE_CONFIG_DIR / CODEX_HOME pointing at the account's sandbox,
-so every account keeps a separate login. Extra arguments after -- replace the default ones.`,
+API-key accounts are connected when a key is stored. CLI accounts (claude-cli, codex-cli,
+gemini-cli) ask the vendor CLI for its login status inside the account sandbox and, when not
+connected, start the vendor's own sign-in. Example:
+  davecode accounts connect acc_123 --check`,
     )
     .action(
-      run(async (ctx, id: string, args: string[], opts: { local?: boolean }) => {
-        const { accountsLogin } = await import('./commands/accounts');
-        return accountsLogin(ctx, id, args, opts);
+      run(async (ctx, id: string, opts: import('./commands/accounts').ConnectFlags) => {
+        const { accountsConnect } = await import('./commands/accounts');
+        return accountsConnect(ctx, id, opts);
       }),
     );
 
