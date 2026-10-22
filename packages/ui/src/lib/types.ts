@@ -8,6 +8,8 @@
  * fails on drift. Change core first, then mirror it here.
  */
 
+export type { LoginProvider, LoginStatus, LoginUser } from '@davecode/core';
+
 // ---------------------------------------------------------------------------
 // Mirrored from packages/core/src/types.ts
 // ---------------------------------------------------------------------------

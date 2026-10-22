@@ -60,7 +60,7 @@ export const PROVIDERS: Record<ProviderKind, ProviderMeta> = {
     label: 'OpenAI-compatible',
     icon: Server,
     auth: 'optional-key',
-    blurb: 'OpenRouter, Ollama, LM Studio, vLLM, LiteLLM… any /v1/chat/completions endpoint.',
+    blurb: 'OpenRouter and other providers using the OpenAI-compatible API.',
     secretLabel: 'API key (optional)',
     secretPlaceholder: 'Leave empty for local servers',
   },

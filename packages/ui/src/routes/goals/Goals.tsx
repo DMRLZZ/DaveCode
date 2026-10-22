@@ -308,7 +308,7 @@ function Meter({
   );
 }
 
-function GoalDetail({ goal }: { goal: Goal }) {
+export function GoalDetail({ goal }: { goal: Goal }) {
   const cancel = useCancelGoal();
   const live = useLive();
   const [confirm, setConfirm] = useState(false);

@@ -23,7 +23,7 @@ export function BrandMark({ className }: { className?: string }) {
         strokeWidth="2.25"
         strokeLinejoin="round"
       />
-      <circle cx="22.5" cy="16" r="2.25" className="fill-accent" />
+      <path d="m15 12 4.5 4-4.5 4" className="stroke-accent" strokeWidth="2.25" />
     </svg>
   );
 }
@@ -42,7 +42,7 @@ export function Sidebar({
   onToggle: () => void;
   version?: string;
 }) {
-  const groups = ['Gateway', 'Engine'] as const;
+  const groups = ['Engine', 'Gateway'] as const;
   const settings = NAV.find((n) => n.id === 'settings');
 
   return (

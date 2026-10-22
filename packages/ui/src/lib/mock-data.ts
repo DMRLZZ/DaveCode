@@ -71,12 +71,12 @@ export const ACCOUNT_SEEDS: MockAccountSeed[] = [
     account: {
       id: 'acc_ollama_local',
       provider: 'openai-compatible',
-      label: 'Ollama — workstation',
+      label: 'OpenRouter',
       enabled: true,
       priority: 50,
       weight: 1,
       limits: {},
-      config: { baseUrl: 'http://127.0.0.1:11434/v1', models: ['qwen3:32b', 'llama4:scout'] },
+      config: { baseUrl: 'https://openrouter.ai/api/v1', models: ['openrouter/auto'] },
     },
     curve5h: { from: 0, to: 0 },
     curve24h: { from: 0, to: 0 },
@@ -110,7 +110,7 @@ export const MOCK_ROUTES: Route[] = [
       { provider: 'claude-cli', model: 'claude-sonnet-5-5', accountId: 'acc_claude_pro' },
       { provider: 'anthropic', model: 'claude-sonnet-5-5' },
       { provider: 'openai', model: 'gpt-5.5' },
-      { provider: 'openai-compatible', model: 'qwen3:32b' },
+      { provider: 'openai-compatible', model: 'openrouter/auto' },
     ],
   },
   {
@@ -133,7 +133,9 @@ export const MOCK_ROUTES: Route[] = [
   {
     name: 'local',
     description: 'Never leaves the machine.',
-    targets: [{ provider: 'openai-compatible', model: 'qwen3:32b', accountId: 'acc_ollama_local' }],
+    targets: [
+      { provider: 'openai-compatible', model: 'openrouter/auto', accountId: 'acc_ollama_local' },
+    ],
   },
 ];
 

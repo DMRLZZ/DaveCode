@@ -1,5 +1,6 @@
 import {
   Activity,
+  BookOpen,
   Bot,
   GitBranch,
   LayoutDashboard,
@@ -8,9 +9,12 @@ import {
   Settings,
   Target,
   Users,
+  Workflow,
 } from 'lucide-react';
 
 export type PageId =
+  | 'library'
+  | 'workspace'
   | 'overview'
   | 'accounts'
   | 'traffic'
@@ -33,8 +37,26 @@ export interface NavItem {
 
 export const NAV: NavItem[] = [
   {
-    id: 'overview',
+    id: 'library',
+    path: '/library',
+    label: 'Creative library',
+    icon: BookOpen,
+    key: 'c',
+    group: 'Engine',
+    description: 'Design guidance, components and studio references',
+  },
+  {
+    id: 'workspace',
     path: '/',
+    label: 'Workspace',
+    icon: Workflow,
+    key: 'w',
+    group: 'Engine',
+    description: 'Describe your work, make a plan and follow the agents',
+  },
+  {
+    id: 'overview',
+    path: '/overview',
     label: 'Overview',
     icon: LayoutDashboard,
     key: 'o',

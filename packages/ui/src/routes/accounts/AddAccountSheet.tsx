@@ -241,7 +241,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
                 id={id}
                 value={label}
                 placeholder={
-                  provider === 'openai-compatible' ? 'Ollama — workstation' : `${meta.label} — work`
+                  provider === 'openai-compatible' ? 'OpenRouter' : `${meta.label} — work`
                 }
                 onChange={(e) => setLabel(e.target.value)}
                 aria-describedby={describedBy}
@@ -280,7 +280,7 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
                   <Input
                     id={id}
                     value={models}
-                    placeholder="qwen3:32b, llama4:scout"
+                    placeholder="Provider model IDs"
                     onChange={(e) => setModels(e.target.value)}
                     aria-describedby={describedBy}
                     className="font-mono"

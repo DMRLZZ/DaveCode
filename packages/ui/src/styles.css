@@ -253,7 +253,7 @@
   }
 
   .eyebrow {
-    @apply text-2xs font-medium tracking-[0.08em] text-muted uppercase;
+    @apply text-2xs font-medium tracking-normal text-muted;
   }
 
   .skeleton {

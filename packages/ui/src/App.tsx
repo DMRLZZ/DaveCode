@@ -1,10 +1,12 @@
 import { type ComponentType, lazy, Suspense, useEffect, useRef } from 'react';
+import { SessionButton } from './components/auth/AuthGate';
 import { CommandPalette } from './components/shell/CommandPalette';
 import { ConnectionStatus } from './components/shell/ConnectionStatus';
 import { ShortcutsDialog } from './components/shell/ShortcutsDialog';
 import { Sidebar } from './components/shell/Sidebar';
 import { Toaster } from './components/shell/Toaster';
 import { TopBar } from './components/shell/TopBar';
+import { WorkspaceShell } from './components/shell/WorkspaceShell';
 import { Skeleton } from './components/ui/Skeleton';
 import { useMediaQuery } from './lib/hooks';
 import type { PageId } from './lib/nav';
@@ -19,6 +21,10 @@ import { Overview } from './routes/Overview';
 
 // The overview ships in the main chunk; other screens load on first visit.
 const PAGES: Record<PageId, ComponentType> = {
+  library: lazy(() => import('./routes/Library').then((m) => ({ default: m.Library }))),
+  workspace: lazy(() =>
+    import('./routes/workspace/Workspace').then((m) => ({ default: m.Workspace })),
+  ),
   overview: Overview,
   accounts: lazy(() => import('./routes/accounts/Accounts').then((m) => ({ default: m.Accounts }))),
   traffic: lazy(() => import('./routes/traffic/Traffic').then((m) => ({ default: m.Traffic }))),
@@ -62,6 +68,19 @@ export function App() {
     document.title = page ? `${page.label} · DaveCode` : 'DaveCode';
   }, [path]);
 
+  if (page?.id === 'workspace' || page?.id === 'library') {
+    return (
+      <>
+        <WorkspaceShell mainRef={mainRef}>
+          <Page id={page.id} />
+        </WorkspaceShell>
+        <CommandPalette />
+        <ShortcutsDialog />
+        <Toaster />
+      </>
+    );
+  }
+
   return (
     <div className="flex min-h-dvh">
       {/* A button rather than an anchor: `#main` would be read as a route by the hash router. */}
@@ -92,7 +111,12 @@ export function App() {
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
           title={page?.label ?? 'Not found'}
-          status={<ConnectionStatus />}
+          status={
+            <>
+              <ConnectionStatus />
+              <SessionButton />
+            </>
+          }
           onOpenPalette={ui.openPalette}
           onOpenHelp={ui.openHelp}
         />
