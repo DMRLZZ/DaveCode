@@ -426,7 +426,7 @@ h2 span {
   color: var(--muted);
 }
 .questions details[open] summary:after {
-  content: "âˆ’";
+  content: "−";
 }
 .questions p {
   font-size: 14px;
@@ -829,5 +829,242 @@ h2 span {
   .js-reveal .faq:focus-within {
     opacity: 1;
     transform: none;
+  }
+}
+
+.demo {
+  overflow: hidden;
+  grid-template-columns: 0.8fr 1.7fr;
+}
+.demo-window {
+  min-width: 0;
+}
+.demo-toolbar,
+.demo-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 28px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.demo-toolbar {
+  border-bottom: 1px solid var(--line);
+}
+.demo-toolbar span:first-child {
+  color: #efeeec;
+}
+.demo .workflow-content {
+  min-height: 350px;
+  padding: 36px;
+}
+.demo .workflow-content section {
+  max-width: none;
+}
+.demo-person {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.demo-message {
+  max-width: 470px;
+}
+.demo-reply {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-top: 32px;
+}
+.demo-reply img {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.demo .workflow-content .demo-reply p {
+  margin: 0;
+  color: #efeeec;
+}
+.demo-reply-detail {
+  color: var(--muted);
+}
+.demo-plan {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+}
+.demo-plan li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.demo-plan li span {
+  margin-right: 20px;
+  color: var(--accent);
+  font-size: 12px;
+}
+.demo-result {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: center;
+  min-height: 220px;
+}
+.demo .demo-result h3 {
+  font-size: clamp(28px, 3vw, 42px);
+}
+.demo .workflow-content .demo-result p {
+  margin-top: 14px;
+  font-size: 12px;
+}
+.demo-sculpture {
+  position: relative;
+  min-height: 210px;
+  overflow: hidden;
+  background: #201d19;
+}
+.demo-fold {
+  position: absolute;
+  width: 130px;
+  height: 160px;
+  top: 30px;
+  left: calc(50% - 65px);
+  border: 1px solid #c39776;
+  background: linear-gradient(110deg, #ad7950, #332921 60%);
+  transform: rotate(-18deg) skewY(12deg);
+  box-shadow: 18px 14px 0 #121211;
+}
+.demo-complete {
+  display: flex;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 20px;
+}
+.demo-complete > span:first-child {
+  color: var(--accent);
+}
+.demo-controls {
+  border-top: 1px solid var(--line);
+}
+.demo-controls button {
+  color: #efeeec;
+  background: transparent;
+  border: 1px solid #55514a;
+  padding: 9px 14px;
+  border-radius: 4px;
+  min-width: 110px;
+  min-height: 40px;
+}
+.demo-controls button:hover {
+  border-color: var(--accent);
+}
+.demo-caption {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 16px;
+  max-width: 600px;
+}
+.start-options {
+  min-width: 0;
+}
+.desktop-coming {
+  padding: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.desktop-title {
+  margin-top: 28px;
+  font-size: 26px;
+  font-weight: 450;
+  letter-spacing: -0.03em;
+}
+.desktop-description {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.platforms {
+  display: flex;
+  flex-direction: column;
+  margin-top: 24px;
+}
+.platform {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.platforms em {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: normal;
+}
+.preview-install {
+  margin-top: 26px;
+}
+.preview-install summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 14px;
+}
+.preview-install .requirements {
+  margin: 10px 0 20px;
+  max-width: none;
+}
+.preview-install .text-link {
+  margin-top: 20px;
+}
+.questions p a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .demo [role="tabpanel"]:not([hidden]) {
+    animation: enter 0.45s ease-out;
+  }
+  .demo-reply {
+    animation: enter 0.7s 0.6s ease-out both;
+  }
+  .demo-plan li {
+    animation: enter 0.5s ease-out both;
+  }
+  .demo-plan li:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+  .demo-plan li:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+}
+@media (max-width: 650px) {
+  .demo {
+    grid-template-columns: 1fr;
+  }
+  .demo .workflow-content {
+    padding: 28px 22px;
+    min-height: 365px;
+  }
+  .demo-toolbar,
+  .demo-controls {
+    padding: 16px 22px;
+  }
+  .demo-result {
+    grid-template-columns: 1fr 0.85fr;
+    gap: 12px;
+  }
+  .demo-sculpture {
+    min-height: 190px;
+  }
+  .demo-fold {
+    width: 90px;
+    height: 135px;
+    left: calc(50% - 45px);
+  }
+  .desktop-coming {
+    padding: 28px;
   }
 }

@@ -1,4 +1,23 @@
 const tabs = [...document.querySelectorAll('[role="tab"]')];
+const demo = document.querySelector('.demo');
+const toggle = document.getElementById('demo-toggle');
+const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+let playing = !motion.matches;
+let inView = false;
+let timer;
+
+function schedule() {
+  window.clearTimeout(timer);
+  toggle?.setAttribute('aria-pressed', String(playing));
+  if (toggle) toggle.textContent = playing ? 'Pause demo' : 'Play demo';
+  if (!playing || !inView || document.hidden || !tabs.length) return;
+  timer = window.setTimeout(() => {
+    const index = tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true');
+    activate(tabs[(index + 1) % tabs.length]);
+    schedule();
+  }, 4500);
+}
+
 function activate(tab) {
   for (const item of tabs) {
     const active = item === tab;
@@ -7,9 +26,16 @@ function activate(tab) {
     const panel = document.getElementById(item.getAttribute('aria-controls'));
     if (panel) panel.hidden = !active;
   }
+  if (demo) demo.dataset.stage = tab.id.replace('tab-', '');
+  const position = document.getElementById('demo-position');
+  if (position) position.textContent = `${tabs.indexOf(tab) + 1} / ${tabs.length}`;
 }
 for (const [index, tab] of tabs.entries()) {
-  tab.addEventListener('click', () => activate(tab));
+  tab.addEventListener('click', () => {
+    playing = false;
+    activate(tab);
+    schedule();
+  });
   tab.addEventListener('keydown', (event) => {
     let next;
     if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % tabs.length;
@@ -19,10 +45,38 @@ for (const [index, tab] of tabs.entries()) {
     if (event.key === 'End') next = tabs.length - 1;
     if (next === undefined) return;
     event.preventDefault();
+    playing = false;
     activate(tabs[next]);
     tabs[next].focus();
+    schedule();
   });
 }
+toggle?.addEventListener('click', () => {
+  playing = !playing;
+  schedule();
+});
+demo?.addEventListener('focusin', (event) => {
+  if (event.target === toggle) return;
+  playing = false;
+  schedule();
+});
+motion.addEventListener('change', () => {
+  if (motion.matches) playing = false;
+  schedule();
+});
+document.addEventListener('visibilitychange', schedule);
+if (demo && 'IntersectionObserver' in window) {
+  new IntersectionObserver(
+    ([entry]) => {
+      inView = entry.isIntersecting;
+      schedule();
+    },
+    { threshold: 0.25 },
+  ).observe(demo);
+} else {
+  inView = true;
+}
+schedule();
 document.getElementById('copy-install')?.addEventListener('click', async () => {
   const status = document.getElementById('copy-status');
   try {

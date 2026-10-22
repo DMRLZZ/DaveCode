@@ -1,8 +1,14 @@
 # DaveCode public site
 
 Black, responsive marketing site with a full-bleed generated artwork, a scroll-driven
-hero, section reveals, keyboard-accessible tabs and a copyable source-install flow.
+hero, section reveals, an animated workflow demo and a copyable preview-install flow.
 Reduced-motion users and browsers without scroll timelines get a readable fallback.
+
+The workflow is an illustrative animation, not a recorded or live agent run. It advances
+only while visible, pauses in background tabs, and includes manual steps and play/pause.
+Reduced-motion preference disables autoplay. The desktop installer is marked as upcoming;
+the working terminal install stays available inside the preview disclosure. No waitlist
+or notification signup is implied by the link to GitHub releases.
 
 ```text
 node site/build.mjs
