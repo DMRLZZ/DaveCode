@@ -119,6 +119,17 @@ export function collect(value: string, previous: string[] = []): string[] {
 /** Subcommands. Each action dynamically imports its module. */
 function registerCommands(program: Command, run: Runner): void {
   program
+    .command('app')
+    .description('start your local workspace in a Chrome or Edge app window')
+    .addOption(new Option('-p, --port <port>', 'port to listen on').argParser(parsePort))
+    .option('--project <dir>', 'repository to open')
+    .action(
+      run(async (ctx, opts: import('./commands/start').StartOptions) => {
+        const { startCommand } = await import('./commands/start');
+        return startCommand(ctx, { ...opts, host: '127.0.0.1', app: true });
+      }),
+    );
+  program
     .command('start')
     .description('start the gateway (OpenAI-compatible /v1, dashboard API and web dashboard)')
     .addOption(new Option('-p, --port <port>', 'port to listen on').argParser(parsePort))

@@ -4,11 +4,13 @@ import { loadConfig, type ProjectBrain, summarize, type TaskGraph, VERSION } fro
 import { findGateway } from '../client';
 import { type CliContext, printJson } from '../context';
 import { CliError, EXIT } from '../errors';
+import { openAppWindow } from '../lib/app-window';
 import { formatEventLine, runtimeWarnings, summarizeAccounts } from '../lib/summary';
 import { detectProjectRoot, type Runtime, startRuntime } from '../runtime';
 import { padEnd } from '../ui/format';
 
 export interface StartOptions {
+  app?: boolean;
   port?: number;
   host?: string;
   /** commander's `--no-dashboard` sets this to false. */
@@ -99,6 +101,15 @@ export async function startCommand(
   }
 
   const { engine } = runtime;
+  if (opts.app && !ctx.json) {
+    const opened = runtime.dashboardDir
+      ? await openAppWindow(runtime.url, ctx.env).catch(() => false)
+      : false;
+    if (!opened)
+      ctx.err(
+        `Open ${runtime.url}/ in your browser. An installed Chrome or Edge enables an app window.`,
+      );
+  }
   const accounts = engine.accounts.list();
   const warnings = runtimeWarnings(engine.config, runtime.host);
   const graph = runtime.brain ? await readGraphQuietly(runtime.brain) : undefined;

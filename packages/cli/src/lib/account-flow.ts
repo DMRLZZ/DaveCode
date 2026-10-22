@@ -31,9 +31,9 @@ export const PROVIDERS: readonly ProviderInfo[] = [
   { kind: 'gemini', name: 'Google Gemini API', auth: 'api-key', defaultLabel: 'Gemini' },
   {
     kind: 'openai-compatible',
-    name: 'OpenAI-compatible (OpenRouter, Ollama, LM Studio, vLLM…)',
+    name: 'OpenRouter or another OpenAI-compatible provider',
     auth: 'optional-key',
-    defaultLabel: 'Local models',
+    defaultLabel: 'OpenRouter',
   },
   {
     kind: 'claude-cli',
@@ -68,7 +68,7 @@ export function providerInfo(kind: string): ProviderInfo | undefined {
   return PROVIDERS.find((p) => p.kind === kind);
 }
 
-export const DEFAULT_COMPATIBLE_URL = 'http://localhost:11434/v1';
+export const DEFAULT_COMPATIBLE_URL = 'https://openrouter.ai/api/v1';
 
 // ---------------------------------------------------------------------------
 // Terms-of-Service policy
@@ -269,7 +269,7 @@ export async function accountFromFlags(
   if (info.kind === 'openai-compatible') {
     if (!flags.baseUrl) {
       throw new CliError('openai-compatible accounts need --base-url', {
-        hint: `e.g. --base-url ${DEFAULT_COMPATIBLE_URL} for Ollama`,
+        hint: `e.g. --base-url ${DEFAULT_COMPATIBLE_URL} for OpenRouter`,
       });
     }
   }

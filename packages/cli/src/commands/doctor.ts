@@ -50,8 +50,6 @@ export function nodeVersionOk(version: string): boolean {
   return major > MIN_NODE[0] || (major === MIN_NODE[0] && minor >= MIN_NODE[1]);
 }
 
-const OLLAMA_URL = 'http://localhost:11434';
-
 export async function runDoctor(input: DoctorInput, probes: DoctorProbes): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
   const add = (r: CheckResult) => results.push(r);
@@ -205,18 +203,6 @@ export async function runDoctor(input: DoctorInput, probes: DoctorProbes): Promi
           },
     );
   }
-
-  add(
-    (await probes.reachable(`${OLLAMA_URL}/api/tags`))
-      ? { id: 'ollama', label: 'Ollama', status: 'ok', detail: `reachable at ${OLLAMA_URL}` }
-      : {
-          id: 'ollama',
-          label: 'Ollama',
-          status: 'warn',
-          detail: `not reachable at ${OLLAMA_URL} (optional, for local models)`,
-          fix: 'Start it with `ollama serve`, then add it: davecode accounts add --provider openai-compatible --base-url http://localhost:11434/v1',
-        },
-  );
 
   const dashboard = probes.dashboardDir();
   add(

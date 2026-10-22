@@ -54,7 +54,6 @@ describe('runDoctor', () => {
       'codex',
       'gemini',
       'gh',
-      'ollama',
       'dashboard',
     ]);
   });
@@ -94,10 +93,6 @@ describe('runDoctor', () => {
       fix: 'npm install -g @anthropic-ai/claude-code',
     });
     expect(results.gh?.status).toBe('ok');
-    expect(results.ollama).toMatchObject({
-      status: 'warn',
-      fix: expect.stringContaining('ollama serve'),
-    });
     expect(results.dashboard?.status).toBe('warn');
   });
 
@@ -157,13 +152,13 @@ describe('doctor output', () => {
   it('renders marks, fixes and a summary line', async () => {
     const results = await runDoctor(
       { home: '/h', env: {} },
-      healthyProbes({ reachable: async () => false }),
+      healthyProbes({ dashboardDir: () => undefined }),
     );
     const text = renderDoctor({ theme: plain }, results).join('\n');
     expect(text).toContain('✓ Node.js');
-    expect(text).toContain('! Ollama');
-    expect(text).toContain('fix: Start it with `ollama serve`');
-    expect(text).toContain('12 ok · 1 warning · 0 failures');
+    expect(text).toContain('! Dashboard build');
+    expect(text).toContain('pnpm --filter @davecode/ui build');
+    expect(text).toContain('11 ok · 1 warning · 0 failures');
   });
 
   it('exits 1 on failures and prints JSON', async () => {
