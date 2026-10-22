@@ -22,8 +22,10 @@ Design defaults reject decorative dots, uppercase eyebrow labels and redundant U
 OpenRouter replaces Ollama in onboarding; doctor no longer probes Ollama by default.
 
 The public landing is deployed through Sites at https://davecode-app.mor4lez.chatgpt.site.
-`davecode.app` DNS records are configured in Cloudflare; validate custom-domain status
-before claiming the custom domain is live. Site identity lives in `site/.openai/hosting.json`.
+`davecode.app` DNS is configured in Cloudflare; Sites confirms hostname and SSL active.
+Site identity lives in `site/.openai/hosting.json`. Workspace preview release:
+`workspace-v0.1.0-preview.1` (engine artifact `davecode-0.2.0.tgz`). The tarball was
+installed in an isolated temp directory and its CLI help was verified.
 
 ## Done
 

@@ -70,6 +70,17 @@ Read the full design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the HTT
 
 ## Quick start
 
+Install the **Workspace v0.1 Preview** with Node.js 22.12+ and npm:
+
+```bash
+npm install -g https://github.com/DMRLZZ/DaveCode/releases/download/workspace-v0.1.0-preview.1/davecode-0.2.0.tgz
+```
+
+Run `davecode app` for the local app window, or `davecode` for the terminal.
+The package contains engine 0.2.0; this preview does not replace historical releases.
+
+### Build from source
+
 > Requires **Node.js 22.12+**. The `davecode` package is standalone: it bundles the engine, the
 > gateway and the dashboard. Until it is published to npm, install it from a release tarball or
 > from source.
