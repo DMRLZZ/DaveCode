@@ -4,10 +4,11 @@ _Last updated: 2026-10-22_
 
 ## Current focus
 
-**Unreleased work on `feat/goal-mode-subscriptions`**: goal mode, per-account plans and budget,
-and "Connect subscription" through each vendor's official login (including the new `gemini-cli`
-provider). Next up: verify `gemini-cli` against a real install, cut v0.3.0, publish to npm and
-dogfood goal mode on this repository with a frontier model.
+**Workspace v0.1 Preview on `main`**: goal mode, per-account plans and budget,
+official vendor login flows, a conversational workspace and the public landing.
+Next up: verify official agent sessions against real installs, finish desktop onboarding
+and package an independent desktop installer. The preview tarball is available on GitHub;
+the npm registry package and a v0.3.0 engine release remain pending.
 
 Workspace direction: local, outcome-oriented UI inspired by Warp's public behavior.
 The default screen now composes real goals with a plan-only default, usage limits,
@@ -59,8 +60,8 @@ None.
 ## Known limitations
 
 - `davecode` is not published to npm yet (install from a tarball or source).
-- Small local models: `llama3.1:8b` hallucinates edit arguments; use `qwen3:8b` or a frontier model
-  for `davecode run`.
+- Small local models were unreliable in earlier execution tests. Onboarding now recommends
+  hosted providers; use a capable model for code execution.
 - The `codex-cli` adapter's event parser has not been verified against a real Codex install.
 - The `gemini-cli` adapter (`GEMINI_CLI_HOME` isolation, `stream-json` parser) has not been
   verified against a real Gemini CLI install (not installed on the development machine).
@@ -97,3 +98,5 @@ None.
 - 2026-10-06: first autonomous success on a free local model (qwen3:8b); v0.2.0 released.
 - 2026-10-15: goal mode, plans/budget and Connect subscription implemented on
   `feat/goal-mode-subscriptions` (not merged).
+- 2026-10-22: workspace preview published from main; landing active at `davecode.app`,
+  preview tarball installation verified, and release CI passed on Linux, macOS and Windows.
