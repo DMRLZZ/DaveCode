@@ -583,3 +583,23 @@ heartbeat.
 
 `GET /api/logs?limit=200` returns `{ "events": DaveEvent[] }` from the same buffer, for clients
 that prefer polling.
+
+## App sign-in
+
+App identity is separate from model-provider accounts. `LoginProvider` is `google | github`;
+`LoginUser` contains `id` (provider subject), `provider`, and `name` (no credentials).
+`LoginStatus` contains `required`, configured `providers`, and `user | null`.
+
+| Endpoint | Behavior |
+| --- | --- |
+| `GET /api/auth/session` | Public, no-store `LoginStatus`; disabled login returns `required: false`. |
+| `GET /api/auth/:provider/start` | Google/GitHub redirect with browser-bound state and PKCE. Unconfigured providers return 503. |
+| `GET /api/auth/:provider/callback` | Consumes the authorization code, validates an allowed identity and sets an HttpOnly session cookie. Failures redirect to the sign-in screen with a generic error. |
+| `POST /api/auth/logout` | Revokes the session and clears its cookie. Requires the canonical Origin when login is enabled. |
+
+With app login enabled, `/api` accepts an allowed app session or the configured bearer
+token. Cookie-authenticated writes require the exact configured Origin. `/v1` accepts
+only the configured bearer token; a browser session never authorizes an SDK client.
+Sessions expire after eight hours and on gateway restart. Auth endpoints are public
+so an unauthenticated browser can sign in. Codes/state are redacted from request logs.
+See [AUTH.md](AUTH.md) for environment configuration and same-origin deployment limits.

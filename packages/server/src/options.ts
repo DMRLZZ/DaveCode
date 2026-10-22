@@ -2,6 +2,7 @@ import type {
   Account,
   ClearableTaskField,
   Goal,
+  LoginService,
   NewTask,
   RunnerStatus,
   TaskGraph,
@@ -84,6 +85,8 @@ export interface LoginLauncher {
 }
 
 export interface GatewayOptions {
+  /** Explicit OAuth service, or false to ignore login environment variables (tests/embedding). */
+  login?: LoginService | false;
   /** Fastify logging: `false` (default), `true`, or `{ level }`. Bearer tokens are redacted. */
   logger?: boolean | { level?: string };
   /** Built dashboard to serve with SPA fallback (ignored when `server.dashboard` is false). */

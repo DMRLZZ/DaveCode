@@ -1,13 +1,14 @@
 import { timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { Engine } from '@davecode/core';
+import { type Engine, loginFromEnv } from '@davecode/core';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { sendApiError, sendOpenAIError } from './errors';
 import type { GatewayOptions, StartGatewayOptions } from './options';
 import { registerApiRoutes } from './routes/api';
+import { authCookie, registerAuthRoutes } from './routes/auth';
 import { registerEventRoutes } from './routes/events';
 import { registerV1Routes } from './routes/v1';
 
@@ -37,7 +38,7 @@ function surfaceOf(url: string): Surface {
 
 /** Hide `?token=` values from logs. */
 export function redactUrl(url: string): string {
-  return url.replace(/([?&]token=)[^&]*/gi, '$1[redacted]');
+  return url.replace(/([?&](?:token|code|state|error_description)=)[^&]*/gi, '$1[redacted]');
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -74,6 +75,8 @@ export async function buildGateway(
   options: GatewayOptions = {},
 ): Promise<FastifyInstance> {
   const app = Fastify({ logger: loggerOption(options.logger), bodyLimit: 10 * 1024 * 1024 });
+  const login = options.login === false ? undefined : (options.login ?? loginFromEnv(process.env));
+  if (login) app.addHook('onClose', async () => login.clear());
 
   await app.register(cors, {
     origin: [...DEFAULT_CORS_ORIGINS, ...(options.corsOrigins ?? [])],
@@ -83,17 +86,32 @@ export async function buildGateway(
   });
 
   const token = engine.config.server.authToken;
-  if (token) {
+  if (token || login) {
     app.addHook('onRequest', async (request, reply) => {
       if (request.method === 'OPTIONS') return;
       const surface = surfaceOf(request.url);
       if (surface === 'other') return;
+      if (pathOf(request.url).startsWith('/api/auth/')) return;
       let provided = bearer(request);
       if (!provided && pathOf(request.url) === '/api/events') {
         const query = request.query as Record<string, unknown> | undefined;
         if (typeof query?.token === 'string') provided = query.token;
       }
-      if (provided && safeEqual(provided, token)) return;
+      if (provided && token && safeEqual(provided, token)) return;
+      if (surface === 'api' && login?.user(authCookie(request, 'dc_session'))) {
+        if (
+          !['GET', 'HEAD'].includes(request.method) &&
+          request.headers.origin !== login.options.origin
+        ) {
+          return sendApiError(
+            reply,
+            403,
+            'invalid_origin',
+            'Open DaveCode from its configured origin.',
+          );
+        }
+        return;
+      }
       const message = 'Missing or invalid bearer token';
       if (surface === 'v1') {
         return sendOpenAIError(reply, 401, {
@@ -166,6 +184,7 @@ export async function buildGateway(
   });
 
   registerV1Routes(app, engine);
+  registerAuthRoutes(app, login);
   registerApiRoutes(app, engine, options);
   registerEventRoutes(app, engine, options.heartbeatMs ?? 15_000);
 

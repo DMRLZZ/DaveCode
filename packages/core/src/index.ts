@@ -1,3 +1,4 @@
+export { LoginError, type LoginOptions, LoginService, loginFromEnv } from './auth/login';
 // --- phase 3: dual brain ---
 export {
   buildTaskContext,

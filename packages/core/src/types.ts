@@ -517,3 +517,19 @@ export type ProviderErrorKind =
   | 'unknown';
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/** DaveCode app identity; separate from model-provider credentials. */
+export type LoginProvider = 'google' | 'github';
+
+export interface LoginUser {
+  /** Provider-scoped stable subject, never an email address. */
+  id: string;
+  provider: LoginProvider;
+  name: string;
+}
+
+export interface LoginStatus {
+  required: boolean;
+  providers: LoginProvider[];
+  user: LoginUser | null;
+}
