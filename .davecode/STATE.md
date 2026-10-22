@@ -1,6 +1,6 @@
 # DaveCode: project state
 
-_Last updated: 2026-10-15_
+_Last updated: 2026-10-22_
 
 ## Current focus
 
@@ -8,6 +8,22 @@ _Last updated: 2026-10-15_
 and "Connect subscription" through each vendor's official login (including the new `gemini-cli`
 provider). Next up: verify `gemini-cli` against a real install, cut v0.3.0, publish to npm and
 dogfood goal mode on this repository with a frontier model.
+
+Workspace direction: local, outcome-oriented UI inspired by Warp's public behavior.
+The default screen now composes real goals with a plan-only default, usage limits,
+configured tools and live goal details. See `docs/WORKSPACE.md` for research, gaps
+and the implementation sequence. Embedded terminals and native agent sessions remain pending.
+
+Workspace v0.1 Preview now has a conversational shell, a curated Creative library,
+optional Google/GitHub OAuth with an owner allowlist, and `davecode app` for a
+Chrome/Edge app window. The engine/package remains on its existing 0.2.x line.
+OAuth has mocked protocol/security coverage; live provider client setup is pending.
+Design defaults reject decorative dots, uppercase eyebrow labels and redundant UI copy.
+OpenRouter replaces Ollama in onboarding; doctor no longer probes Ollama by default.
+
+The public landing is deployed through Sites at https://davecode-app.mor4lez.chatgpt.site.
+`davecode.app` DNS records are configured in Cloudflare; validate custom-domain status
+before claiming the custom domain is live. Site identity lives in `site/.openai/hosting.json`.
 
 ## Done
 
@@ -49,7 +65,9 @@ None.
 - Claude Code on Windows (and likely Linux) reports the global `~/.claude` login even with an
   empty `CLAUDE_CONFIG_DIR`, so per-account isolation is not effective there; the connection
   check says so.
-- Google Antigravity is out of scope: no public API or CLI, and token reuse violates the terms.
+- Google now documents an official Antigravity CLI. Local `agy` 1.4.5 version/help and
+  its user PATH entry are verified; authentication and a DaveCode adapter remain pending.
+  Use official authentication, never IDE token reuse.
 - The dashboard's Connect button can only open a terminal when the gateway is bound to loopback;
   remote gateways get the command to run instead.
 - The TUIs are covered by `ink-testing-library` tests; they still need manual passes in

@@ -1,8 +1,10 @@
 <div align="center">
 
-# DaveCode
+<img src="docs/brand/davecode.svg" alt="DaveCode" width="720" />
 
-**Local-first autonomous software engineer and multi-provider AI gateway.**
+# DaveCode v0.1 Preview
+
+**Your ideas. Your AI tools. One open-source workspace.**
 
 One OpenAI-compatible endpoint in front of Claude, GPT, Gemini and your local models, with
 quota-aware routing and hot failover, plus an engine that turns a task graph into tested,
@@ -56,7 +58,7 @@ flowchart LR
   R --> A[Anthropic]
   R --> O[OpenAI]
   R --> M[Gemini]
-  R --> L[OpenRouter / Ollama /<br/>LM Studio / vLLM]
+  R --> L[OpenRouter / compatible endpoints]
   R --> CC[Claude Code CLI]
   R --> CX[Codex CLI]
   G --> E[Autonomous runner]
@@ -80,23 +82,19 @@ pnpm build
 cd packages/cli && pnpm pack && npm install -g ./davecode-*.tgz   # puts `davecode` on your PATH
 ```
 
-### Try it for free with Ollama
+### Connect your AI tools
 
-No API keys needed: everything runs on your machine.
+Use official Claude, Codex or Gemini login, or an API provider such as OpenRouter.
+DaveCode adds no subscription; provider plans and usage charges still apply.
 
-```bash
-ollama pull qwen3:8b          # good tool calling, fits in ~6 GB of VRAM
-ollama pull llama3.1:8b       # fast chat
+Run `davecode` for the terminal, or `davecode app` for a Chrome/Edge app window.
+Keep the gateway process running while you work. Native packaging is still pending.
 
-davecode accounts add --provider openai-compatible --label ollama   --base-url http://localhost:11434/v1 --model qwen3:8b --model llama3.1:8b --yes
-davecode start                # dashboard at http://localhost:4040/
-davecode                      # chat in your terminal
-```
+The workspace is **v0.1 Preview**. The engine/package line remains **0.2.x**;
+historical releases and Git tags are preserved.
 
-For the autonomous runner (`davecode run`), use a model with reliable tool calling. On a free
-local setup, `qwen3:8b` completed a real implement → test → merge loop in our testing, while
-`llama3.1:8b` tends to hallucinate edit arguments. Frontier models (Claude, GPT, Gemini) are much
-faster and more reliable; set `runner.route` to a route that targets them.
+Optional [Google/GitHub sign-in](docs/AUTH.md) is separate from AI connections.
+The Creative library prepares design briefs using curated references.
 
 `pnpm build` also builds the CLI. Put `davecode` on your PATH (or run
 `node packages/cli/bin/davecode.js`; `pnpm --filter davecode dev <command>` runs from source):
@@ -104,7 +102,7 @@ faster and more reliable; set `runner.route` to a route that targets them.
 ```bash
 alias davecode="node $PWD/packages/cli/bin/davecode.js"   # or: cd packages/cli && npm link
 
-davecode doctor                     # checks Node, SQLite, ports, git/claude/codex/gemini/gh, Ollama
+davecode doctor                     # checks Node, SQLite, ports and supported CLI tools
 davecode accounts add               # interactive: provider, label, priority, masked API key
 davecode start                      # gateway on :4040 + dashboard at http://localhost:4040/
 davecode status                     # health, accounts and 1m/5h/24h quota bars (--json too)
@@ -115,8 +113,8 @@ Scripts can skip the prompts:
 
 ```bash
 davecode accounts add --provider anthropic --label work --secret-env ANTHROPIC_API_KEY --yes
-davecode accounts add --provider openai-compatible --label ollama \
-  --base-url http://localhost:11434/v1 --model qwen3:32b --yes
+davecode accounts add --provider openai-compatible --label OpenRouter \
+  --base-url https://openrouter.ai/api/v1 --model openrouter/auto --secret-env OPENROUTER_API_KEY --yes
 davecode accounts add --provider claude-cli --label "Claude Pro" --yes
 davecode accounts connect <id>      # official sign-in (claude auth login) in the account sandbox
 ```
@@ -246,7 +244,7 @@ When the gateway is unreachable the dashboard falls back to mock data automatica
 | Anthropic API | `anthropic` | API key | ✅ |
 | OpenAI API | `openai` | API key | ✅ |
 | Google Gemini API | `gemini` | API key | ✅ |
-| OpenRouter, Ollama, LM Studio, vLLM, LiteLLM… | `openai-compatible` | Optional key + base URL | ✅ |
+| OpenRouter and compatible endpoints | `openai-compatible` | Provider key + base URL | ✅ |
 | Claude Code CLI | `claude-cli` | Your Claude login, isolated per account | ✅ |
 | Codex CLI | `codex-cli` | Your ChatGPT/OpenAI login, isolated per account | ✅ |
 | Gemini CLI | `gemini-cli` | Your Google login ("Login with Google"), isolated per account | ✅ |
@@ -293,7 +291,7 @@ environment variables. A minimal example:
         "targets": [
           { "provider": "anthropic", "model": "claude-sonnet-5-5" },
           { "provider": "openai", "model": "gpt-5.5" },
-          { "provider": "openai-compatible", "model": "qwen3:32b" }
+          { "provider": "openai-compatible", "model": "openrouter/auto" }
         ]
       }
     ]
