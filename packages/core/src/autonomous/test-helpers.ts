@@ -19,6 +19,10 @@ export function createTempRepo(files: Record<string, string> = {}): {
   git(root, 'config', 'user.email', 'test@davecode.invalid');
   git(root, 'config', 'core.autocrlf', 'false');
   git(root, 'config', 'commit.gpgsign', 'false');
+  // Disposable fixtures need no maintenance. Detached Git housekeeping can outlive a
+  // completed command and race recursive cleanup of .git/objects on CI.
+  git(root, 'config', 'maintenance.auto', 'false');
+  git(root, 'config', 'gc.auto', '0');
   writeFiles(root, { 'README.md': '# temp\n', ...files });
   git(root, 'add', '--all');
   git(root, 'commit', '--quiet', '-m', 'chore: initial commit');
