@@ -658,7 +658,7 @@ h2 span {
 @supports (animation-timeline: scroll()) {
   @media (prefers-reduced-motion: no-preference) {
     .hero-scroll {
-      min-height: 1550px;
+      min-height: 1350px;
       position: relative;
     }
     .hero {
@@ -668,25 +668,25 @@ h2 span {
     .hero-art {
       animation: hero-travel linear both;
       animation-timeline: scroll(root block);
-      animation-range: 0px 1000px;
+      animation-range: 0px 900px;
     }
     .hero-copy {
       animation: hero-leave linear both;
       animation-timeline: scroll(root block);
-      animation-range: 150px 600px;
+      animation-range: 80px 380px;
     }
     .hero-next {
       display: block;
       animation: hero-arrive linear both;
       animation-timeline: scroll(root block);
-      animation-range: 350px 850px;
+      animation-range: 430px 780px;
     }
     @keyframes hero-travel {
       from {
         transform: scale(1);
       }
       to {
-        transform: scale(1.28) translate(-3%, 3%);
+        transform: scale(1.24) translate(-2.5%, 2.5%);
       }
     }
     @keyframes hero-leave {
@@ -696,13 +696,14 @@ h2 span {
       }
       100% {
         opacity: 0;
-        transform: translateY(-70px);
+        transform: translateY(-56px);
+        pointer-events: none;
       }
     }
     @keyframes hero-arrive {
       0% {
         opacity: 0;
-        transform: translateY(calc(-50% + 60px));
+        transform: translateY(calc(-50% + 48px));
       }
       100% {
         opacity: 1;
@@ -772,19 +773,19 @@ h2 span {
 @supports (animation-timeline: scroll()) {
   @media (prefers-reduced-motion: no-preference) {
     .hero-scroll {
-      min-height: 200dvh;
+      min-height: 175dvh;
     }
     .hero {
       top: 0;
     }
     .hero-copy {
-      animation-range: 10dvh 65dvh;
+      animation-range: 8dvh 42dvh;
     }
     .hero-art {
-      animation-range: 0px 110dvh;
+      animation-range: 0px 95dvh;
     }
     .hero-next {
-      animation-range: 40dvh 90dvh;
+      animation-range: 46dvh 82dvh;
     }
   }
 }
