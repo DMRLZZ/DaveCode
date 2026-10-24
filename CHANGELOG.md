@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- First npm publication: `@dmrlzz/davecode@0.3.0`.
+  Install with `npm install -g @dmrlzz/davecode`. The command remains
+  `davecode`; npm rejected the unscoped package name for similarity to an existing package.
 - Goal mode: `davecode goal "<objective>"` (`--dry-run`, `--max-rounds`, `--max-tasks`,
   `--max-tokens`), `davecode goals list|show|cancel`, `GET/POST /api/goals`,
   `GET /api/goals/:id`, `POST /api/goals/:id/cancel`, `goal.updated` / `goal.log` events and a
@@ -44,16 +47,20 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Gemini CLI eligibility failures (`IneligibleTierError` / `UNSUPPORTED_CLIENT`) now map to
+  an actionable `auth` provider error. Live Codex and Claude adapter verification is recorded
+  in `docs/PROVIDER-VERIFICATION.md`; Gemini's backend rejected CLI 0.65.0 after Google login.
 - The dashboard's add-account sheet stored the CLI binary override as `config.binary`; it now
   uses `config.binaryPath`, which the adapters read.
 
 ### Known limitations
 
-- Google Antigravity is not supported: it has no public API or CLI, and reusing its OAuth tokens
-  violates Google's terms. Use `gemini-cli` for Google AI subscriptions.
+- Google Antigravity has an official CLI, but DaveCode has no adapter for it yet. Never reuse
+  IDE OAuth tokens.
 - Claude Code on Windows and Linux can fall back to the global `~/.claude` login, so those
   accounts are not isolated; the connection check reports it.
-- The `gemini-cli` adapter has not been verified against a real Gemini CLI install.
+- Gemini CLI 0.65.0 was tested against a real install. Google sign-in succeeded, but the
+  backend rejected it with `UNSUPPORTED_CLIENT`; successful live completion remains pending.
 
 ## [0.2.0] - 2026-10-06
 

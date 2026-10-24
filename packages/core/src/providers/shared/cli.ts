@@ -272,7 +272,7 @@ export function classifyCliText(
     return { kind: 'rate_limit', retryAfterMs: parseResetMs(text, now) };
   }
   if (
-    /not logged in|please run \/login|\/login|codex login|auth method|invalid api key|unauthori[sz]ed|authentication|oauth token|token (has )?expired|login required|sign in|\b401\b/i.test(
+    /not logged in|please run \/login|\/login|codex login|auth method|invalid api key|unauthori[sz]ed|authentication|oauth token|token (has )?expired|login required|sign in|IneligibleTierError|UNSUPPORTED_CLIENT|client is no longer supported|\b401\b/i.test(
       text,
     )
   ) {

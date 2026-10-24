@@ -40,6 +40,9 @@ process.stdin.on('end', () => {
   } else if (scenario === 'auth') {
     process.stderr.write('Please set an Auth method in your settings.json');
     process.exit(41);
+  } else if (scenario === 'ineligible') {
+    process.stderr.write('Error authenticating: IneligibleTierError: This client is no longer supported for Gemini Code Assist for individuals. UNSUPPORTED_CLIENT');
+    process.exit(1);
   } else if (scenario === 'hang') {
     setInterval(() => {}, 1000);
   }
@@ -87,6 +90,12 @@ async function failure(p: Promise<unknown>): Promise<ProviderError> {
 }
 
 describe('GeminiCliProvider', () => {
+  it('reports the eligibility rejection observed with Gemini CLI 0.65.0 as an auth failure', async () => {
+    const err = await failure(provider.complete(req, ctx('ineligible')));
+    expect(err.kind).toBe('auth');
+    expect(err.message).toContain('client is no longer supported');
+  });
+
   it('runs gemini headlessly with an isolated home, no API key and a stdin transcript', async () => {
     const prev = process.env.GEMINI_API_KEY;
     process.env.GEMINI_API_KEY = 'parent-key-must-not-leak';

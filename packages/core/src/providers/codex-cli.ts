@@ -56,7 +56,7 @@ function errorText(value: unknown): string | undefined {
  * `turn.completed` (`usage.input_tokens` / `cached_input_tokens` / `output_tokens`),
  * `turn.failed` and `error`, plus the older `{ msg: { type, ... } }` envelope. Unknown events
  * are ignored. Codex emits whole messages (no token deltas), so each agent message is one chunk.
- * The event format was not verified against a local Codex install.
+ * The event format and completion usage were verified with Codex CLI 0.163.0 (2026-10-24).
  *
  * Reads `account.config`: `binaryPath` (default `codex`), `binaryArgs` (prefix args), `models`,
  * `sandbox` (`read-only` default, passed to `--sandbox`), `cwd` (default the sandbox dir).

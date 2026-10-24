@@ -61,7 +61,9 @@ function errorText(value: unknown): string | undefined {
  * without `delta`), `error` events, and the final `result` event (`status`, `error`,
  * `stats.input_tokens` / `stats.output_tokens`), plus a single `{ response, stats }` object as
  * printed by `--output-format json` on older builds. Unknown events (`init`, `tool_use`,
- * `tool_result`) are ignored. Not verified against a local install.
+ * `tool_result`) are ignored. Gemini CLI 0.65.0 was tested locally (2026-10-24): official
+ * Google sign-in succeeded, but Code Assist rejected the client with UNSUPPORTED_CLIENT.
+ * Successful live completion remains unverified; see docs/PROVIDER-VERIFICATION.md.
  *
  * Reads `account.config`: `binaryPath` (default `gemini`), `binaryArgs` (prefix args),
  * `models`, `cwd` (default the sandbox dir).

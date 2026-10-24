@@ -1,6 +1,6 @@
 # DaveCode: project state
 
-_Last updated: 2026-10-22_
+_Last updated: 2026-10-24_
 
 ## Current focus
 
@@ -8,7 +8,9 @@ _Last updated: 2026-10-22_
 official vendor login flows, a conversational workspace and the public landing.
 Next up: verify official agent sessions against real installs, finish desktop onboarding
 and package an independent desktop installer. The preview tarball is available on GitHub;
-the npm registry package and a v0.3.0 engine release remain pending.
+engine 0.3.0 is published on npm as `@dmrlzz/davecode` (the unscoped name was rejected by
+npm for similarity to `dave-code`). npm completed automated validation and the registry's
+`latest` tag resolves to 0.3.0. The installed command remains `davecode`.
 
 Workspace direction: local, outcome-oriented UI inspired by Warp's public behavior.
 The default screen now composes real goals with a plan-only default, usage limits,
@@ -17,7 +19,8 @@ and the implementation sequence. Embedded terminals and native agent sessions re
 
 Workspace v0.1 Preview now has a conversational shell, a curated Creative library,
 optional Google/GitHub OAuth with an owner allowlist, and `davecode app` for a
-Chrome/Edge app window. The engine/package remains on its existing 0.2.x line.
+Chrome/Edge app window. The published preview contains engine 0.2.0; the working tree is
+published as engine 0.3.0 on npm.
 OAuth has mocked protocol/security coverage; live provider client setup is pending.
 Design defaults reject decorative dots, uppercase eyebrow labels and redundant UI copy.
 OpenRouter replaces Ollama in onboarding; doctor no longer probes Ollama by default.
@@ -59,12 +62,14 @@ None.
 
 ## Known limitations
 
-- `davecode` is not published to npm yet (install from a tarball or source).
+- npm installation uses `npm install -g @dmrlzz/davecode`; the unscoped name is unavailable.
 - Small local models were unreliable in earlier execution tests. Onboarding now recommends
   hosted providers; use a capable model for code execution.
-- The `codex-cli` adapter's event parser has not been verified against a real Codex install.
-- The `gemini-cli` adapter (`GEMINI_CLI_HOME` isolation, `stream-json` parser) has not been
-  verified against a real Gemini CLI install (not installed on the development machine).
+- Codex CLI 0.163.0 and Claude Code 2.1.309 passed live adapter completion checks on Windows.
+- Gemini CLI 0.65.0 was installed in a temporary directory and completed official Google
+  OAuth in an isolated home. Code Assist rejected the client with `UNSUPPORTED_CLIENT`;
+  successful live completion and stream parsing remain unverified. See
+  `docs/PROVIDER-VERIFICATION.md` for evidence and the offline regression test.
 - Claude Code on Windows (and likely Linux) reports the global `~/.claude` login even with an
   empty `CLAUDE_CONFIG_DIR`, so per-account isolation is not effective there; the connection
   check says so.

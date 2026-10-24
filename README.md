@@ -70,27 +70,27 @@ Read the full design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the HTT
 
 ## Quick start
 
-Install the **Workspace v0.1 Preview** with Node.js 22.12+ and npm:
+Install DaveCode with Node.js 22.12+ and npm:
 
 ```bash
-npm install -g https://github.com/DMRLZZ/DaveCode/releases/download/workspace-v0.1.0-preview.1/davecode-0.2.0.tgz
+npm install -g @dmrlzz/davecode
 ```
 
 Run `davecode app` for the local app window, or `davecode` for the terminal.
-The package contains engine 0.2.0; this preview does not replace historical releases.
+The npm package contains engine 0.3.0. Historical preview tarballs remain available on GitHub.
 
 ### Build from source
 
 > Requires **Node.js 22.12+**. The `davecode` package is standalone: it bundles the engine, the
-> gateway and the dashboard. Until it is published to npm, install it from a release tarball or
-> from source.
+> gateway and the dashboard. Its npm name is `@dmrlzz/davecode`; the installed command is
+> `davecode`.
 
 ```bash
 git clone https://github.com/DMRLZZ/DaveCode.git
 cd DaveCode
 pnpm install
 pnpm build
-cd packages/cli && pnpm pack && npm install -g ./davecode-*.tgz   # puts `davecode` on your PATH
+cd packages/cli && pnpm pack && npm install -g ./dmrlzz-davecode-*.tgz   # puts `davecode` on your PATH
 ```
 
 ### Connect your AI tools
@@ -108,7 +108,7 @@ Optional [Google/GitHub sign-in](docs/AUTH.md) is separate from AI connections.
 The Creative library prepares design briefs using curated references.
 
 `pnpm build` also builds the CLI. Put `davecode` on your PATH (or run
-`node packages/cli/bin/davecode.js`; `pnpm --filter davecode dev <command>` runs from source):
+`node packages/cli/bin/davecode.js`; `pnpm --filter @dmrlzz/davecode dev <command>` runs from source):
 
 ```bash
 alias davecode="node $PWD/packages/cli/bin/davecode.js"   # or: cd packages/cli && npm link
@@ -340,14 +340,16 @@ docs/         architecture, API contract, original spec
 - [x] **Phase 5, interfaces:** web dashboard, CLI and TUI
 - [x] **v0.1.0:** first tagged release (run from source)
 - [x] Standalone `davecode` package (bundled engine, gateway and dashboard)
-- [ ] Publish `davecode` to npm (`npx davecode`)
-- [ ] Verified Codex CLI event format and more provider live tests
+- [x] Publish `@dmrlzz/davecode` to npm (`npx @dmrlzz/davecode`)
+- [x] Verified Codex CLI 0.163.0 event format and live Codex/Claude adapter completions
 - [x] Editing routes and the task graph from the dashboard
 - [x] Targeting a specific task with `davecode run --task <id>`
 - [x] Goal mode: objective → agent team → plan, execute, review, re-plan
 - [x] Plans, renewals and remaining budget per account, shared with agents
 - [x] Connect subscription (official vendor sign-in) from the CLI and the dashboard
 - [ ] Verified Gemini CLI adapter against a real install
+  — CLI 0.65.0 installed and Google login verified; live completion is blocked by Google's
+  `UNSUPPORTED_CLIENT` response. See [provider verification](docs/PROVIDER-VERIFICATION.md).
 
 ## Contributing
 
