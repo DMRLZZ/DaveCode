@@ -75,6 +75,32 @@ export function registerGoalRoutes(
     return reply.code(202).send({ goal: result.value });
   });
 
+  app.post<{ Params: { id: string } }>('/api/goals/:id/execute', async (request, reply) => {
+    const goals = control(reply);
+    if (!goals) return reply;
+    if (!goals.execute) return unavailable(reply);
+    const execute = goals.execute.bind(goals);
+    const result = await guarded(reply, () => execute(request.params.id));
+    if (!result.ok) return result.reply;
+    audit.record({ actor: 'api', action: 'goal.execute', target: request.params.id });
+    return reply.code(202).send({ goal: result.value });
+  });
+
+  app.get<{ Params: { id: string; taskId: string } }>(
+    '/api/goals/:id/artifacts/:taskId',
+    async (request, reply) => {
+      const goals = control(reply);
+      if (!goals) return reply;
+      if (!goals.readArtifact) return unavailable(reply);
+      const readArtifact = goals.readArtifact.bind(goals);
+      const result = await guarded(reply, () =>
+        readArtifact(request.params.id, request.params.taskId),
+      );
+      if (!result.ok) return result.reply;
+      return { artifact: result.value };
+    },
+  );
+
   app.post<{ Params: { id: string } }>('/api/goals/:id/cancel', async (request, reply) => {
     const goals = control(reply);
     if (!goals) return reply;

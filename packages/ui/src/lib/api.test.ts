@@ -137,4 +137,34 @@ describe('createHttpClient', () => {
       createHttpClient({ baseUrl: '', token: '' }).deleteAccount('acc 1'),
     ).resolves.toBeUndefined();
   });
+
+  it('calls executeGoal and goalArtifact endpoints', async () => {
+    const execFetch = mockFetch(
+      202,
+      JSON.stringify({ goal: { id: 'goal_123456', status: 'running' } }),
+    );
+    const client = createHttpClient({ baseUrl: 'http://gw', token: '' });
+    expect(await client.executeGoal('goal_123456')).toEqual({
+      id: 'goal_123456',
+      status: 'running',
+    });
+    const [execUrl, execInit] = execFetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(`${execInit.method} ${execUrl}`).toBe('POST http://gw/api/goals/goal_123456/execute');
+
+    const artFetch = mockFetch(
+      200,
+      JSON.stringify({
+        artifact: { taskId: 'copy', path: '.davecode/goals/goal_123456/copy.md', content: '# Hi' },
+      }),
+    );
+    expect(await client.goalArtifact('goal_123456', 'copy')).toEqual({
+      taskId: 'copy',
+      path: '.davecode/goals/goal_123456/copy.md',
+      content: '# Hi',
+    });
+    const [artUrl, artInit] = artFetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(`${artInit.method} ${artUrl}`).toBe(
+      'GET http://gw/api/goals/goal_123456/artifacts/copy',
+    );
+  });
 });

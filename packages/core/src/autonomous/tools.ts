@@ -225,12 +225,21 @@ export const TOOL_DEFINITIONS: readonly ToolDefinition[] = [
   ),
 ];
 
+const READ_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set(['list_dir', 'read_file', 'search']);
+
+/** Read-only subset of workspace tools (`list_dir`, `read_file`, `search`) for planning/research roles. */
+export const READ_ONLY_TOOL_DEFINITIONS: readonly ToolDefinition[] = TOOL_DEFINITIONS.filter((t) =>
+  READ_ONLY_TOOL_NAMES.has(t.function.name),
+);
+
 // ---------------------------------------------------------------------------
 // Execution
 // ---------------------------------------------------------------------------
 
 export interface WorkspaceToolsOptions {
   root: string;
+  /** Restrict tool calls to `list_dir`, `read_file`, and `search`. */
+  readOnly?: boolean;
   /** Executables `run_command` may start (default {@link DEFAULT_ALLOWED_COMMANDS}). */
   allowedCommands?: readonly string[];
   /** Timeout for one `run_command` (default 10 min). */
@@ -315,6 +324,7 @@ const commandName = (command: string) =>
 /** The workspace tool belt for one repository. */
 export class WorkspaceTools {
   readonly root: string;
+  readonly readOnly: boolean;
   readonly allowedCommands: readonly string[];
   /** Repository-relative paths written or edited so far. */
   readonly changedFiles = new Set<string>();
@@ -326,6 +336,7 @@ export class WorkspaceTools {
 
   constructor(opts: WorkspaceToolsOptions) {
     this.root = path.resolve(opts.root);
+    this.readOnly = opts.readOnly ?? false;
     this.allowedCommands = (opts.allowedCommands ?? DEFAULT_ALLOWED_COMMANDS).map((c) =>
       c.toLowerCase(),
     );
@@ -341,6 +352,9 @@ export class WorkspaceTools {
   /** Executes one tool call. Never throws for bad input: errors become `ok: false` results. */
   async call(name: string, rawArgs: string, signal?: AbortSignal): Promise<ToolOutcome> {
     try {
+      if (this.readOnly && !READ_ONLY_TOOL_NAMES.has(name)) {
+        return { ok: false, output: `Error: tool "${name}" is not available in read-only mode` };
+      }
       switch (name) {
         case 'list_dir':
           return this.ok(await this.listDir(parseArgs(listDirArgs, rawArgs)));
@@ -465,14 +479,16 @@ export class WorkspaceTools {
       matcher = (line) => (args.case_sensitive ? line : line.toLowerCase()).includes(needle);
     }
 
+    const ignored = await this.loadGitignoreMatcher();
     const results: string[] = [];
     const visitFile = async (file: string) => {
+      const rel = path.relative(this.root, file).split(path.sep).join('/');
+      if (ignored(rel, path.basename(file), false)) return;
       const info = await stat(file);
       if (info.size > MAX_FILE_BYTES) return;
       const buffer = await readFile(file);
       if (buffer.subarray(0, 8000).includes(0)) return;
       const lines = buffer.toString('utf8').split('\n');
-      const rel = path.relative(this.root, file).split(path.sep).join('/');
       for (let i = 0; i < lines.length && results.length < args.max_results; i++) {
         const line = (lines[i] as string).replace(/\r$/, '');
         if (matcher(line)) results.push(`${rel}:${i + 1}: ${line.trim().slice(0, 300)}`);
@@ -489,8 +505,9 @@ export class WorkspaceTools {
       for (const entry of entries) {
         if (results.length >= args.max_results) return;
         const full = path.join(dir, entry.name);
+        const rel = path.relative(this.root, full).split(path.sep).join('/');
         if (entry.isDirectory()) {
-          if (!SKIP_DIRS.has(entry.name)) await walk(full);
+          if (!SKIP_DIRS.has(entry.name) && !ignored(rel, entry.name, true)) await walk(full);
         } else if (entry.isFile()) {
           await visitFile(full);
         }
@@ -503,6 +520,46 @@ export class WorkspaceTools {
     if (results.length === 0) return 'No matches.';
     const capped = results.length >= args.max_results ? `\n[… capped at ${args.max_results}]` : '';
     return `${results.join('\n')}${capped}`;
+  }
+
+  private async loadGitignoreMatcher(): Promise<
+    (rel: string, name: string, isDir: boolean) => boolean
+  > {
+    let raw = '';
+    try {
+      raw = await readFile(path.join(this.root, '.gitignore'), 'utf8');
+    } catch {
+      return () => false;
+    }
+    const dirNames = new Set<string>();
+    const pathPrefixes: string[] = [];
+    const suffixes: string[] = [];
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('!')) continue;
+      const dirOnly = trimmed.endsWith('/');
+      const clean = trimmed.replace(/^\/+|\/+$/g, '');
+      if (!clean) continue;
+      if (
+        clean.startsWith('*.') &&
+        !clean.slice(2).includes('/') &&
+        !clean.slice(2).includes('*')
+      ) {
+        if (!dirOnly) suffixes.push(clean.slice(1));
+      } else if (!clean.includes('*') && !clean.includes('?')) {
+        if (clean.includes('/')) {
+          pathPrefixes.push(clean);
+        } else {
+          dirNames.add(clean);
+          if (!dirOnly) pathPrefixes.push(clean);
+        }
+      }
+    }
+    return (rel: string, name: string, isDir: boolean) => {
+      if (dirNames.has(name)) return true;
+      if (!isDir && suffixes.some((ext) => name.endsWith(ext))) return true;
+      return pathPrefixes.some((p) => rel === p || rel.startsWith(`${p}/`));
+    };
   }
 
   /** Throws when `command args` is not permitted by the allow-list. */

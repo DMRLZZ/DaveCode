@@ -84,6 +84,7 @@ export type SkipReason =
   | 'error'
   | 'experimental'
   | 'no_provider'
+  | 'no_tools'
   | 'subscription'
   | 'cooldown'
   | 'circuit_open'
@@ -112,6 +113,11 @@ const BREAKER_KINDS: ReadonlySet<ProviderErrorKind> = new Set([
 ]);
 
 const CAPACITY_REASONS: ReadonlySet<SkipReason> = new Set(['cooldown', 'circuit_open', 'quota']);
+
+const NON_TOOL_PROVIDERS: ReadonlySet<ProviderKind> = new Set([
+  ...SUBSCRIPTION_PROVIDER_KINDS,
+  ...EXPERIMENTAL_PROVIDER_KINDS,
+]);
 
 function messageText(message: Partial<ChatMessage> | undefined): string {
   if (!message) return '';
@@ -192,6 +198,7 @@ export class Router {
     estimate: number,
     primaries: Map<ProviderKind, string>,
     now: number,
+    needsTools = false,
   ): SkipReason | undefined {
     if (!account.enabled || account.status === 'disabled') return 'disabled';
     if (account.status === 'error') return 'error';
@@ -202,6 +209,7 @@ export class Router {
       return 'experimental';
     }
     if (!this.options.providers.has(account.provider)) return 'no_provider';
+    if (needsTools && NON_TOOL_PROVIDERS.has(account.provider)) return 'no_tools';
     if (
       SUBSCRIPTION_PROVIDER_KINDS.includes(account.provider) &&
       !this.config.experimental.multiAccountRotation &&
@@ -224,7 +232,8 @@ export class Router {
 
   /** Resolve, filter and rank the accounts that could serve `req`, best first. */
   plan(
-    req: Pick<ChatRequest, 'model' | 'messages'>,
+    req: Pick<ChatRequest, 'model' | 'messages'> &
+      Partial<Pick<ChatRequest, 'tools' | 'tool_choice'>>,
     estimate = estimateTokens(req.messages),
   ): RoutingPlan {
     const { routing } = this.config;
@@ -233,11 +242,12 @@ export class Router {
     const all = resolveCandidates(spec, accounts);
     const primaries = this.primarySubscriptionAccounts(accounts);
     const now = this.clock();
+    const needsTools = Boolean(req.tools && req.tools.length > 0 && req.tool_choice !== 'none');
 
     const skipped: RoutingPlan['skipped'] = [];
     const ranked: Array<RankedCandidate & { key: number }> = [];
     for (const candidate of all) {
-      const reason = this.skipReason(candidate.account, estimate, primaries, now);
+      const reason = this.skipReason(candidate.account, estimate, primaries, now, needsTools);
       if (reason) {
         skipped.push({ accountId: candidate.account.id, model: candidate.model, reason });
         continue;

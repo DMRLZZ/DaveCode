@@ -2,6 +2,7 @@ import type {
   Account,
   ClearableTaskField,
   Goal,
+  GoalArtifact,
   LoginService,
   NewTask,
   RunnerStatus,
@@ -71,6 +72,10 @@ export interface GoalControl {
   list(): Promise<Goal[]>;
   get(id: string): Promise<Goal | undefined>;
   start(input: GoalStartInput): Promise<Goal>;
+  /** Executes a `planned` (dry-run) goal in the background without re-planning. */
+  execute?(id: string): Promise<Goal>;
+  /** Reads a task's markdown artifact content. */
+  readArtifact?(id: string, taskId: string): Promise<GoalArtifact>;
   /** Resolves with the goal once it has stopped. */
   cancel(id: string): Promise<Goal>;
 }

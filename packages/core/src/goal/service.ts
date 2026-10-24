@@ -38,6 +38,12 @@ interface ActiveGoal {
   done: Promise<Goal>;
 }
 
+export interface GoalArtifact {
+  taskId: string;
+  path: string;
+  content: string;
+}
+
 export class GoalService {
   private active: ActiveGoal | undefined;
   private readonly owner: string;
@@ -68,24 +74,81 @@ export class GoalService {
     try {
       const goal = this.options.orchestrator.create(input);
       await this.options.store.save(goal);
-      const controller = new AbortController();
-      const done = this.options.orchestrator
-        .run(goal, controller.signal)
-        .catch((err: unknown) => {
-          goal.status = 'failed';
-          goal.lastError = err instanceof Error ? err.message : String(err);
-          return goal;
-        })
-        .finally(() => {
-          if (this.active?.goal === goal) this.active = undefined;
-          lock?.release(this.owner);
-        });
-      this.active = { goal, controller, done };
+      this.launch(goal, lock);
       return structuredClone(goal);
     } catch (err) {
       lock?.release(this.owner);
       throw err;
     }
+  }
+
+  /**
+   * Executes a `planned` (dry-run) goal in the background without re-planning round 1.
+   * Resolves with the updated goal (`status: 'running'`).
+   */
+  async execute(id: string): Promise<Goal> {
+    if (this.active) {
+      throw new GoalError('busy', `goal ${this.active.goal.id} is still running; cancel it first`);
+    }
+    const goal = await this.options.store.load(id);
+    if (!goal) throw new GoalError('not_found', `unknown goal "${id}"`);
+    if (goal.status !== 'planned') {
+      throw new GoalError(
+        'invalid',
+        `goal "${id}" is ${goal.status}; only a planned goal can be executed`,
+      );
+    }
+    const lock = this.options.lock;
+    if (lock && !lock.acquire(this.owner)) {
+      throw new GoalError(
+        'busy',
+        `the working tree is busy (${lock.holder ?? 'another task'} is running)`,
+      );
+    }
+    try {
+      delete goal.dryRun;
+      delete goal.finishedAt;
+      delete goal.lastError;
+      goal.status = 'running';
+      goal.updatedAt = this.now().toISOString();
+      await this.options.store.save(goal);
+      this.launch(goal, lock);
+      return structuredClone(goal);
+    } catch (err) {
+      lock?.release(this.owner);
+      throw err;
+    }
+  }
+
+  /** Reads the markdown artifact produced by `taskId` in goal `id`. */
+  async readArtifact(id: string, taskId: string): Promise<GoalArtifact> {
+    const goal = await this.get(id);
+    if (!goal) throw new GoalError('not_found', `unknown goal "${id}"`);
+    const task = goal.tasks.find((t) => t.id === taskId);
+    if (!task?.artifact) {
+      throw new GoalError('not_found', `task "${taskId}" has no artifact in goal "${id}"`);
+    }
+    const content = await this.options.store.readArtifact(id, taskId);
+    if (content === undefined) {
+      throw new GoalError('not_found', `artifact file for task "${taskId}" was not found`);
+    }
+    return { taskId: task.id, path: task.artifact, content };
+  }
+
+  private launch(goal: Goal, lock: WorkspaceLock | undefined): void {
+    const controller = new AbortController();
+    const done = this.options.orchestrator
+      .run(goal, controller.signal)
+      .catch((err: unknown) => {
+        goal.status = 'failed';
+        goal.lastError = err instanceof Error ? err.message : String(err);
+        return goal;
+      })
+      .finally(() => {
+        if (this.active?.goal === goal) this.active = undefined;
+        lock?.release(this.owner);
+      });
+    this.active = { goal, controller, done };
   }
 
   async get(id: string): Promise<Goal | undefined> {

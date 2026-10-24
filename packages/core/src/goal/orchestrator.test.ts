@@ -150,6 +150,110 @@ describe('GoalOrchestrator', () => {
     expect(router.calls.map((c) => c.agent)).toEqual(['planner']);
   });
 
+  it('supports read-only workspace tools during agent calls and falls back when unsupported', async () => {
+    const { store } = setup(new ScriptedRouter({}));
+    await store.writeArtifact('goal_abcdef', 'seed', 'hello-from-repo');
+    let toolSeen = false;
+    const router: Pick<Router, 'complete'> = {
+      complete: async (req) => {
+        const last = req.messages.at(-1);
+        if (last?.role === 'tool') {
+          toolSeen = String(last.content).includes('hello-from-repo');
+          return {
+            completion: {
+              id: 'c',
+              object: 'chat.completion',
+              created: 0,
+              model: req.model,
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: 'assistant',
+                    content: req.messages[0]?.content?.toString().startsWith('You are the planner')
+                      ? plan([{ id: 'a' }])
+                      : req.messages[0]?.content?.toString().startsWith('You are the reviewer')
+                        ? review(true)
+                        : '# Result with repo context',
+                  },
+                  finish_reason: 'stop',
+                },
+              ],
+              usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
+            },
+            meta: {} as CompletionResult['meta'],
+          };
+        }
+        if (
+          req.tools?.length &&
+          !req.messages[0]?.content?.toString().startsWith('You are the planner') &&
+          !req.messages[0]?.content?.toString().startsWith('You are the reviewer')
+        ) {
+          return {
+            completion: {
+              id: 'c',
+              object: 'chat.completion',
+              created: 0,
+              model: req.model,
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'tc_1',
+                        type: 'function',
+                        function: {
+                          name: 'read_file',
+                          arguments: JSON.stringify({
+                            path: '.davecode/goals/goal_abcdef/seed.md',
+                          }),
+                        },
+                      },
+                    ],
+                  },
+                  finish_reason: 'tool_calls',
+                },
+              ],
+              usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
+            },
+            meta: {} as CompletionResult['meta'],
+          };
+        }
+        const sys = String(req.messages[0]?.content ?? '');
+        const content = sys.startsWith('You are the planner')
+          ? plan([{ id: 'a' }])
+          : sys.startsWith('You are the reviewer')
+            ? review(true)
+            : '# Fallback';
+        return {
+          completion: {
+            id: 'c',
+            object: 'chat.completion',
+            created: 0,
+            model: req.model,
+            choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
+          },
+          meta: {} as CompletionResult['meta'],
+        };
+      },
+    };
+    const orchestrator = new GoalOrchestrator({
+      router,
+      store,
+      events,
+      config: configSchema.parse({}).goal,
+      readTools: true,
+    });
+    const goal = orchestrator.create({ objective: 'Inspect repo' });
+    await orchestrator.run(goal, new AbortController().signal);
+    expect(goal.status).toBe('succeeded');
+    expect(toolSeen).toBe(true);
+  });
+
   it('re-plans with new tasks and retries until the reviewer is satisfied', async () => {
     const router = new ScriptedRouter({
       planner: [plan([{ id: 'a' }])],
@@ -361,6 +465,42 @@ describe('GoalService', () => {
 
     const dry = await service.start({ objective: 'plan it', dryRun: true });
     expect((await service.wait(dry.id))?.status).toBe('planned');
+  });
+
+  it('executes a planned dry-run goal without re-planning and reads task artifacts', async () => {
+    const router = new ScriptedRouter({
+      planner: [plan([{ id: 'copy', role: 'writer' }])],
+      writer: ['# Landing Copy\n\nShip faster with DaveCode.'],
+      reviewer: [review(true)],
+    });
+    const { store, orchestrator } = setup(router);
+    const lock = new WorkspaceLock();
+    const service = new GoalService({ orchestrator, store, lock });
+
+    const dry = await service.start({ objective: 'Write landing copy', dryRun: true });
+    const planned = await service.wait(dry.id);
+    expect(planned?.status).toBe('planned');
+    expect(router.calls.map((c) => c.agent)).toEqual(['planner']);
+
+    const running = await service.execute(dry.id);
+    expect(running.status).toBe('running');
+    expect(running.dryRun).toBeUndefined();
+
+    const finished = await service.wait(dry.id);
+    expect(finished?.status).toBe('succeeded');
+    expect(router.calls.map((c) => c.agent)).toEqual(['planner', 'writer', 'reviewer']);
+
+    const artifact = await service.readArtifact(dry.id, 'copy');
+    expect(artifact).toEqual({
+      taskId: 'copy',
+      path: `.davecode/goals/${dry.id}/copy.md`,
+      content: '# Landing Copy\n\nShip faster with DaveCode.\n',
+    });
+
+    await expect(service.execute(dry.id)).rejects.toMatchObject({ code: 'invalid' });
+    await expect(service.readArtifact(dry.id, 'missing')).rejects.toMatchObject({
+      code: 'not_found',
+    });
   });
 
   it('marks a goal left unfinished by an earlier process as cancelled', async () => {

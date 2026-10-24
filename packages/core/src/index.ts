@@ -296,6 +296,7 @@ export {
   DEFAULT_ALLOWED_COMMANDS,
   PathEscapeError,
   READ_ONLY_GIT_SUBCOMMANDS,
+  READ_ONLY_TOOL_DEFINITIONS,
   type ResolvedPath,
   resolveRepoPath,
   TOOL_DEFINITIONS,
@@ -343,6 +344,7 @@ export {
   resolveRoles,
 } from './goal/plan';
 export {
+  type GoalArtifact,
   GoalError,
   type GoalErrorCode,
   GoalService,

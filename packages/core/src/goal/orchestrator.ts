@@ -8,12 +8,13 @@ import type { z } from 'zod';
 import { routeModel } from '../autonomous/executor';
 import { extractJsonObject } from '../autonomous/judge';
 import { truncateHead } from '../autonomous/process';
+import { READ_ONLY_TOOL_DEFINITIONS, WorkspaceTools } from '../autonomous/tools';
 import type { EventBus } from '../events';
 import { countTextTokens } from '../rate-limiter/tokens';
 import { RouterError } from '../router/errors';
 import type { Router } from '../router/router';
 import { newId } from '../storage/ids';
-import type { Goal, GoalStatus, GoalTask, LogLevel } from '../types';
+import type { ChatMessage, Goal, GoalStatus, GoalTask, LogLevel } from '../types';
 import {
   type GoalConfig,
   normalizeTasks,
@@ -57,6 +58,8 @@ export interface GoalOrchestratorOptions {
   events: EventBus;
   config: GoalConfig;
   codeRunner?: CodeTaskRunner;
+  /** Attach read-only repository tools (`list_dir`, `read_file`, `search`) to agent calls. */
+  readTools?: boolean;
   /** Compact budget summary (remaining quota per account) shown to every agent. */
   budgetContext?: () => string | Promise<string>;
   /** Project architecture/state summary shown to the planner and reviewer. */
@@ -91,12 +94,15 @@ class OutOfBudget extends Error {}
 const MAX_DEP_CHARS = 6_000;
 const MAX_DEPS_TOTAL = 20_000;
 const MAX_REVIEW_EXCERPT = 1_500;
+const MAX_TOOL_ROUNDS = 6;
 
 export class GoalOrchestrator {
   private readonly now: () => Date;
+  private readonly tools: WorkspaceTools;
 
   constructor(private readonly options: GoalOrchestratorOptions) {
     this.now = options.now ?? (() => new Date());
+    this.tools = new WorkspaceTools({ root: options.store.root, readOnly: true });
   }
 
   /** A fresh goal (not yet persisted) with limits clamped to the config. */
@@ -131,20 +137,24 @@ export class GoalOrchestrator {
       const code = await this.codeAvailability();
       if (!code.ok) this.log(goal, 'info', `code tasks disabled: ${code.reason}`);
 
-      goal.round = 1;
-      await this.update(goal, { status: 'planning' });
-      this.log(goal, 'info', `planning: ${goal.objective}`, 'planner');
-      const plan = await this.plan(goal, roles, code.ok, signal);
-      goal.tasks = normalizeTasks(plan.tasks, {
-        existing: [],
-        roles,
-        round: 1,
-        room: goal.limits.maxTasks,
-        codeTasks: code.ok,
-      });
-      if (plan.summary) goal.summary = plan.summary;
-      this.log(goal, 'info', `planned ${goal.tasks.length} task(s)`, 'planner');
-      if (goal.dryRun) return await this.finish(goal, 'planned');
+      if (goal.round === 0 || goal.tasks.length === 0) {
+        goal.round = 1;
+        await this.update(goal, { status: 'planning' });
+        this.log(goal, 'info', `planning: ${goal.objective}`, 'planner');
+        const plan = await this.plan(goal, roles, code.ok, signal);
+        goal.tasks = normalizeTasks(plan.tasks, {
+          existing: [],
+          roles,
+          round: 1,
+          room: goal.limits.maxTasks,
+          codeTasks: code.ok,
+        });
+        if (plan.summary) goal.summary = plan.summary;
+        this.log(goal, 'info', `planned ${goal.tasks.length} task(s)`, 'planner');
+        if (goal.dryRun) return await this.finish(goal, 'planned');
+      } else {
+        this.log(goal, 'info', `executing planned goal (${goal.tasks.length} task(s))`, 'planner');
+      }
 
       for (;;) {
         await this.update(goal, { status: 'running' });
@@ -389,27 +399,58 @@ export class GoalOrchestrator {
     user: string,
     signal: AbortSignal,
   ): Promise<string> {
-    this.checkpoint(goal, signal);
-    const { completion } = await this.options.router.complete(
-      {
-        model: routeModel(role.route ?? this.options.config.route),
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-      },
-      { signal },
-    );
-    const content = completion.choices[0]?.message.content;
-    const text = typeof content === 'string' ? content : '';
-    const usage = completion.usage;
-    this.addTokens(
-      goal,
-      usage && usage.prompt_tokens + usage.completion_tokens > 0
-        ? usage.prompt_tokens + usage.completion_tokens
-        : countTextTokens(system) + countTextTokens(user) + countTextTokens(text),
-    );
-    return text;
+    const model = routeModel(role.route ?? this.options.config.route);
+    const messages: ChatMessage[] = [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ];
+    let attachTools = this.options.readTools === true;
+    for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
+      this.checkpoint(goal, signal);
+      const allowTools = attachTools && round < MAX_TOOL_ROUNDS;
+      let completion: Awaited<ReturnType<typeof this.options.router.complete>>['completion'];
+      try {
+        ({ completion } = await this.options.router.complete(
+          {
+            model,
+            messages,
+            ...(allowTools ? { tools: [...READ_ONLY_TOOL_DEFINITIONS] } : {}),
+          },
+          { signal },
+        ));
+      } catch (err) {
+        if (allowTools && err instanceof RouterError && err.code === 'no_available_account') {
+          attachTools = false;
+          ({ completion } = await this.options.router.complete({ model, messages }, { signal }));
+        } else {
+          throw err;
+        }
+      }
+      const message = completion.choices[0]?.message;
+      const content = message?.content;
+      const text = typeof content === 'string' ? content : '';
+      const usage = completion.usage;
+      this.addTokens(
+        goal,
+        usage && usage.prompt_tokens + usage.completion_tokens > 0
+          ? usage.prompt_tokens + usage.completion_tokens
+          : countTextTokens(system) + countTextTokens(user) + countTextTokens(text),
+      );
+      const calls = message?.tool_calls ?? [];
+      if (calls.length === 0 || round === MAX_TOOL_ROUNDS) return text;
+      messages.push({ role: 'assistant', content: content ?? null, tool_calls: calls });
+      for (const call of calls) {
+        this.log(goal, 'debug', `tool ${call.function.name}`, role.id, goal.activeTaskId);
+        const outcome = await this.tools.call(call.function.name, call.function.arguments, signal);
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          name: call.function.name,
+          content: outcome.output,
+        });
+      }
+    }
+    return '';
   }
 
   /** Asks for a JSON reply matching `schema`; one corrective retry on malformed output. */

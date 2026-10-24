@@ -99,6 +99,52 @@ describe('/api/goals', () => {
     expect(t.engine.audit.list({ limit: 5 }).some((e) => e.action === 'goal.start')).toBe(true);
   });
 
+  it('executes a planned dry-run goal via POST /api/goals/:id/execute and serves task artifacts', async () => {
+    await setup();
+    const account = t.engine.accounts.create({ provider: 'openai', label: 'a' });
+    t.fake('openai').script(
+      account.id,
+      { type: 'complete', content: PLAN },
+      { type: 'complete', content: '# Market Research\n\nKey insights.' },
+      { type: 'complete', content: '# Landing Copy\n\nHero headline.' },
+      { type: 'complete', content: JSON.stringify({ done: true, summary: 'Shipped' }) },
+    );
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/goals',
+      payload: { objective: 'Launch a landing page', dryRun: true },
+    });
+    const goalId = (created.json().goal as Goal).id;
+    await service.wait(goalId);
+
+    const exec = await app.inject({ method: 'POST', url: `/api/goals/${goalId}/execute` });
+    expect(exec.statusCode).toBe(202);
+    expect((exec.json().goal as Goal).status).toBe('running');
+
+    const done = await service.wait(goalId);
+    expect(done?.status).toBe('succeeded');
+
+    const art = await app.inject({
+      method: 'GET',
+      url: `/api/goals/${goalId}/artifacts/research`,
+    });
+    expect(art.statusCode).toBe(200);
+    expect(art.json()).toEqual({
+      artifact: {
+        taskId: 'research',
+        path: `.davecode/goals/${goalId}/research.md`,
+        content: '# Market Research\n\nKey insights.\n',
+      },
+    });
+
+    const missingArt = await app.inject({
+      method: 'GET',
+      url: `/api/goals/${goalId}/artifacts/nope`,
+    });
+    expect(missingArt.statusCode).toBe(404);
+  });
+
   it('answers 409 busy while the runner holds the working tree, and 404 for unknown goals', async () => {
     await setup();
     lock.acquire('runner');

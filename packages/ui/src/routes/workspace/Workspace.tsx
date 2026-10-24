@@ -1,11 +1,18 @@
-import { ArrowUp, Check, ChevronDown, Square } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, Play, Square } from 'lucide-react';
 import { type FormEvent, useRef, useState } from 'react';
 import { Markdown } from '../../components/Markdown';
 import { Button } from '../../components/ui/Button';
 import { Callout } from '../../components/ui/Callout';
 import { errorMessage, isApiError } from '../../lib/api';
 import { useData } from '../../lib/data';
-import { useAccounts, useCancelGoal, useGoals, useStartGoal, useTasks } from '../../lib/queries';
+import {
+  useAccounts,
+  useCancelGoal,
+  useExecuteGoal,
+  useGoals,
+  useStartGoal,
+  useTasks,
+} from '../../lib/queries';
 import { Link, navigate, useLocation } from '../../lib/router';
 import type { GoalStatus } from '../../lib/types';
 import { GoalDetail, isActiveGoal } from '../goals/Goals';
@@ -45,6 +52,7 @@ export function Workspace() {
   const accounts = useAccounts();
   const tasks = useTasks();
   const start = useStartGoal();
+  const execute = useExecuteGoal();
   const cancel = useCancelGoal();
   const input = useRef<HTMLTextAreaElement>(null);
   const [objective, setObjective] = useState(() => (params.get('brief') ?? '').slice(0, 4000));
@@ -169,9 +177,24 @@ export function Workspace() {
               </p>
             )}
             {current.status === 'planned' && (
-              <p className="mt-5 text-[13px] leading-6 text-muted">
-                To execute, start a new task with “Plan and work”.
-              </p>
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Play}
+                  loading={execute.isPending}
+                  disabled={Boolean(running)}
+                  onClick={() => {
+                    setError(undefined);
+                    execute.mutate(current.id, { onError: (err) => setError(errorMessage(err)) });
+                  }}
+                >
+                  Execute this plan
+                </Button>
+                <span className="text-[13px] leading-6 text-muted">
+                  Runs the planned steps above without re-planning.
+                </span>
+              </div>
             )}
           </section>
           <details className="text-[12px] text-muted">

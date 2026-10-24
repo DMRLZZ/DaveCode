@@ -447,6 +447,13 @@ export interface GoalStart {
   dryRun?: boolean;
 }
 
+/** `GET /api/goals/:id/artifacts/:taskId` response payload. */
+export interface GoalArtifact {
+  taskId: string;
+  path: string;
+  content: string;
+}
+
 /** `PUT /api/routes` body. `defaultRoute` must be one of `routes`. */
 export interface RoutesUpdate {
   routes: Route[];

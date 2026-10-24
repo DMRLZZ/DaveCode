@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { backoffDelay, parseEvent } from './events';
+import { backoffDelay, EVENT_TYPES, parseEvent } from './events';
 import { LiveStore, minuteOf } from './live';
-import type { DaveEvent } from './types';
+import type { DaveEvent, DaveEventType } from './types';
 
 describe('LiveStore', () => {
   const now = Date.now();
@@ -70,5 +70,25 @@ describe('event stream helpers', () => {
     );
     expect(parseEvent('not json')).toBeNull();
     expect(parseEvent('{"no":"type"}')).toBeNull();
+  });
+
+  it('registers listeners for every DaveEventType including goal events', () => {
+    const required: Record<DaveEventType, true> = {
+      'request.started': true,
+      'request.completed': true,
+      'request.failed': true,
+      'router.failover': true,
+      'account.updated': true,
+      'account.removed': true,
+      'quota.updated': true,
+      'task.updated': true,
+      'task.removed': true,
+      'runner.status': true,
+      'runner.log': true,
+      'goal.updated': true,
+      'goal.log': true,
+      log: true,
+    };
+    expect([...EVENT_TYPES].sort()).toEqual(Object.keys(required).sort());
   });
 });

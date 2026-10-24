@@ -309,6 +309,25 @@ export function useStartGoal() {
   });
 }
 
+export function useExecuteGoal() {
+  const { client } = useData();
+  const upsert = useGoalsCache();
+  return useMutation({
+    mutationFn: (id: string) => client.executeGoal(id),
+    onSuccess: (goal) => upsert(goal),
+  });
+}
+
+export function useGoalArtifact(goalId: string | undefined, taskId: string | undefined) {
+  const { client, sourceKey } = useData();
+  return useQuery({
+    queryKey: qk(sourceKey, 'goal-artifact', goalId ?? '', taskId ?? ''),
+    queryFn: () => client.goalArtifact(goalId as string, taskId as string),
+    enabled: Boolean(goalId && taskId),
+    staleTime: 60_000,
+  });
+}
+
 export function useCancelGoal() {
   const { client } = useData();
   const upsert = useGoalsCache();

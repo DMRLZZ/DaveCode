@@ -410,6 +410,46 @@ describe('experimental and subscription filtering', () => {
     const { meta } = await h.router.complete(chat('claude-cli/claude-x'));
     expect(meta).toMatchObject({ accountId: b.id, failovers: 1 });
   });
+
+  it('skips non-tool-capable CLI/web providers when tools are requested', async () => {
+    const h = harness({
+      config: {
+        experimental: { geminiWeb: true },
+        routing: {
+          routes: [
+            {
+              name: 'auto',
+              targets: [
+                { provider: 'claude-cli', model: 'claude-x' },
+                { provider: 'gemini-web', model: 'gemini-x' },
+                { provider: 'anthropic', model: 'claude-x' },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    const cli = h.add({ provider: 'claude-cli', label: 'cli', priority: 1 });
+    const web = h.add({ provider: 'gemini-web', label: 'web', priority: 2 });
+    const api = h.add({ provider: 'anthropic', label: 'api', priority: 10 });
+    const req: ChatRequest = {
+      ...chat('davecode/auto'),
+      tools: [{ type: 'function', function: { name: 'read_file' } }],
+    };
+    const plan = h.router.plan(req);
+    expect(plan.candidates.map((c) => c.account.id)).toEqual([api.id]);
+    expect(plan.skipped).toEqual([
+      { accountId: cli.id, model: 'claude-x', reason: 'no_tools' },
+      { accountId: web.id, model: 'gemini-x', reason: 'no_tools' },
+    ]);
+
+    const { meta } = await h.router.complete(req);
+    expect(meta).toMatchObject({ accountId: api.id, provider: 'anthropic', failovers: 0 });
+
+    // When tool_choice is 'none', CLI/web providers are eligible again.
+    const noChoicePlan = h.router.plan({ ...req, tool_choice: 'none' });
+    expect(noChoicePlan.candidates[0]?.account.id).toBe(cli.id);
+  });
 });
 
 describe('scoring', () => {

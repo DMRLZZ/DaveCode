@@ -495,6 +495,8 @@ Runner configuration (`runner.*`, all optional):
 | `GET` | `/api/goals` | — | `{ "goals": Goal[] }` |
 | `GET` | `/api/goals/:id` | — | `{ "goal": Goal }` |
 | `POST` | `/api/goals` | `GoalStartInput` | `202 { "goal": Goal }` |
+| `POST` | `/api/goals/:id/execute` | — | `202 { "goal": Goal }` (runs a `planned` dry-run goal) |
+| `GET` | `/api/goals/:id/artifacts/:taskId` | — | `{ "artifact": { "taskId": string, "path": string, "content": string } }` |
 | `POST` | `/api/goals/:id/cancel` | — | `{ "goal": Goal }` (once it has stopped) |
 
 ```ts

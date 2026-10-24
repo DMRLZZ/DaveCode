@@ -1,4 +1,12 @@
-import { FileText, Play, ShieldCheck, Square, Target } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Play,
+  ShieldCheck,
+  Square,
+  Target,
+} from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { TaskStatusBadge } from '../../components/domain';
 import { Markdown } from '../../components/Markdown';
@@ -16,7 +24,13 @@ import { errorMessage, isApiError } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { useLive } from '../../lib/data';
 import { formatClock, formatCompact, formatRelative } from '../../lib/format';
-import { useCancelGoal, useGoals, useStartGoal } from '../../lib/queries';
+import {
+  useCancelGoal,
+  useExecuteGoal,
+  useGoalArtifact,
+  useGoals,
+  useStartGoal,
+} from '../../lib/queries';
 import { toast } from '../../lib/toast';
 import type { Goal, GoalStart, GoalStatus } from '../../lib/types';
 
@@ -310,8 +324,10 @@ function Meter({
 
 export function GoalDetail({ goal }: { goal: Goal }) {
   const cancel = useCancelGoal();
+  const execute = useExecuteGoal();
   const live = useLive();
   const [confirm, setConfirm] = useState(false);
+  const [openArtifact, setOpenArtifact] = useState<string>();
   const active = isActiveGoal(goal);
   const done = goal.tasks.filter((t) => t.status === 'SUCCESS').length;
   const logs = live.events.filter(
@@ -327,6 +343,14 @@ export function GoalDetail({ goal }: { goal: Goal }) {
         toast({ tone: 'err', title: 'Could not cancel', description: errorMessage(err) }),
     });
 
+  const doExecute = () =>
+    execute.mutate(goal.id, {
+      onSuccess: (g) =>
+        toast({ tone: 'info', title: 'Executing planned goal', description: g.objective }),
+      onError: (err) =>
+        toast({ tone: 'err', title: 'Could not execute plan', description: errorMessage(err) }),
+    });
+
   return (
     <Panel aria-labelledby="goal-detail-title" className="min-w-0">
       <PanelHeader
@@ -338,17 +362,30 @@ export function GoalDetail({ goal }: { goal: Goal }) {
           </Badge>
         }
         actions={
-          active && (
-            <Button
-              size="sm"
-              variant="danger"
-              icon={Square}
-              loading={cancel.isPending}
-              onClick={() => setConfirm(true)}
-            >
-              Cancel
-            </Button>
-          )
+          <>
+            {goal.status === 'planned' && (
+              <Button
+                size="sm"
+                variant="primary"
+                icon={Play}
+                loading={execute.isPending}
+                onClick={doExecute}
+              >
+                Execute plan
+              </Button>
+            )}
+            {active && (
+              <Button
+                size="sm"
+                variant="danger"
+                icon={Square}
+                loading={cancel.isPending}
+                onClick={() => setConfirm(true)}
+              >
+                Cancel
+              </Button>
+            )}
+          </>
         }
       />
       <div className="flex flex-col gap-4 p-4">
@@ -398,11 +435,34 @@ export function GoalDetail({ goal }: { goal: Goal }) {
                     <p className="text-2xs text-muted">after {task.dependsOn.join(', ')}</p>
                   )}
                   {task.artifact && (
-                    <p className="flex items-center gap-1.5 font-mono text-2xs text-fg-2">
-                      <FileText aria-hidden className="size-3.5 text-muted" strokeWidth={1.75} />
-                      <span className="truncate">{task.artifact}</span>
-                      <CopyButton value={task.artifact} label="Copy path" />
-                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex items-center gap-1.5 font-mono text-2xs text-fg-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpenArtifact((prev) => (prev === task.id ? undefined : task.id))
+                          }
+                          aria-expanded={openArtifact === task.id}
+                          className="inline-flex items-center gap-1 rounded px-1 py-0.5 text-fg-2 transition-colors hover:bg-hover hover:text-fg"
+                        >
+                          {openArtifact === task.id ? (
+                            <ChevronDown aria-hidden className="size-3.5 text-muted" />
+                          ) : (
+                            <ChevronRight aria-hidden className="size-3.5 text-muted" />
+                          )}
+                          <FileText
+                            aria-hidden
+                            className="size-3.5 text-muted"
+                            strokeWidth={1.75}
+                          />
+                          <span className="truncate">{task.artifact}</span>
+                        </button>
+                        <CopyButton value={task.artifact} label="Copy path" />
+                      </div>
+                      {openArtifact === task.id && (
+                        <ArtifactReader goalId={goal.id} taskId={task.id} />
+                      )}
+                    </div>
                   )}
                   {task.status === 'FAILED' && task.notes && (
                     <p className="line-clamp-3 font-mono text-2xs text-err">{task.notes}</p>
@@ -476,5 +536,28 @@ export function GoalDetail({ goal }: { goal: Goal }) {
         <p className="text-[12px] text-muted">{goal.objective}</p>
       </Dialog>
     </Panel>
+  );
+}
+
+function ArtifactReader({ goalId, taskId }: { goalId: string; taskId: string }) {
+  const artifact = useGoalArtifact(goalId, taskId);
+  if (artifact.isPending) {
+    return <SkeletonRows rows={3} className="p-2" />;
+  }
+  if (artifact.isError) {
+    return (
+      <p className="rounded-md border border-err/30 bg-err-soft p-2 font-mono text-2xs text-err">
+        {errorMessage(artifact.error)}
+      </p>
+    );
+  }
+  return (
+    <div className="rounded-md border border-line bg-raised/50 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2 border-b border-line pb-1.5">
+        <span className="font-mono text-2xs text-muted">{artifact.data.path}</span>
+        <CopyButton value={artifact.data.content} label="Copy markdown" />
+      </div>
+      <Markdown source={artifact.data.content} className="text-[13px]" />
+    </div>
   );
 }

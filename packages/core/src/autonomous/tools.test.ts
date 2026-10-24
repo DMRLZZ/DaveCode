@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   PathEscapeError,
+  READ_ONLY_TOOL_DEFINITIONS,
   repairDoubleEscaped,
   resolveRepoPath,
   TOOL_DEFINITIONS,
@@ -144,14 +145,34 @@ describe('WorkspaceTools', () => {
     expect(readFileSync(join(root, 'crlf.txt'), 'utf8')).toBe('uno\r\ndos\r\nthree\r\n');
   });
 
-  it('searches files, skipping node_modules', async () => {
+  it('searches files, skipping node_modules and .gitignore patterns', async () => {
+    mkdirSync(join(root, 'ignored-dir'), { recursive: true });
+    writeFileSync(join(root, 'ignored-dir', 'skip.ts'), 'export const a = 1;\n');
+    writeFileSync(join(root, 'src', 'debug.log'), 'export const a = 1;\n');
+    writeFileSync(join(root, '.gitignore'), '# comment\nignored-dir/\n*.log\n');
+
     const res = await tools.call('search', args({ query: 'export const a' }));
     expect(res.output).toContain('src/a.ts:1:');
     expect(res.output).not.toContain('node_modules');
+    expect(res.output).not.toContain('ignored-dir');
+    expect(res.output).not.toContain('debug.log');
     const re = await tools.call('search', args({ query: 'const [ab] = 2', regex: true }));
     expect(re.output).toContain('src/a.ts:2:');
     const bad = await tools.call('search', args({ query: '(', regex: true }));
     expect(bad.ok).toBe(false);
+  });
+
+  it('enforces readOnly mode and exposes READ_ONLY_TOOL_DEFINITIONS', async () => {
+    expect(READ_ONLY_TOOL_DEFINITIONS.map((t) => t.function.name)).toEqual([
+      'list_dir',
+      'read_file',
+      'search',
+    ]);
+    const ro = new WorkspaceTools({ root, readOnly: true });
+    expect((await ro.call('read_file', args({ path: 'src/a.ts' }))).ok).toBe(true);
+    const write = await ro.call('write_file', args({ path: 'src/x.ts', content: '1' }));
+    expect(write.ok).toBe(false);
+    expect(write.output).toMatch(/read-only mode/);
   });
 
   it('refuses writes outside the root and into the brain', async () => {

@@ -610,6 +610,20 @@ export class MockEngine implements DaveClient {
     });
   }
 
+  executeGoal(id: string): Promise<Goal> {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.execute(id);
+    });
+  }
+
+  goalArtifact(id: string, taskId: string) {
+    return this.respond(() => {
+      this.assertGoals();
+      return this.goalSim.artifact(id, taskId);
+    });
+  }
+
   cancelGoal(id: string): Promise<Goal> {
     return this.respond(() => {
       this.assertGoals();

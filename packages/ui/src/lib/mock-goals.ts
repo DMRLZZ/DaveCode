@@ -1,5 +1,14 @@
 import { ApiError } from './api';
-import type { DaveEvent, Goal, GoalRole, GoalStart, GoalStatus, GoalTask, LogLevel } from './types';
+import type {
+  DaveEvent,
+  Goal,
+  GoalArtifact,
+  GoalRole,
+  GoalStart,
+  GoalStatus,
+  GoalTask,
+  LogLevel,
+} from './types';
 
 /**
  * Goal mode for the in-browser mock: a planner proposes a small task graph, role agents work
@@ -164,6 +173,55 @@ export class MockGoals {
     for (const t of goal.tasks) if (t.status === 'IN_PROGRESS') t.status = 'PENDING';
     this.finish(goal, 'cancelled');
     return goal;
+  }
+
+  execute(id: string): Goal {
+    const running = this.list.find((g) => !TERMINAL.has(g.status));
+    if (running) {
+      throw new ApiError(409, 'busy', `goal ${running.id} is still running; cancel it first`);
+    }
+    const goal = this.list.find((g) => g.id === id);
+    if (!goal) throw new ApiError(404, 'not_found', `unknown goal "${id}"`);
+    if (goal.status !== 'planned') {
+      throw new ApiError(
+        400,
+        'invalid',
+        `goal "${id}" is ${goal.status}; only a planned goal can be executed`,
+      );
+    }
+    delete goal.dryRun;
+    delete goal.finishedAt;
+    delete goal.lastError;
+    goal.status = 'running';
+    this.update(goal);
+    this.log(goal, 'info', `executing planned goal (${goal.tasks.length} task(s))`, 'planner');
+    this.host.later(STEP_MS, () => this.step(goal));
+    return goal;
+  }
+
+  artifact(id: string, taskId: string): GoalArtifact {
+    const goal = this.list.find((g) => g.id === id);
+    if (!goal) throw new ApiError(404, 'not_found', `unknown goal "${id}"`);
+    const task = goal.tasks.find((t) => t.id === taskId);
+    if (!task?.artifact) {
+      throw new ApiError(404, 'not_found', `task "${taskId}" has no artifact in goal "${id}"`);
+    }
+    return {
+      taskId: task.id,
+      path: task.artifact,
+      content: [
+        `# ${task.title}`,
+        '',
+        `- **Goal:** ${goal.objective}`,
+        `- **Role:** \`${task.role}\` (round ${task.round})`,
+        '',
+        '## Summary',
+        '',
+        task.id === 'outreach'
+          ? 'Draft email prepared for human review. DaveCode never sends outbound messages or takes external actions automatically.'
+          : `Completed deliverable for **${task.title.toLowerCase()}** based on repository state and quota-aware routing.`,
+      ].join('\n'),
+    };
   }
 
   // -- simulation ---------------------------------------------------------------

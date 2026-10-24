@@ -42,6 +42,8 @@ function describeReason(
       return 'experimental provider is off';
     case 'no_provider':
       return 'no adapter for this provider';
+    case 'no_tools':
+      return 'provider does not support tool calls';
     case 'subscription':
       return 'not the primary subscription account (rotation is off)';
     case 'cooldown':

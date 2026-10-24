@@ -122,6 +122,7 @@ export class GoalStore {
   }
 
   async readArtifact(goalId: string, taskId: string): Promise<string | undefined> {
+    if (!isGoalId(goalId) || !/^[-a-zA-Z0-9_]{1,64}$/.test(taskId)) return undefined;
     return readFileIfExists(join(this.goalDir(goalId), `${taskId}.md`));
   }
 }
