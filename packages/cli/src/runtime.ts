@@ -21,6 +21,8 @@ import { type GatewayOptions, type ProjectInfo, startGateway } from '@davecode/s
 import { connectHost } from './client';
 import { launchLoginTerminal } from './lib/terminal';
 
+export { launchLoginTerminal } from './lib/terminal';
+
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
 /**
@@ -164,6 +166,8 @@ export interface RuntimeOptions {
   /** Serve the dashboard when it is built (default true, and `server.dashboard` must be on). */
   dashboard?: boolean;
   logger?: GatewayOptions['logger'];
+  /** Desktop hosts can launch official sign-in using their bundled CLI and Node runtime. */
+  loginLauncher?: GatewayOptions['loginLauncher'];
   /** Programmatic config overrides. */
   config?: DaveConfigInput;
   /** Inject a pre-built engine (tests). It is closed with the runtime. */
@@ -227,7 +231,9 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
 
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
-      ...(loginLauncher ? { loginLauncher } : {}),
+      ...((options.loginLauncher ?? loginLauncher)
+        ? { loginLauncher: options.loginLauncher ?? loginLauncher }
+        : {}),
       ...(dashboardDir ? { dashboardDir } : {}),
       ...(project ? { brain: project.source, runner: project.runner, goals: project.goals } : {}),
       ...(options.host !== undefined ? { host: options.host } : {}),

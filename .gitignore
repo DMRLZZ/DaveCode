@@ -38,3 +38,7 @@ Thumbs.db
 
 # packed npm tarballs
 *.tgz
+
+# Desktop staging and installer artifacts
+packages/desktop/.stage/
+packages/desktop/release/

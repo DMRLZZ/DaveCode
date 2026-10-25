@@ -81,6 +81,8 @@ The npm package contains engine 0.3.0. Historical preview tarballs remain availa
 
 ### Build from source
 
+For the independent Windows app and installer, see [desktop setup](docs/DESKTOP.md).
+
 > Requires **Node.js 22.12+**. The `davecode` package is standalone: it bundles the engine, the
 > gateway and the dashboard. Its npm name is `@dmrlzz/davecode`; the installed command is
 > `davecode`.

@@ -12,6 +12,8 @@ export type DetachedSpawn = (
 };
 
 export interface TerminalOptions {
+  /** Override the CLI entry point when hosted by a bundled desktop runtime. */
+  argv?: readonly string[];
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   spawn?: DetachedSpawn;
@@ -98,7 +100,7 @@ export function launchLoginTerminal(
   options: TerminalOptions = {},
 ): Promise<boolean> {
   const platform = options.platform ?? process.platform;
-  const target = terminalCommand(loginInvocation(accountId), options);
+  const target = terminalCommand(loginInvocation(accountId, options.argv), options);
   if (!target) return Promise.resolve(false);
   const spawn = options.spawn ?? (nodeSpawn as unknown as DetachedSpawn);
   return new Promise((resolve) => {

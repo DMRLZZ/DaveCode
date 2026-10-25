@@ -4,6 +4,12 @@
   "description": "DaveCode CLI & TUI: run the gateway, manage accounts and drive the autonomous engine from your terminal.",
   "license": "MIT",
   "type": "module",
+  "exports": {
+    "./runtime": {
+      "source": "./src/runtime.ts",
+      "default": "./dist/runtime.js"
+    }
+  },
   "bin": {
     "davecode": "bin/davecode.js"
   },

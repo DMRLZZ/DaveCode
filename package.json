@@ -13,6 +13,8 @@
     "build": "pnpm -r build",
     "dev": "pnpm --filter @davecode/server dev",
     "dev:ui": "pnpm --filter @davecode/ui dev",
+    "desktop": "pnpm --filter @davecode/desktop start",
+    "desktop:package": "pnpm build && pnpm --filter @davecode/desktop package",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",

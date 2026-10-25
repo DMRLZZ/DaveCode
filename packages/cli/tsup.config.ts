@@ -15,7 +15,7 @@ const dashboardOut = fileURLToPath(new URL('./dist/dashboard', import.meta.url))
  * which `resolveDashboardDir()` checks first.
  */
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/runtime.ts'],
   format: ['esm'],
   target: 'node22',
   platform: 'node',

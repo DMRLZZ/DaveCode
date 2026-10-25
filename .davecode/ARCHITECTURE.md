@@ -5,7 +5,8 @@ Condensed context injected into autonomous tasks. The full document is
 
 - **Stack:** Node ≥ 22.12, TypeScript strict, ESM, pnpm workspaces, tsup, Vitest, Biome.
 - **Packages:** `core` (all domain logic, imports nothing internal), `server` (Fastify HTTP
-  only), `cli` (commander + Ink), `ui` (Vite + React + Tailwind, HTTP only).
+  only), `cli` (commander + Ink), `ui` (Vite + React + Tailwind, HTTP only), `desktop`
+  (Electron window + project picker; bundled Node child owns the local gateway).
 - **Contracts:** `packages/core/src/types.ts` and `events.ts` are the source of truth;
   `docs/API.md` must match them.
 - **Storage:** `better-sqlite3` in WAL mode at `~/.davecode/state.db`; secrets encrypted with

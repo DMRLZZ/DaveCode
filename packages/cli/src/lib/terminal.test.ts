@@ -115,4 +115,21 @@ describe('launchLoginTerminal', () => {
     ).toBe(false);
     expect(none.calls).toHaveLength(0);
   });
+
+  it('uses the desktop host’s bundled CLI entry point for official sign-in', async () => {
+    const desktop = fakeSpawn('spawn');
+    expect(
+      await launchLoginTerminal('acc_1', {
+        platform: 'win32',
+        env: {},
+        spawn: desktop.spawn,
+        argv: [
+          process.execPath,
+          'C:\\Program Files\\DaveCode\\resources\\runtime\\cli\\bin\\davecode.js',
+        ],
+      }),
+    ).toBe(true);
+    expect(desktop.calls[0]?.args.join(' ')).toContain('resources\\runtime\\cli\\bin\\davecode.js');
+    expect(desktop.calls[0]?.args.join(' ')).toContain('accounts" "login" "acc_1" "--hold');
+  });
 });
