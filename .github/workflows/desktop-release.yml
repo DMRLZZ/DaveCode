@@ -1,0 +1,53 @@
+name: Publish desktop installer
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Successful Desktop installer workflow run ID
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN: ${{ inputs.build_run }}
+    steps:
+      - name: Verify the build and download its tested artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_RUN" =~ ^[0-9]+$ ]]
+          gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" > run.json
+          test "$(jq -r .conclusion run.json)" = success
+          test "$(jq -r .name run.json)" = 'Desktop installer'
+          source_sha="$(jq -r .head_sha run.json)"
+          [[ "$source_sha" =~ ^[a-f0-9]{40}$ ]]
+          echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
+          gh run download "$BUILD_RUN" --name DaveCode-Windows --dir release
+          test -f release/DaveCode-Setup-0.3.0-x64.exe
+          cd release
+          sha256sum ./*.exe > SHA256SUMS
+      - name: Publish the verified Windows installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > notes.md <<'NOTES'
+          DaveCode desktop preview for Windows x64.
+
+          Download and run **DaveCode-Setup-0.3.0-x64.exe**. Node.js is included; no separate Node or npm installation is required. Open a project from the app and connect your AI provider.
+
+          Includes the independent desktop window, native project picker, local gateway lifecycle, Start menu and desktop shortcuts. The installer is unsigned. Vendor CLIs and Git are installed separately when needed.
+
+          Validation: lint, typecheck, 732 tests, build, and a packaged executable acceptance check covering the workspace, authenticated gateway and clean shutdown. The attached screenshot uses a disposable test project.
+          NOTES
+          gh release create desktop-v0.3.0 release/*.exe release/SHA256SUMS release/smoke/desktop.png \
+            --target "$SOURCE_SHA" --title 'DaveCode Desktop v0.3.0 Preview' \
+            --notes-file notes.md --prerelease
