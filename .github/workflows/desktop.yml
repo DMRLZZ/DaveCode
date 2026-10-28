@@ -3,7 +3,7 @@ name: Desktop installer
 on:
   workflow_dispatch:
   push:
-    tags: ['desktop-v*']
+    tags: ["desktop-v*"]
 
 permissions:
   contents: write

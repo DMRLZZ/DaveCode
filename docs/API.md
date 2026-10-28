@@ -2,10 +2,10 @@
 
 The gateway listens on `http://127.0.0.1:4040` by default and exposes two surfaces:
 
-| Prefix | Audience | Purpose |
-| :----- | :------- | :------ |
-| `/v1`  | Any OpenAI-compatible client (SDKs, editors, agents) | Chat completions with quota-aware routing and hot failover |
-| `/api` | The DaveCode dashboard, TUI and scripts | Accounts, usage, routes, task graph, runner control, live events |
+| Prefix | Audience                                             | Purpose                                                          |
+| :----- | :--------------------------------------------------- | :--------------------------------------------------------------- |
+| `/v1`  | Any OpenAI-compatible client (SDKs, editors, agents) | Chat completions with quota-aware routing and hot failover       |
+| `/api` | The DaveCode dashboard, TUI and scripts              | Accounts, usage, routes, task graph, runner control, live events |
 
 All shapes referenced below (`Account`, `AccountUsage`, `UsageRecord`, `Route`, `TaskGraph`,
 `RunnerStatus`, `DaveEvent`, …) are defined in
@@ -25,17 +25,17 @@ by default.
   `{ "error": { "message": string, "type": string, "code": string | null } }`
 - `/api/*` uses `{ "error": { "message": string, "code": string } }`
 
-| Status | Meaning |
-| :----- | :------ |
-| 400 | Invalid body (zod validation message included, code `invalid_body`), or `experimental_disabled` |
-| 401 | Missing/invalid bearer token (`invalid_api_key` on `/v1`, `unauthorized` on `/api`) |
-| 404 | Unknown resource (`not_found`) or no account can serve the model (`model_not_found`) |
-| 404 | also `task_not_found`: `POST /api/runner/start` named a task id that does not exist |
-| 409 | The autonomous runner refused to start; `code` is the `RunnerError` code: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`, `invalid_graph`, `busy`, or for a targeted start `task_not_runnable` (the task is not `PENDING`) and `task_blocked` (it depends on unfinished tasks, which the message names) |
-| 429 | Every candidate account is saturated or cooling down (`no_capacity`), or every attempt was rate limited upstream (`rate_limited`) |
-| 501 | The autonomous runner is not available in this process (`runner_unavailable`) |
-| 502 | All failover targets failed upstream (`upstream_failed`), or upstream credentials were rejected (`upstream_auth_error`) |
-| 503 | Matching accounts exist but none is usable: disabled, in error or without an adapter (`no_available_account`) |
+| Status | Meaning                                                                                                                                                                                                                                                                                                               |
+| :----- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | Invalid body (zod validation message included, code `invalid_body`), or `experimental_disabled`                                                                                                                                                                                                                       |
+| 401    | Missing/invalid bearer token (`invalid_api_key` on `/v1`, `unauthorized` on `/api`)                                                                                                                                                                                                                                   |
+| 404    | Unknown resource (`not_found`) or no account can serve the model (`model_not_found`)                                                                                                                                                                                                                                  |
+| 404    | also `task_not_found`: `POST /api/runner/start` named a task id that does not exist                                                                                                                                                                                                                                   |
+| 409    | The autonomous runner refused to start; `code` is the `RunnerError` code: `not_a_repo`, `no_brain`, `no_base_branch`, `dirty_worktree`, `invalid_graph`, `busy`, or for a targeted start `task_not_runnable` (the task is not `PENDING`) and `task_blocked` (it depends on unfinished tasks, which the message names) |
+| 429    | Every candidate account is saturated or cooling down (`no_capacity`), or every attempt was rate limited upstream (`rate_limited`)                                                                                                                                                                                     |
+| 501    | The autonomous runner is not available in this process (`runner_unavailable`)                                                                                                                                                                                                                                         |
+| 502    | All failover targets failed upstream (`upstream_failed`), or upstream credentials were rejected (`upstream_auth_error`)                                                                                                                                                                                               |
+| 503    | Matching accounts exist but none is usable: disabled, in error or without an adapter (`no_available_account`)                                                                                                                                                                                                         |
 
 Upstream errors that are not failover-eligible are returned as-is with their kind as `code`:
 `bad_request` → 400, `context_length` → 400 `context_length_exceeded`, `auth` → 502
@@ -75,12 +75,12 @@ Non-streaming responses return a `ChatCompletion`. With `"stream": true` the res
 
 Response headers:
 
-| Header | Description |
-| :----- | :---------- |
+| Header                  | Description                                                    |
+| :---------------------- | :------------------------------------------------------------- |
 | `x-davecode-request-id` | Correlates with `request.*` events and `UsageRecord.requestId` |
-| `x-davecode-account` | Account id that finally served the request |
-| `x-davecode-provider` | Provider kind that served the request |
-| `x-davecode-failovers` | Number of failover hops taken |
+| `x-davecode-account`    | Account id that finally served the request                     |
+| `x-davecode-provider`   | Provider kind that served the request                          |
+| `x-davecode-failovers`  | Number of failover hops taken                                  |
 
 Failover only happens **before the first byte** is sent to the client; once a stream has started,
 upstream errors are forwarded as a final error chunk.
@@ -104,14 +104,14 @@ upstream errors are forwarded as a final error chunk.
 
 ### Accounts
 
-| Method | Path | Body | Response |
-| :----- | :--- | :--- | :------- |
-| `GET` | `/api/accounts` | — | `{ "accounts": Account[] }` |
-| `POST` | `/api/accounts` | `AccountCreate` | `201 { "account": Account }` |
-| `PATCH` | `/api/accounts/:id` | `AccountPatch` | `{ "account": Account }` |
-| `DELETE` | `/api/accounts/:id` | — | `204` |
-| `GET` | `/api/accounts/:id/connection` | — | `{ "connection": AccountConnection }` |
-| `POST` | `/api/accounts/:id/connect` | `{}` (JSON) | `{ "connect": ConnectResult }` |
+| Method   | Path                           | Body            | Response                              |
+| :------- | :----------------------------- | :-------------- | :------------------------------------ |
+| `GET`    | `/api/accounts`                | —               | `{ "accounts": Account[] }`           |
+| `POST`   | `/api/accounts`                | `AccountCreate` | `201 { "account": Account }`          |
+| `PATCH`  | `/api/accounts/:id`            | `AccountPatch`  | `{ "account": Account }`              |
+| `DELETE` | `/api/accounts/:id`            | —               | `204`                                 |
+| `GET`    | `/api/accounts/:id/connection` | —               | `{ "connection": AccountConnection }` |
+| `POST`   | `/api/accounts/:id/connect`    | `{}` (JSON)     | `{ "connect": ConnectResult }`        |
 
 `POST /api/accounts/:id/connect` ("Connect subscription") starts the vendor's **official** login
 for a `cli-login` account (`claude auth login`, `codex login`, Gemini CLI's "Login with Google")
@@ -128,12 +128,12 @@ and `gemini-web` accounts, `404 not_found`.
 interface AccountCreate {
   provider: ProviderKind;
   label: string;
-  priority?: number;          // default 100
-  weight?: number;            // default 1
+  priority?: number; // default 100
+  weight?: number; // default 1
   limits?: QuotaLimits;
   config?: Record<string, unknown>;
   subscription?: SubscriptionInfo; // plan, paid/renewal dates, optional price
-  secret?: string;            // API key / token — encrypted at rest, never returned
+  secret?: string; // API key / token — encrypted at rest, never returned
 }
 type AccountPatch = Partial<Omit<AccountCreate, 'provider' | 'subscription'>> & {
   enabled?: boolean;
@@ -166,9 +166,9 @@ entered by hand: DaveCode never scrapes billing pages. It is omitted when nothin
 
 ```ts
 interface SubscriptionInfo {
-  plan?: string;       // "Claude Pro", "ChatGPT Plus", "API pay-as-you-go"…
-  paidAt?: string;     // YYYY-MM-DD or ISO timestamp
-  renewsAt?: string;   // YYYY-MM-DD or ISO timestamp
+  plan?: string; // "Claude Pro", "ChatGPT Plus", "API pay-as-you-go"…
+  paidAt?: string; // YYYY-MM-DD or ISO timestamp
+  renewsAt?: string; // YYYY-MM-DD or ISO timestamp
   price?: { amount: number; currency: string; period: 'month' | 'year' };
   notes?: string;
 }
@@ -181,10 +181,10 @@ interface ReportedLimits {
   tokensLimit?: number;
   requestsRemaining?: number;
   requestsLimit?: number;
-  resetAt?: string;     // ISO
-  exhausted?: boolean;  // refused until resetAt
+  resetAt?: string; // ISO
+  exhausted?: boolean; // refused until resetAt
   source: 'headers' | 'error';
-  observedAt: string;   // ISO
+  observedAt: string; // ISO
 }
 
 interface AccountBudget {
@@ -193,19 +193,19 @@ interface AccountBudget {
   provider: ProviderKind;
   enabled: boolean;
   subscription?: SubscriptionInfo;
-  renewsInDays?: number;           // negative when overdue
-  remaining: number | null;        // 0..1 of the tightest known limit; null = unmetered
-  tightestWindow?: QuotaWindow;    // when `remaining` comes from DaveCode's own limits
+  renewsInDays?: number; // negative when overdue
+  remaining: number | null; // 0..1 of the tightest known limit; null = unmetered
+  tightestWindow?: QuotaWindow; // when `remaining` comes from DaveCode's own limits
   usage: AccountUsage;
   reported?: ReportedLimits;
-  available: boolean;              // would the router send traffic there now?
-  unavailableReason?: string;      // disabled, error, cooldown, exhausted…
+  available: boolean; // would the router send traffic there now?
+  unavailableReason?: string; // disabled, error, cooldown, exhausted…
 }
 
 interface BudgetSnapshot {
   generatedAt: string;
   accounts: AccountBudget[];
-  context: string;                 // compact text injected into agent prompts
+  context: string; // compact text injected into agent prompts
 }
 ```
 
@@ -225,28 +225,28 @@ interface AccountConnection {
   provider: ProviderKind;
   method: ConnectionMethod;
   status: ConnectionStatus;
-  detail?: string;        // explanation or caveat; never credentials or account emails
-  loginCommand?: string;  // `davecode accounts login <id>` (cli-login only)
-  checkedAt: string;      // ISO
+  detail?: string; // explanation or caveat; never credentials or account emails
+  loginCommand?: string; // `davecode accounts login <id>` (cli-login only)
+  checkedAt: string; // ISO
 }
 
 interface ConnectResult {
   connection: AccountConnection;
-  launched: boolean;      // the gateway opened a terminal running the official login
-  command: string;        // what to run by hand otherwise
+  launched: boolean; // the gateway opened a terminal running the official login
+  command: string; // what to run by hand otherwise
   message: string;
 }
 ```
 
 How each method is checked (core `ConnectionChecker`, exposed as `engine.connections`):
 
-| Provider | Check |
-| :------- | :---- |
-| API-key kinds | `hasSecret` (keyring). `openai-compatible` without a key counts as connected. |
-| `claude-cli` | `claude auth status --json` (`loggedIn`) with `CLAUDE_CONFIG_DIR` set. When it reports a login but the sandbox holds no `.credentials.json` (outside macOS, where the keychain is used), `detail` warns that it is probably the global Claude Code login and the account is not isolated. |
-| `codex-cli` | exit code of `codex login status` with `CODEX_HOME` set. |
-| `gemini-cli` | presence of `<sandbox>/.gemini/oauth_creds.json` (written by Gemini CLI; never read). |
-| `gemini-web` | `unknown`: checking would mean opening the browser profile. |
+| Provider      | Check                                                                                                                                                                                                                                                                                     |
+| :------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API-key kinds | `hasSecret` (keyring). `openai-compatible` without a key counts as connected.                                                                                                                                                                                                             |
+| `claude-cli`  | `claude auth status --json` (`loggedIn`) with `CLAUDE_CONFIG_DIR` set. When it reports a login but the sandbox holds no `.credentials.json` (outside macOS, where the keychain is used), `detail` warns that it is probably the global Claude Code login and the account is not isolated. |
+| `codex-cli`   | exit code of `codex login status` with `CODEX_HOME` set.                                                                                                                                                                                                                                  |
+| `gemini-cli`  | presence of `<sandbox>/.gemini/oauth_creds.json` (written by Gemini CLI; never read).                                                                                                                                                                                                     |
+| `gemini-web`  | `unknown`: checking would mean opening the browser profile.                                                                                                                                                                                                                               |
 
 Vendor output is parsed for the logged-in flag only and never returned.
 
@@ -264,7 +264,7 @@ Vendor output is parsed for the logged-in flag only and never returned.
 { "budget": BudgetSnapshot }
 ```
 
-One `AccountBudget` per account (see *Subscription & budget contracts*): subscription details,
+One `AccountBudget` per account (see _Subscription & budget contracts_): subscription details,
 days to renewal, the remaining share of the tightest known limit (DaveCode's own windows and the
 limits the provider reported, whichever is lower), and whether the router would use the account
 right now, with a human reason when it would not. `context` is the compact summary that the
@@ -353,29 +353,30 @@ is malformed or invalid (it is never overwritten).
 
 #### Editing the task graph
 
-| Method | Path | Body | Response |
-| :----- | :--- | :--- | :------- |
-| `POST` | `/api/tasks` | `TaskCreate` | `201 { "task": TaskNode }` |
-| `PATCH` | `/api/tasks/:id` | `TaskPatch` | `{ "task": TaskNode }` |
-| `DELETE` | `/api/tasks/:id` | none | `204` |
+| Method   | Path             | Body         | Response                   |
+| :------- | :--------------- | :----------- | :------------------------- |
+| `POST`   | `/api/tasks`     | `TaskCreate` | `201 { "task": TaskNode }` |
+| `PATCH`  | `/api/tasks/:id` | `TaskPatch`  | `{ "task": TaskNode }`     |
+| `DELETE` | `/api/tasks/:id` | none         | `204`                      |
 
 ```ts
 interface TaskCreate {
-  id: string;               // lowercase kebab-case / snake_case, letters, digits and - _ .
-  title: string;            // 1..300 chars (trimmed)
+  id: string; // lowercase kebab-case / snake_case, letters, digits and - _ .
+  title: string; // 1..300 chars (trimmed)
   description?: string;
-  dependsOn?: string[];     // ids of existing tasks
+  dependsOn?: string[]; // ids of existing tasks
   priority?: number;
   acceptance?: string[];
 }
-interface TaskPatch {       // at least one field; unknown fields are rejected
+interface TaskPatch {
+  // at least one field; unknown fields are rejected
   title?: string;
-  description?: string | null;   // null removes the field
-  dependsOn?: string[];          // replaces the list
+  description?: string | null; // null removes the field
+  dependsOn?: string[]; // replaces the list
   priority?: number | null;
   acceptance?: string[] | null;
   notes?: string | null;
-  status?: TaskStatus;           // must follow the allowed transitions
+  status?: TaskStatus; // must follow the allowed transitions
 }
 ```
 
@@ -386,18 +387,18 @@ emits `task.updated` (`task.removed` with `{ taskId }` for a delete) on `/api/ev
 Status transitions (`canTransition`): `PENDING → IN_PROGRESS`; `IN_PROGRESS → SUCCESS | FAILED |
 PENDING`; `FAILED | SUCCESS → PENDING`. Moving to `IN_PROGRESS` increments `attempts`.
 
-| Status | `code` | When |
-| :----- | :------- | :--- |
-| 400 | `invalid_body` | The body does not match the schema above |
-| 400 | `cycle` | The change would create a dependency cycle. `error.cycle` is the path, first id repeated at the end (`["a","b","a"]`) |
-| 400 | `unknown_dependency`, `self_dependency` | `dependsOn` names a missing task, or the task itself |
-| 404 | `not_found` | Unknown task id |
-| 409 | `duplicate_id` | `POST` with an id that already exists |
-| 409 | `invalid_transition` | The status change is not allowed from the current status |
-| 409 | `has_dependents` | `DELETE` of a task other tasks depend on. `error.dependents` lists them; remove or re-point them first |
-| 409 | `task_in_progress` | `DELETE` of an `IN_PROGRESS` task (reopen it first) |
-| 409 | `no_brain` | The gateway has no project brain, or the project was never initialised |
-| 501 | `brain_read_only` | The gateway's `BrainSource` has no write methods |
+| Status | `code`                                  | When                                                                                                                  |
+| :----- | :-------------------------------------- | :-------------------------------------------------------------------------------------------------------------------- |
+| 400    | `invalid_body`                          | The body does not match the schema above                                                                              |
+| 400    | `cycle`                                 | The change would create a dependency cycle. `error.cycle` is the path, first id repeated at the end (`["a","b","a"]`) |
+| 400    | `unknown_dependency`, `self_dependency` | `dependsOn` names a missing task, or the task itself                                                                  |
+| 404    | `not_found`                             | Unknown task id                                                                                                       |
+| 409    | `duplicate_id`                          | `POST` with an id that already exists                                                                                 |
+| 409    | `invalid_transition`                    | The status change is not allowed from the current status                                                              |
+| 409    | `has_dependents`                        | `DELETE` of a task other tasks depend on. `error.dependents` lists them; remove or re-point them first                |
+| 409    | `task_in_progress`                      | `DELETE` of an `IN_PROGRESS` task (reopen it first)                                                                   |
+| 409    | `no_brain`                              | The gateway has no project brain, or the project was never initialised                                                |
+| 501    | `brain_read_only`                       | The gateway's `BrainSource` has no write methods                                                                      |
 
 In code, `BrainSource` gains the optional methods `createTask`, `updateTask` and `removeTask`
 (core's `ProjectBrainSource` provides them when wrapping a `ProjectBrain`); a source without them
@@ -411,12 +412,12 @@ stays read-only.
 
 ### Autonomous runner
 
-| Method | Path | Response |
-| :----- | :--- | :------- |
-| `GET` | `/api/runner` | `{ "status": RunnerStatus }` |
+| Method | Path                | Response                     |
+| :----- | :------------------ | :--------------------------- |
+| `GET`  | `/api/runner`       | `{ "status": RunnerStatus }` |
 | `POST` | `/api/runner/start` | `{ "status": RunnerStatus }` |
 | `POST` | `/api/runner/pause` | `{ "status": RunnerStatus }` |
-| `POST` | `/api/runner/stop` | `{ "status": RunnerStatus }` |
+| `POST` | `/api/runner/stop`  | `{ "status": RunnerStatus }` |
 
 `POST /api/runner/start` takes an optional JSON body (an empty body or `{}` keeps the old
 behaviour):
@@ -470,42 +471,42 @@ delivery?: { mode: 'merge' | 'pr', url? }, branch?, error? }`. Preconditions rej
 
 Runner configuration (`runner.*`, all optional):
 
-| Key | Default | Meaning |
-| :-- | :------ | :------ |
-| `maxRepairCycles` | `3` | Repair passes after the first implementation before the task is `FAILED` |
-| `branchPrefix` / `baseBranch` | `davecode/task-` / `main` | Task branches and merge target |
-| `route` | `auto` | Route (`davecode/<route>`) or model id for the `builtin` executor |
-| `executor` | `builtin` | `builtin` tool loop or `claude-cli` delegation |
-| `pullRequests` | `false` | Push and `gh pr create` instead of merging locally (falls back to merge) |
-| `commitBrain` | `true` | Commit STATE.md / TASK_GRAPH.json on the base branch after each task |
-| `commandTimeoutMs` | `600000` | Timeout per validation command and per `run_command` |
-| `idlePollMs` | `30000` | Sleep between polls when no task is ready |
-| `maxIterations` | `40` | Model round-trips per implementation or repair pass |
-| `maxTaskTokens` | `1500000` | Token budget per task across passes |
-| `allowedCommands` | `pnpm npm npx node git tsc biome vitest` | Executables `run_command` may start |
-| `claudeCli.accountId` / `model` / `allowedTools` / `timeoutMs` | first enabled account / CLI default / file tools + common `Bash(...)` / `1800000` | `claude-cli` executor settings |
-| `validate.lint` / `typecheck` / `test` | unset | Quality-gate commands (split into argv, run without a shell) |
-| `judge.kind` | `none` | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |
-| `judge.model` / `baseUrl` / `threshold` | `typesafe/jev-1.13` or `runner.route` / `https://openrouter.ai/api/alpha` / `0.7` | Judge model, Decisions API base URL, minimum confidence |
+| Key                                                            | Default                                                                           | Meaning                                                                                           |
+| :------------------------------------------------------------- | :-------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------ |
+| `maxRepairCycles`                                              | `3`                                                                               | Repair passes after the first implementation before the task is `FAILED`                          |
+| `branchPrefix` / `baseBranch`                                  | `davecode/task-` / `main`                                                         | Task branches and merge target                                                                    |
+| `route`                                                        | `auto`                                                                            | Route (`davecode/<route>`) or model id for the `builtin` executor                                 |
+| `executor`                                                     | `builtin`                                                                         | `builtin` tool loop or `claude-cli` delegation                                                    |
+| `pullRequests`                                                 | `false`                                                                           | Push and `gh pr create` instead of merging locally (falls back to merge)                          |
+| `commitBrain`                                                  | `true`                                                                            | Commit STATE.md / TASK_GRAPH.json on the base branch after each task                              |
+| `commandTimeoutMs`                                             | `600000`                                                                          | Timeout per validation command and per `run_command`                                              |
+| `idlePollMs`                                                   | `30000`                                                                           | Sleep between polls when no task is ready                                                         |
+| `maxIterations`                                                | `40`                                                                              | Model round-trips per implementation or repair pass                                               |
+| `maxTaskTokens`                                                | `1500000`                                                                         | Token budget per task across passes                                                               |
+| `allowedCommands`                                              | `pnpm npm npx node git tsc biome vitest`                                          | Executables `run_command` may start                                                               |
+| `claudeCli.accountId` / `model` / `allowedTools` / `timeoutMs` | first enabled account / CLI default / file tools + common `Bash(...)` / `1800000` | `claude-cli` executor settings                                                                    |
+| `validate.lint` / `typecheck` / `test`                         | unset                                                                             | Quality-gate commands (split into argv, run without a shell)                                      |
+| `judge.kind`                                                   | `none`                                                                            | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |
+| `judge.model` / `baseUrl` / `threshold`                        | `typesafe/jev-1.13` or `runner.route` / `https://openrouter.ai/api/alpha` / `0.7` | Judge model, Decisions API base URL, minimum confidence                                           |
 
 ### Goals
 
-| Method | Path | Body | Response |
-| :----- | :--- | :--- | :------- |
-| `GET` | `/api/goals` | — | `{ "goals": Goal[] }` |
-| `GET` | `/api/goals/:id` | — | `{ "goal": Goal }` |
-| `POST` | `/api/goals` | `GoalStartInput` | `202 { "goal": Goal }` |
-| `POST` | `/api/goals/:id/execute` | — | `202 { "goal": Goal }` (runs a `planned` dry-run goal) |
-| `GET` | `/api/goals/:id/artifacts/:taskId` | — | `{ "artifact": { "taskId": string, "path": string, "content": string } }` |
-| `POST` | `/api/goals/:id/cancel` | — | `{ "goal": Goal }` (once it has stopped) |
+| Method | Path                               | Body             | Response                                                                  |
+| :----- | :--------------------------------- | :--------------- | :------------------------------------------------------------------------ |
+| `GET`  | `/api/goals`                       | —                | `{ "goals": Goal[] }`                                                     |
+| `GET`  | `/api/goals/:id`                   | —                | `{ "goal": Goal }`                                                        |
+| `POST` | `/api/goals`                       | `GoalStartInput` | `202 { "goal": Goal }`                                                    |
+| `POST` | `/api/goals/:id/execute`           | —                | `202 { "goal": Goal }` (runs a `planned` dry-run goal)                    |
+| `GET`  | `/api/goals/:id/artifacts/:taskId` | —                | `{ "artifact": { "taskId": string, "path": string, "content": string } }` |
+| `POST` | `/api/goals/:id/cancel`            | —                | `{ "goal": Goal }` (once it has stopped)                                  |
 
 ```ts
 interface GoalStartInput {
-  objective: string;   // 1–4000 chars
-  maxRounds?: number;  // 1–20, overrides goal.maxRounds
-  maxTasks?: number;   // 1–100
-  maxTokens?: number;  // ≥ 1000
-  dryRun?: boolean;    // plan only: no task is executed
+  objective: string; // 1–4000 chars
+  maxRounds?: number; // 1–20, overrides goal.maxRounds
+  maxTasks?: number; // 1–100
+  maxTokens?: number; // ≥ 1000
+  dryRun?: boolean; // plan only: no task is executed
 }
 ```
 
@@ -527,25 +528,44 @@ Goal mode turns one high-level objective into a plan of role-based tasks and exe
 ```ts
 type GoalTaskKind = 'code' | 'artifact';
 interface GoalTask {
-  id: string; title: string; description?: string;
-  role: string;               // a GoalRole id: planner, researcher, implementer, reviewer, writer…
-  kind: GoalTaskKind;         // code → autonomous runner; artifact → markdown document
-  status: TaskStatus;         // PENDING | IN_PROGRESS | SUCCESS | FAILED
-  dependsOn: string[]; acceptance?: string[];
-  round: number;              // planning round that created it
+  id: string;
+  title: string;
+  description?: string;
+  role: string; // a GoalRole id: planner, researcher, implementer, reviewer, writer…
+  kind: GoalTaskKind; // code → autonomous runner; artifact → markdown document
+  status: TaskStatus; // PENDING | IN_PROGRESS | SUCCESS | FAILED
+  dependsOn: string[];
+  acceptance?: string[];
+  round: number; // planning round that created it
   attempts: number;
-  artifact?: string;          // workspace-relative markdown path
-  runnerTaskId?: string;      // project task-graph id (code tasks)
+  artifact?: string; // workspace-relative markdown path
+  runnerTaskId?: string; // project task-graph id (code tasks)
   notes?: string;
 }
-type GoalStatus = 'planning' | 'running' | 'reviewing' | 'planned' | 'succeeded' | 'failed'
-  | 'cancelled' | 'budget_exhausted';
+type GoalStatus =
+  | 'planning'
+  | 'running'
+  | 'reviewing'
+  | 'planned'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'budget_exhausted';
 interface Goal {
-  id: string; objective: string; status: GoalStatus; round: number;
+  id: string;
+  objective: string;
+  status: GoalStatus;
+  round: number;
   limits: { maxRounds: number; maxTasks: number; maxTokens: number; tokensUsed: number };
-  roles: GoalRole[]; tasks: GoalTask[]; activeTaskId?: string;
-  summary?: string; lastError?: string; dryRun?: boolean;
-  createdAt: string; updatedAt: string; finishedAt?: string;
+  roles: GoalRole[];
+  tasks: GoalTask[];
+  activeTaskId?: string;
+  summary?: string;
+  lastError?: string;
+  dryRun?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
 }
 ```
 
@@ -554,15 +574,15 @@ state change) and `goal.log` (`{ goalId, level, message, role?, taskId? }`).
 
 Configuration (`goal.*`, all optional):
 
-| Key | Default | Meaning |
-| :-- | :------ | :------ |
-| `route` | `auto` | Route or model id for roles without their own route |
-| `maxRounds` | `4` | Plan → execute → review rounds |
-| `maxTasks` | `12` | Tasks across all rounds |
-| `maxTokens` | `1000000` | Token cap across every agent call and runner pass |
-| `maxTaskAttempts` | `2` | Attempts per task |
-| `codeTasks` | `true` | Hand `code` tasks to the autonomous runner; off → artifacts only |
-| `roles` | `{}` | Extra or overridden roles: `{ "<id>": { description?, route?, instructions?, kind? } }` |
+| Key               | Default   | Meaning                                                                                 |
+| :---------------- | :-------- | :-------------------------------------------------------------------------------------- |
+| `route`           | `auto`    | Route or model id for roles without their own route                                     |
+| `maxRounds`       | `4`       | Plan → execute → review rounds                                                          |
+| `maxTasks`        | `12`      | Tasks across all rounds                                                                 |
+| `maxTokens`       | `1000000` | Token cap across every agent call and runner pass                                       |
+| `maxTaskAttempts` | `2`       | Attempts per task                                                                       |
+| `codeTasks`       | `true`    | Hand `code` tasks to the autonomous runner; off → artifacts only                        |
+| `roles`           | `{}`      | Extra or overridden roles: `{ "<id>": { description?, route?, instructions?, kind? } }` |
 
 ### Live events
 
@@ -592,12 +612,12 @@ App identity is separate from model-provider accounts. `LoginProvider` is `googl
 `LoginUser` contains `id` (provider subject), `provider`, and `name` (no credentials).
 `LoginStatus` contains `required`, configured `providers`, and `user | null`.
 
-| Endpoint | Behavior |
-| --- | --- |
-| `GET /api/auth/session` | Public, no-store `LoginStatus`; disabled login returns `required: false`. |
-| `GET /api/auth/:provider/start` | Google/GitHub redirect with browser-bound state and PKCE. Unconfigured providers return 503. |
+| Endpoint                           | Behavior                                                                                                                                                          |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/auth/session`            | Public, no-store `LoginStatus`; disabled login returns `required: false`.                                                                                         |
+| `GET /api/auth/:provider/start`    | Google/GitHub redirect with browser-bound state and PKCE. Unconfigured providers return 503.                                                                      |
 | `GET /api/auth/:provider/callback` | Consumes the authorization code, validates an allowed identity and sets an HttpOnly session cookie. Failures redirect to the sign-in screen with a generic error. |
-| `POST /api/auth/logout` | Revokes the session and clears its cookie. Requires the canonical Origin when login is enabled. |
+| `POST /api/auth/logout`            | Revokes the session and clears its cookie. Requires the canonical Origin when login is enabled.                                                                   |
 
 With app login enabled, `/api` accepts an allowed app session or the configured bearer
 token. Cookie-authenticated writes require the exact configured Origin. `/v1` accepts

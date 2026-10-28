@@ -49,16 +49,16 @@ access, and local ownership. These are product targets, not measured superiority
 
 ## Current DaveCode coverage
 
-| User need | Existing foundation | Remaining work |
-| --- | --- | --- |
-| Describe an outcome | Goal planner, role agents, reviewer, task graph | Conversational follow-ups and attachments |
-| Use several AI tools | API and CLI providers, router, failover | Verified native agent sessions rather than only completion adapters |
-| Understand progress | SSE, goal tasks/logs, runner logs | Durable typed activity blocks with tool results |
-| Connect accounts | Account UI and official CLI login launcher | In-app onboarding and dependency checks |
-| Keep work local | SQLite, project brain, local gateway | Desktop installer, project picker and app-managed lifecycle |
-| Review changes | Runner branches, checks and merge flow | Visual diff review before applying changes |
-| Stop opening terminals | Web dashboard controls goals | Embedded PTY/ConPTY terminal and interactive CLI session bridge |
-| Use Antigravity | Official CLI exists; local `agy` 1.4.5 verified | Provider/session adapter and authenticated smoke test |
+| User need              | Existing foundation                             | Remaining work                                                      |
+| ---------------------- | ----------------------------------------------- | ------------------------------------------------------------------- |
+| Describe an outcome    | Goal planner, role agents, reviewer, task graph | Conversational follow-ups and attachments                           |
+| Use several AI tools   | API and CLI providers, router, failover         | Verified native agent sessions rather than only completion adapters |
+| Understand progress    | SSE, goal tasks/logs, runner logs               | Durable typed activity blocks with tool results                     |
+| Connect accounts       | Account UI and official CLI login launcher      | In-app onboarding and dependency checks                             |
+| Keep work local        | SQLite, project brain, local gateway            | Desktop installer, project picker and app-managed lifecycle         |
+| Review changes         | Runner branches, checks and merge flow          | Visual diff review before applying changes                          |
+| Stop opening terminals | Web dashboard controls goals                    | Embedded PTY/ConPTY terminal and interactive CLI session bridge     |
+| Use Antigravity        | Official CLI exists; local `agy` 1.4.5 verified | Provider/session adapter and authenticated smoke test               |
 
 The existing runner can merge completed code automatically. The new workspace's
 plan-only default is not a new approval protocol, and a generated plan cannot yet

@@ -4,11 +4,11 @@ Manual checks on Windows with Node.js 24.13.1, 2026-10-24. These checks use the 
 official CLIs and login flows. Automated tests remain offline and use disposable homes.
 No credentials or raw authentication responses are stored in this repository.
 
-| Provider | Installed version | Result |
-| :--- | :--- | :--- |
-| Codex CLI | 0.163.0 | Live CLI and DaveCode adapter completion passed with the existing official ChatGPT login. |
-| Claude Code | 2.1.309 | Live DaveCode adapter completion passed. The known global-login fallback still applies on Windows. |
-| Gemini CLI | 0.65.0 | Real installation and official Google OAuth completed in a disposable home; Code Assist rejected the client with `UNSUPPORTED_CLIENT`. Successful completion remains pending. |
+| Provider    | Installed version | Result                                                                                                                                                                        |
+| :---------- | :---------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Codex CLI   | 0.163.0           | Live CLI and DaveCode adapter completion passed with the existing official ChatGPT login.                                                                                     |
+| Claude Code | 2.1.309           | Live DaveCode adapter completion passed. The known global-login fallback still applies on Windows.                                                                            |
+| Gemini CLI  | 0.65.0            | Real installation and official Google OAuth completed in a disposable home; Code Assist rejected the client with `UNSUPPORTED_CLIENT`. Successful completion remains pending. |
 
 Codex emitted `thread.started`, `turn.started`, `item.completed` with an `agent_message`,
 and `turn.completed`. Its usage included `input_tokens`, `cached_input_tokens`,

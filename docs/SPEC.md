@@ -66,13 +66,12 @@ Anti-Collision Identity Engine:
 
 DaveCode handles model access using an automated token-quota and rate-limit tracking engine:
 
-| Metric | Window Size | Strategy |
-| :----- | :---------- | :------- |
-| **TPM (Tokens Per Minute)** | 60-second sliding | Real-time token counting via tiktoken/tree-sitter. Smooth backpressure when approaching 85% capacity. |
-| **RPM (Requests Per Minute)** | 60-second sliding | Fixed sliding bucket. Queue requests locally when threshold is reached. |
-| **Tier Quotas (5-Hour)** | 300-minute sliding | Tracks rolling limit windows typical of Claude Pro/Team accounts. Shift weights to alternate accounts upon reaching 90% quota. |
-| **Daily Limits (24-Hour)** | 1440-minute sliding | Long-term budget and quota tracking across all connected accounts. |
-
+| Metric                        | Window Size         | Strategy                                                                                                                       |
+| :---------------------------- | :------------------ | :----------------------------------------------------------------------------------------------------------------------------- |
+| **TPM (Tokens Per Minute)**   | 60-second sliding   | Real-time token counting via tiktoken/tree-sitter. Smooth backpressure when approaching 85% capacity.                          |
+| **RPM (Requests Per Minute)** | 60-second sliding   | Fixed sliding bucket. Queue requests locally when threshold is reached.                                                        |
+| **Tier Quotas (5-Hour)**      | 300-minute sliding  | Tracks rolling limit windows typical of Claude Pro/Team accounts. Shift weights to alternate accounts upon reaching 90% quota. |
+| **Daily Limits (24-Hour)**    | 1440-minute sliding | Long-term budget and quota tracking across all connected accounts.                                                             |
 - **Hot-Failover Engine:** When an HTTP 429 (Too Many Requests), 503 (Service Unavailable), or
   context completion error occurs, DaveCode catches the error within a zero-latency circuit
   breaker. The pending prompt frame is payload-converted and hot-routed to the next

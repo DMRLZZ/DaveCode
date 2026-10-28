@@ -223,10 +223,9 @@ React + Tailwind). The gateway serves its production build (`packages/ui/dist`) 
 
 ![DaveCode dashboard overview: token burn, quota utilization and recent activity](docs/assets/dashboard-overview.png)
 
-| Task graph | Accounts |
-| :--------: | :------: |
+|                                            Task graph                                             |                                            Accounts                                             |
+| :-----------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------: |
 | ![Task graph as a dependency DAG with STATE.md and task details](docs/assets/dashboard-tasks.png) | ![Accounts with quota meters, cooldowns and enable toggles](docs/assets/dashboard-accounts.png) |
-
 - **Overview**: live token burn (tokens/min over 60 min), requests/min, failovers, health and
   per-account 1m/5h/24h quota meters with the 85 % backpressure and 90 % shift thresholds.
 - **Accounts, Traffic, Routes**: add accounts with write-only secrets, see each account's
@@ -252,16 +251,16 @@ When the gateway is unreachable the dashboard falls back to mock data automatica
 
 ## Providers
 
-| Provider | Kind | Auth | Default |
-| :------- | :--- | :--- | :------ |
-| Anthropic API | `anthropic` | API key | ✅ |
-| OpenAI API | `openai` | API key | ✅ |
-| Google Gemini API | `gemini` | API key | ✅ |
-| OpenRouter and compatible endpoints | `openai-compatible` | Provider key + base URL | ✅ |
-| Claude Code CLI | `claude-cli` | Your Claude login, isolated per account | ✅ |
-| Codex CLI | `codex-cli` | Your ChatGPT/OpenAI login, isolated per account | ✅ |
-| Gemini CLI | `gemini-cli` | Your Google login ("Login with Google"), isolated per account | ✅ |
-| Gemini web session | `gemini-web` | Browser profile | ⚠️ Experimental, off |
+| Provider                            | Kind                | Auth                                                          | Default              |
+| :---------------------------------- | :------------------ | :------------------------------------------------------------ | :------------------- |
+| Anthropic API                       | `anthropic`         | API key                                                       | ✅                   |
+| OpenAI API                          | `openai`            | API key                                                       | ✅                   |
+| Google Gemini API                   | `gemini`            | API key                                                       | ✅                   |
+| OpenRouter and compatible endpoints | `openai-compatible` | Provider key + base URL                                       | ✅                   |
+| Claude Code CLI                     | `claude-cli`        | Your Claude login, isolated per account                       | ✅                   |
+| Codex CLI                           | `codex-cli`         | Your ChatGPT/OpenAI login, isolated per account               | ✅                   |
+| Gemini CLI                          | `gemini-cli`        | Your Google login ("Login with Google"), isolated per account | ✅                   |
+| Gemini web session                  | `gemini-web`        | Browser profile                                               | ⚠️ Experimental, off |
 
 Subscriptions are used only through the vendor's own CLI and its official sign-in. Known limits:
 
