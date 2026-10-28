@@ -1,3 +1,4 @@
+import { cp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Arch, build, Platform } from 'electron-builder';
 import { prepare, root } from './stage.mjs';
@@ -20,6 +21,15 @@ await build({
       { from: join(stage, 'runtime'), to: 'runtime' },
       { from: join(stage, 'node'), to: 'node' },
     ],
+    // electron-builder always drops node_modules from extraResources, which left the bundled
+    // gateway without its dependencies. Copy them in before the installer is assembled.
+    afterPack: async ({ appOutDir }) => {
+      await cp(
+        join(stage, 'runtime', 'node_modules'),
+        join(appOutDir, 'resources', 'runtime', 'node_modules'),
+        { recursive: true },
+      );
+    },
     npmRebuild: false,
     win: {
       target: 'nsis',
