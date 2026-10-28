@@ -1,6 +1,6 @@
 import { type ChildProcess, fork, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,8 +19,19 @@ const runtimeDir = join(bundle, 'runtime');
 const nodeBinary = join(bundle, 'node', process.platform === 'win32' ? 'node.exe' : 'node');
 const home = process.env.DAVECODE_HOME ?? join(homedir(), '.davecode');
 const welcome = pathToFileURL(join(__dirname, 'welcome.html')).href;
+const smokeOutput = process.env.DAVECODE_DESKTOP_SMOKE_DIR;
+function checkpoint(stage: string) {
+  if (!smokeOutput) return;
+  mkdirSync(smokeOutput, { recursive: true });
+  writeFileSync(
+    join(smokeOutput, 'startup.json'),
+    JSON.stringify({ stage, packaged: app.isPackaged }),
+  );
+  console.log(`Desktop startup: ${stage}`);
+}
 
 app.setName('DaveCode');
+checkpoint('main-loaded');
 if (process.env.DAVECODE_DESKTOP_SMOKE_DIR) {
   const profile = join(process.env.DAVECODE_DESKTOP_SMOKE_DIR, 'profile');
   mkdirSync(profile, { recursive: true });
@@ -67,6 +78,7 @@ async function openProject(project: string): Promise<void> {
       }
     }
     await stopBackend();
+    checkpoint('starting-backend');
     const child = fork(join(runtimeDir, 'backend.mjs'), [], {
       execPath: nodeBinary,
       execArgv: [],
@@ -108,7 +120,9 @@ async function openProject(project: string): Promise<void> {
     });
     if (quitting || !window) return;
     gateway = new URL(url).origin;
+    checkpoint('backend-ready');
     await window.loadURL(`${url}/#/`);
+    checkpoint('workspace-loaded');
     child.once('exit', () => {
       if (backend !== child || quitting) return;
       backend = undefined;
@@ -120,8 +134,13 @@ async function openProject(project: string): Promise<void> {
       );
     });
   } catch {
+    checkpoint('project-start-failed');
     await stopBackend();
     if (quitting || !window) return;
+    if (smokeOutput) {
+      app.exit(1);
+      return;
+    }
     await window.loadURL(welcome);
     dialog.showErrorBox(
       'Could not open project',
@@ -149,6 +168,7 @@ else {
     window?.focus();
   });
   void app.whenReady().then(async () => {
+    checkpoint('app-ready');
     app.setAppUserModelId('app.davecode.desktop');
     window = new BrowserWindow({
       width: 1280,
@@ -171,6 +191,15 @@ else {
       app.quit();
     });
     const session = window.webContents.session;
+    window.webContents.on('did-finish-load', () => {
+      if (smokeOutput && window) {
+        void window.webContents
+          .capturePage()
+          .then((image) => writeFileSync(join(smokeOutput, 'startup.png'), image.toPNG()))
+          // A hidden window cannot always be captured; the screenshot is diagnostic only.
+          .catch(() => {});
+      }
+    });
     session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     session.setPermissionCheckHandler(() => false);
     session.webRequest.onBeforeSendHeaders((details, callback) => {
@@ -256,6 +285,7 @@ else {
     );
     window.once('ready-to-show', () => window?.show());
     await window.loadURL(welcome);
+    checkpoint('welcome-loaded');
     const project = process.argv
       .find((value) => value.startsWith('--project='))
       ?.slice('--project='.length);
@@ -267,7 +297,11 @@ else {
         await verifyWindow(window, gateway, token, smoke);
         await stopBackend();
         app.exit(0);
-      } catch {
+      } catch (error) {
+        console.error(
+          'Desktop acceptance failed:',
+          error instanceof Error ? error.message : 'unknown',
+        );
         await stopBackend();
         app.exit(1);
       }

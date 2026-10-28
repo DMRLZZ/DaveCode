@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import electron from 'electron';
 import { prepare, root } from './stage.mjs';
 
 const packaged = process.argv.includes('--packaged');
@@ -21,7 +20,9 @@ const env = {
   DAVECODE_DESKTOP_SMOKE_DIR: output,
 };
 delete env.ELECTRON_RUN_AS_NODE;
-const command = packaged ? join(root, 'release/win-unpacked/DaveCode.exe') : electron;
+const command = packaged
+  ? join(root, 'release/win-unpacked/DaveCode.exe')
+  : (await import('electron')).default;
 const args = [...(packaged ? [] : [join(root, 'dist/main.cjs')]), `--project=${project}`];
 try {
   await new Promise((resolve, reject) => {
