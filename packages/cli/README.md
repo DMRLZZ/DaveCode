@@ -2,15 +2,16 @@
 
 **Local-first autonomous software engineer and multi-provider AI gateway.**
 
-One OpenAI-compatible endpoint in front of Claude, GPT, Gemini and your local models (Ollama,
-LM Studio, OpenRouter…), with quota-aware routing and hot failover, plus an engine that turns a
-task graph into tested, merged code.
+Run Claude Code, Codex and Gemini CLI side by side behind one OpenAI-compatible endpoint, with
+quota-aware routing and hot failover, plus an engine that turns a task graph into tested, merged
+code.
 
 ```bash
 npm install -g @dmrlzz/davecode      # Node.js 22.12+
 
+davecode                     # first run: sign in, pick a look, connect your first agent
 davecode doctor              # check your environment
-davecode accounts add        # add a provider account (API key, Ollama, Claude Code login…)
+davecode accounts add        # add another agent or API key (Claude Code, Codex, OpenRouter…)
 davecode accounts connect <id>  # sign a subscription in with the vendor's official login
 davecode start               # gateway on http://localhost:4040/v1 + dashboard at http://localhost:4040/
 davecode                     # chat TUI in your terminal

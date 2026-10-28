@@ -56,13 +56,36 @@ describe('Ink prompts', () => {
       }),
     );
     await tick();
-    expect(ui.lastFrame()).toContain('› Alpha');
+    expect(ui.lastFrame()).toContain('› 1. Alpha');
     ui.stdin.write('\u001b[B');
     await tick();
-    expect(ui.lastFrame()).toContain('› Beta');
+    expect(ui.lastFrame()).toContain('› 2. Beta');
     ui.stdin.write('\r');
     await tick();
     expect(done).toHaveBeenCalledWith('b');
+    ui.unmount();
+  });
+
+  it('picks an option straight away when its number is pressed', async () => {
+    const done = vi.fn();
+    const ui = render(
+      h(SelectPrompt<string>, {
+        message: 'Theme',
+        choices: [
+          { value: 'dark', label: 'Dark' },
+          { value: 'light', label: 'Light' },
+          { value: 'auto', label: 'Auto' },
+        ],
+        done,
+        cancel: vi.fn(),
+      }),
+    );
+    await tick();
+    ui.stdin.write('3');
+    await tick();
+    expect(done).toHaveBeenCalledWith('auto');
+    expect(ui.lastFrame()).toContain('Theme');
+    expect(ui.lastFrame()).toContain('Auto');
     ui.unmount();
   });
 

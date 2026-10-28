@@ -1,8 +1,7 @@
 import { OpenAIProvider } from './openai';
 
 /**
- * Any OpenAI-compatible endpoint: OpenRouter, Ollama (`http://localhost:11434/v1`), LM Studio,
- * vLLM, LiteLLM... Same wire format as {@link OpenAIProvider}, but `account.config.baseUrl` is
+ * Any OpenAI-compatible endpoint: OpenRouter, vLLM, LiteLLM... Same wire format as {@link OpenAIProvider}, but `account.config.baseUrl` is
  * required, the API key is optional and extra headers come from `config.defaultHeaders`.
  *
  * Model ids are passed through untouched (OpenRouter ids contain slashes such as

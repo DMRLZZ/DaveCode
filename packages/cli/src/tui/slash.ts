@@ -7,6 +7,9 @@ export type SlashName =
   | 'accounts'
   | 'tasks'
   | 'status'
+  | 'login'
+  | 'logout'
+  | 'account'
   | 'clear'
   | 'exit';
 
@@ -23,6 +26,9 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: 'accounts', description: 'accounts with 5h quota usage' },
   { name: 'tasks', description: 'the project task graph' },
   { name: 'status', description: 'gateway health and runner state' },
+  { name: 'login', description: 'sign in to your DaveCode account in the browser' },
+  { name: 'logout', description: 'sign out of your DaveCode account' },
+  { name: 'account', description: 'the signed-in DaveCode account' },
   { name: 'clear', description: 'clear the transcript and start a new conversation' },
   { name: 'help', description: 'commands and keyboard shortcuts', aliases: ['?'] },
   { name: 'exit', description: 'quit DaveCode', aliases: ['quit', 'q'] },

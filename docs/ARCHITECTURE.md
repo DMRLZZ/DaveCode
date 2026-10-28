@@ -40,7 +40,7 @@ flowchart TB
     ANT[Anthropic API]
     OAI[OpenAI API]
     GEM[Gemini API]
-    OC[OpenAI-compatible: OpenRouter, Ollama, LM Studio…]
+    OC[OpenAI-compatible: OpenRouter, vLLM, LiteLLM…]
     CC[Claude Code CLI]
     CX[Codex CLI]
     GC[Gemini CLI]

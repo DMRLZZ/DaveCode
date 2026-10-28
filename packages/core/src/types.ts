@@ -104,7 +104,7 @@ export type ProviderKind =
   | 'openai'
   /** Google Gemini API (AI Studio / Vertex) with an API key. */
   | 'gemini'
-  /** Any OpenAI-compatible endpoint: OpenRouter, Ollama, LM Studio, vLLM, LiteLLM… */
+  /** Any OpenAI-compatible endpoint: OpenRouter, vLLM, LiteLLM… */
   | 'openai-compatible'
   /** Local Claude Code CLI, isolated per account via CLAUDE_CONFIG_DIR. */
   | 'claude-cli'

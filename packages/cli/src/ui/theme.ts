@@ -150,8 +150,25 @@ function sgr(open: string, close: string): Style {
 
 const identity: Style = (text) => text;
 
-export function createTheme(options: { color: boolean; unicode: boolean }): Theme {
-  const { color, unicode } = options;
+/**
+ * `dark` and `light` pin emphasis to bright white or black; `auto` uses the terminal's own
+ * foreground, which reads on any background.
+ */
+export type ThemeMode = 'dark' | 'light' | 'auto';
+export const THEME_MODES: readonly ThemeMode[] = ['dark', 'light', 'auto'];
+
+const EMPHASIS: Record<ThemeMode, { open: string; ink: string | undefined }> = {
+  dark: { open: '1;97', ink: 'whiteBright' },
+  light: { open: '1;30', ink: 'black' },
+  auto: { open: '1', ink: undefined },
+};
+
+export function createTheme(options: {
+  color: boolean;
+  unicode: boolean;
+  mode?: ThemeMode;
+}): Theme {
+  const { color, unicode, mode = 'auto' } = options;
   const glyph = unicode ? UNICODE_GLYPHS : ASCII_GLYPHS;
   if (!color) {
     return {
@@ -171,15 +188,15 @@ export function createTheme(options: { color: boolean; unicode: boolean }): Them
     color,
     unicode,
     glyph,
-    // Monochrome by design: the accent is the terminal's own foreground in bold, so it reads on
-    // dark and light backgrounds alike. Colour is reserved for state (ok, warn, error).
-    accent: sgr('1', '22'),
+    // Monochrome by design: emphasis is bold black or white, never a hue. Colour is reserved
+    // for state (ok, warn, error).
+    accent: sgr(EMPHASIS[mode].open, '22;39'),
     ok: sgr('32', '39'),
     warn: sgr('33', '39'),
     error: sgr('31', '39'),
     dim: sgr('2', '22'),
     bold: sgr('1', '22'),
-    ink: { accent: undefined, ok: 'green', warn: 'yellow', error: 'red', dim: true },
+    ink: { accent: EMPHASIS[mode].ink, ok: 'green', warn: 'yellow', error: 'red', dim: true },
   };
 }
 
@@ -189,10 +206,12 @@ export function themeFor(
   stream: ColorStream,
   colorFlag?: boolean,
   platform: NodeJS.Platform = process.platform,
+  mode: ThemeMode = 'auto',
 ): Theme {
   return createTheme({
     color: detectColor(env, stream, colorFlag),
     unicode: detectUnicode(env, platform),
+    mode,
   });
 }
 

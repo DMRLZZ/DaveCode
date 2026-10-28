@@ -316,8 +316,30 @@ export {
 } from './autonomous/validator';
 export { WorkspaceLock } from './autonomous/workspace-lock';
 export { ProjectBrainSource } from './brain/source';
+
 // --- end phase 4 ---
 
+export {
+  ACCOUNT_SERVICE,
+  AccountClient,
+  type AccountClientOptions,
+  AccountError,
+  type AccountServiceConfig,
+  type AccountSession,
+  type AccountUser,
+  accountService,
+  OAUTH_PROVIDERS,
+  type OAuthProvider,
+  pkcePair,
+  type SignUpResult,
+} from './account/client';
+export {
+  type AccountLogin,
+  type AccountLoginOptions,
+  startAccountLogin,
+} from './account/login-server';
+export { AccountStore, accountFile } from './account/store';
+export { BRAND_MARK_SVG, brandWordmark } from './brand';
 // --- goal mode ---
 export {
   type GoalTaskRunner,

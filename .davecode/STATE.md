@@ -1,6 +1,6 @@
 # DaveCode: project state
 
-_Last updated: 2026-10-24_
+_Last updated: 2026-10-28_
 
 ## Current focus
 
@@ -23,13 +23,23 @@ Chrome/Edge app window. The published preview contains engine 0.2.0; the working
 published as engine 0.3.0 on npm.
 OAuth has mocked protocol/security coverage; live provider client setup is pending.
 Design defaults reject decorative dots, uppercase eyebrow labels and redundant UI copy.
-OpenRouter replaces Ollama in onboarding; doctor no longer probes Ollama by default.
 
 The public landing is deployed through Sites at https://davecode-app.mor4lez.chatgpt.site.
 `davecode.app` DNS is configured in Cloudflare; Sites confirms hostname and SSL active.
 Site identity lives in `site/.openai/hosting.json`. Workspace preview release:
 `workspace-v0.1.0-preview.1` (engine artifact `davecode-0.2.0.tgz`). The tarball was
 installed in an isolated temp directory and its CLI help was verified.
+
+## In progress (v0.4.0)
+
+- First-run setup (wordmark, theme, DaveCode sign-in, first agent and model) and DaveCode
+  account commands are merged. The account service is not provisioned yet: a Supabase Auth
+  project, its Google and GitHub OAuth apps and the `http://127.0.0.1:*/**` redirect still
+  need the owner; until then `ACCOUNT_SERVICE` is empty and sign-in is skipped.
+- The final logo is pending; `packages/core/src/brand.ts` holds the placeholder mark and the
+  terminal wordmark, and every surface should draw from it.
+- The Windows installer builds and passes its packaged acceptance check in Actions; publishing
+  `desktop-v0.4.0` waits for the logo.
 
 ## Done
 
@@ -45,7 +55,7 @@ installed in an isolated temp directory and its CLI help was verified.
 - **Phase 5** (#11, #14): web dashboard and the `davecode` CLI with the chat TUI and runner view.
 - **Contract hardening** (#12): SSE ids with `Last-Event-ID` resume, `Account.hasSecret`.
 - **v0.2.0** (#16–#18): standalone package, task/route editing, targeted runs, and fixes found by
-  running against real Ollama models (cancellations, empty finishes, double-escaped edits).
+  running against real local models (cancellations, empty finishes, double-escaped edits).
 - **Goal mode** (unreleased): planner/reviewer roles with zod JSON contracts, artifact tasks
   through the router, code tasks through the runner, shared workspace lock, outbound-action
   guard, `davecode goal|goals`, `/api/goals`, dashboard Goals view.

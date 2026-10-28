@@ -1,5 +1,6 @@
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { readPreferences } from './lib/preferences';
 import { type Theme, themeFor } from './ui/theme';
 
 /** Minimal writable surface the CLI prints to (process streams in production, buffers in tests). */
@@ -61,8 +62,9 @@ export function createContext(
   const home = resolveHome(base.env, options.home, base.cwd);
   const env = { ...base.env, DAVECODE_HOME: home };
   const json = options.json === true;
-  const theme = themeFor(env, io.stdout, json ? false : options.color);
-  const errTheme = themeFor(env, io.stderr, options.color);
+  const mode = readPreferences(home).theme;
+  const theme = themeFor(env, io.stdout, json ? false : options.color, process.platform, mode);
+  const errTheme = themeFor(env, io.stderr, options.color, process.platform, mode);
   return {
     env,
     home,

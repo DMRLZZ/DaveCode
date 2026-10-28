@@ -8,6 +8,15 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- First-run setup when `davecode` starts: the wordmark, a theme choice (dark, light or
+  match the terminal), sign-in to a DaveCode account, then the first agent (Claude Code, Codex
+  or Gemini CLI) with its official login and a model. Later runs only ask to sign in again.
+- DaveCode accounts: `davecode login|logout|account` and `/login`, `/logout`, `/account` in the
+  chat. Sign-in happens in the browser (Google, GitHub or email, including account creation)
+  through a one-shot loopback server with PKCE; the session is stored encrypted with the
+  keyring master key and refreshed before it expires. Accounts stay off until a build is
+  pointed at the account service (`DAVECODE_ACCOUNT_URL`, `DAVECODE_ACCOUNT_KEY`).
+- Numbered menus: pressing an option's number picks it.
 - First npm publication: `@dmrlzz/davecode@0.3.0`.
   Install with `npm install -g @dmrlzz/davecode`. The command remains
   `davecode`; npm rejected the unscoped package name for similarity to an existing package.
