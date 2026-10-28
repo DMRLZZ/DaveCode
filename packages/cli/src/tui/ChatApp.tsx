@@ -8,7 +8,7 @@ import { InputBox, SlashHints } from './components/InputBox';
 import { StatusLine } from './components/StatusLine';
 import { EntryView, StreamingView } from './components/Transcript';
 import * as ed from './editor';
-import { completeSlash, parseSlash, slashSuggestions } from './slash';
+import { parseSlash, slashSuggestions } from './slash';
 import {
   accountsText,
   helpText,
@@ -24,20 +24,22 @@ export interface ChatAppProps {
   theme: Theme;
   model: string;
   version: string;
+  /** Where the conversation runs, shown once in the banner (e.g. `~/code/app`). */
+  project?: string;
   /** Health polling interval (tests use a short one). */
   pollMs?: number;
   /** Time source (tests). */
   now?: () => number;
 }
 
-const PLACEHOLDER = 'Ask anything · / for commands · Shift+Enter or Ctrl+J for a new line';
+const PLACEHOLDER = 'Ask anything, or type / for commands';
 const EXIT_WINDOW_MS = 2000;
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: ChatAppProps) {
+function Chat({ backend, model, version, project, pollMs = 10_000, now = Date.now }: ChatAppProps) {
   const theme = useTheme();
   const { exit } = useApp();
   const { write } = useStdout();
@@ -49,6 +51,7 @@ function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: Chat
   const [historyIndex, setHistoryIndex] = useState<number | undefined>();
   const [notice, setNotice] = useState<string | undefined>();
   const [clock, setClock] = useState(now());
+  const [slashIndex, setSlashIndex] = useState(0);
 
   const abortRef = useRef<AbortController | undefined>(undefined);
   const exitArmedAt = useRef<number | undefined>(undefined);
@@ -59,12 +62,11 @@ function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: Chat
   // --- lifecycle -----------------------------------------------------------
 
   useEffect(() => {
-    const where = backend.inProcess ? `${backend.url} (in-process)` : backend.url;
     dispatch({
       type: 'banner',
-      text: `${theme.bold(theme.accent('DaveCode'))} ${theme.dim(`v${version}`)}\n${theme.dim(
-        `model ${model} · gateway ${where} · /help for commands`,
-      )}`,
+      text: `${theme.bold('DaveCode')} ${theme.dim(`v${version}`)}${
+        project ? `\n${theme.dim(project)}` : ''
+      }`,
     });
     let alive = true;
     const check = async () => {
@@ -84,7 +86,7 @@ function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: Chat
       clearInterval(timer);
       abortRef.current?.abort();
     };
-  }, [backend, model, pollMs, theme, version]);
+  }, [backend, pollMs, project, theme, version]);
 
   // Elapsed-time display while a reply is streaming.
   useEffect(() => {
@@ -282,6 +284,25 @@ function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: Chat
     }
     exitArmedAt.current = undefined;
 
+    // While the slash menu is open, arrows move through it and Enter/Tab act on the highlight.
+    const menu = slashSuggestions(ed.textOf(editor));
+    if (menu.length > 0) {
+      const selected = menu[Math.min(slashIndex, menu.length - 1)]!;
+      if (key.upArrow) return setSlashIndex((i) => (i - 1 + menu.length) % menu.length);
+      if (key.downArrow) return setSlashIndex((i) => (i + 1) % menu.length);
+      if (key.escape) return setEditor(ed.emptyEditor);
+      if (key.tab) {
+        setEditor(ed.fromText(`/${selected.name}${selected.args ? ' ' : ''}`));
+        return;
+      }
+      if (key.return && !key.shift && !key.meta) {
+        setEditor(ed.emptyEditor);
+        setHistoryIndex(undefined);
+        void runSlash(`/${selected.name}`);
+        return;
+      }
+    }
+
     if (key.escape) {
       if (stateRef.current.streaming) abortRef.current?.abort();
       return;
@@ -297,11 +318,7 @@ function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: Chat
       else submit();
       return;
     }
-    if (key.tab) {
-      const completed = completeSlash(ed.textOf(editor));
-      if (completed) setEditor(ed.fromText(completed));
-      return;
-    }
+    if (key.tab) return;
     if (key.upArrow) {
       const moved = ed.up(editor);
       if (moved) setEditor(moved);
@@ -337,7 +354,11 @@ function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: Chat
 
   // --- render ----------------------------------------------------------------
 
-  const suggestions = slashSuggestions(ed.textOf(editor));
+  const text = ed.textOf(editor);
+  const suggestions = slashSuggestions(text);
+  // A new prefix starts the menu from the top.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset whenever the typed text changes
+  useEffect(() => setSlashIndex(0), [text]);
   return (
     <Box flexDirection="column" width={width}>
       <Static key={state.epoch} items={state.entries}>
@@ -345,16 +366,14 @@ function Chat({ backend, model, version, pollMs = 10_000, now = Date.now }: Chat
       </Static>
       {state.streaming ? <StreamingView streaming={state.streaming} now={clock} /> : null}
       <InputBox editor={editor} width={width} placeholder={PLACEHOLDER} />
-      <SlashHints commands={suggestions} width={width} />
-      <StatusLine
-        state={state}
+      <SlashHints
+        commands={suggestions}
         width={width}
-        info={{
-          where: backend.inProcess ? `in-process ${new URL(backend.url).port}` : backend.url,
-          inProcess: backend.inProcess,
-          ...(notice ? { notice } : {}),
-        }}
+        selected={Math.min(slashIndex, Math.max(0, suggestions.length - 1))}
       />
+      {suggestions.length === 0 ? (
+        <StatusLine state={state} width={width} info={notice ? { notice } : {}} />
+      ) : null}
     </Box>
   );
 }

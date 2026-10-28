@@ -54,18 +54,11 @@ export function slashSuggestions(input: string): SlashCommand[] {
   );
 }
 
-/** Tab completion: the unique (or first) match, with a trailing space when it takes args. */
-export function completeSlash(input: string): string | undefined {
-  const [first] = slashSuggestions(input);
-  if (!first) return undefined;
-  return `/${first.name}${first.args ? ' ' : ''}`;
-}
-
 export const KEY_HINTS: ReadonlyArray<[string, string]> = [
   ['Enter', 'send'],
   ['Shift+Enter, Ctrl+J or \\ Enter', 'new line'],
   ['↑ / ↓', 'move between lines, then through history'],
-  ['Tab', 'complete a slash command'],
+  ['/', 'command menu: ↑ / ↓ to choose, Enter to run, Tab to fill, Esc to close'],
   ['Esc', 'cancel the response in flight'],
   ['Ctrl+U / Ctrl+K / Ctrl+W', 'delete to line start / line end / previous word'],
   ['Ctrl+C twice', 'exit'],

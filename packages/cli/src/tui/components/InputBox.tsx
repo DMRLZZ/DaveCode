@@ -68,21 +68,33 @@ export function InputBox({
   );
 }
 
-export function SlashHints({ commands, width }: { commands: SlashCommand[]; width: number }) {
+/** The slash menu under the input: ↑/↓ move the highlighted row, Enter runs it, Tab fills it. */
+export function SlashHints({
+  commands,
+  width,
+  selected = 0,
+}: {
+  commands: SlashCommand[];
+  width: number;
+  selected?: number;
+}) {
   const theme = useTheme();
   if (commands.length === 0) return null;
   const nameWidth =
     Math.max(...commands.map((c) => c.name.length + (c.args ? c.args.length + 1 : 0))) + 3;
   return (
-    <Box flexDirection="column" paddingX={2} width={width}>
-      {commands.map((c, i) => (
-        <Text key={c.name} wrap="truncate-end">
-          <Text color={i === 0 ? theme.ink.accent : undefined}>
-            {`/${c.name}${c.args ? ` ${c.args}` : ''}`.padEnd(nameWidth)}
+    <Box flexDirection="column" paddingX={1} width={width}>
+      {commands.map((c, i) => {
+        const active = i === selected;
+        return (
+          <Text key={c.name} wrap="truncate-end">
+            <Text bold={active} dimColor={!active && theme.ink.dim}>
+              {`${active ? theme.glyph.prompt : ' '} ${`/${c.name}${c.args ? ` ${c.args}` : ''}`.padEnd(nameWidth)}`}
+            </Text>
+            <Text dimColor={theme.ink.dim}>{c.description}</Text>
           </Text>
-          <Text dimColor={theme.ink.dim}>{c.description}</Text>
-        </Text>
-      ))}
+        );
+      })}
     </Box>
   );
 }

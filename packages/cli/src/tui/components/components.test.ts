@@ -98,13 +98,14 @@ describe('StatusLine', () => {
         h(StatusLine, {
           state,
           width: 100,
-          info: { where: 'http://127.0.0.1:4040', inProcess: false },
+          info: {},
         }),
       ),
     );
     const frame = ui.lastFrame() ?? '';
-    expect(frame).toContain('davecode/auto · work · 0 failovers');
-    expect(frame).toContain('● connected');
+    expect(frame).toContain('davecode/auto · work');
+    expect(frame).not.toContain('failovers');
+    expect(frame).not.toContain('127.0.0.1');
     ui.unmount();
   });
 });

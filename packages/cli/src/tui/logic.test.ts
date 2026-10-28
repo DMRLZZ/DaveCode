@@ -4,7 +4,7 @@ import { chatReducer, initialChatState } from './chat-state';
 import { statusSegments } from './components/StatusLine';
 import { metaLine } from './components/Transcript';
 import * as ed from './editor';
-import { completeSlash, parseSlash, slashSuggestions } from './slash';
+import { parseSlash, slashSuggestions } from './slash';
 
 describe('editor', () => {
   it('inserts, deletes and moves by code point', () => {
@@ -75,9 +75,6 @@ describe('slash commands', () => {
     expect(slashSuggestions('/').length).toBeGreaterThan(5);
     expect(slashSuggestions('/st').map((c) => c.name)).toEqual(['status']);
     expect(slashSuggestions('/model x')).toEqual([]);
-    expect(completeSlash('/mo')).toBe('/model ');
-    expect(completeSlash('/cl')).toBe('/clear');
-    expect(completeSlash('/zz')).toBeUndefined();
   });
 });
 
@@ -167,24 +164,29 @@ describe('status line', () => {
     tokens: { prompt: 1200, completion: 340 },
     quota5h: 0.23,
   };
-  const info = { where: 'in-process 54012', inProcess: true };
+  const info = {};
 
-  it('shows model, account, failovers, tokens, quota and connection', () => {
+  it('shows model, account, failovers, tokens and quota, and stays quiet while online', () => {
     const { left, right } = statusSegments(plain, state, info, 200);
     expect(left).toBe(
       'davecode/auto · work (claude-cli) · 1/2 failovers · 1.2k↑ 340↓ · 5h █░░░░░ 23%',
     );
-    expect(right).toBe('● in-process 54012');
+    expect(right).toBe('');
+  });
+
+  it('hides counters that have nothing to report yet', () => {
+    const fresh = { ...initialChatState('davecode/auto'), connection: 'online' as const };
+    expect(statusSegments(plain, fresh, info, 200).left).toBe('davecode/auto');
   });
 
   it('drops tokens, then quota, then failovers in narrow terminals', () => {
-    expect(statusSegments(plain, state, info, 70).left).toBe(
+    expect(statusSegments(plain, state, info, 60).left).toBe(
       'davecode/auto · work (claude-cli) · 1/2 failovers',
     );
-    expect(statusSegments(plain, state, info, 55).left).toBe('davecode/auto · work (claude-cli)');
+    expect(statusSegments(plain, state, info, 45).left).toBe('davecode/auto · work (claude-cli)');
     expect(statusSegments(plain, state, info, 30).left).toBe('davecode/auto');
     const offline = statusSegments(plain, { ...state, connection: 'offline' }, info, 200);
-    expect(offline.right).toBe('● offline');
+    expect(offline.right).toBe('offline');
     expect(statusSegments(plain, state, { ...info, notice: 'Press Ctrl+C again' }, 200).right).toBe(
       'Press Ctrl+C again',
     );
