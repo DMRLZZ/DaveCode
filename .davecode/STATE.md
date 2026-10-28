@@ -1,6 +1,6 @@
 # DaveCode: project state
 
-_Last updated: 2026-10-24_
+_Last updated: 2026-10-28_
 
 ## Current focus
 
@@ -29,6 +29,17 @@ The public landing is deployed through Sites at https://davecode-app.mor4lez.cha
 Site identity lives in `site/.openai/hosting.json`. Workspace preview release:
 `workspace-v0.1.0-preview.1` (engine artifact `davecode-0.2.0.tgz`). The tarball was
 installed in an isolated temp directory and its CLI help was verified.
+
+## In progress (v0.4.0)
+
+- First-run setup (wordmark, theme, DaveCode sign-in, first agent and model) and DaveCode
+  account commands are merged. The account service is not provisioned yet: a Supabase Auth
+  project, its Google and GitHub OAuth apps and the `http://127.0.0.1:*/**` redirect still
+  need the owner; until then `ACCOUNT_SERVICE` is empty and sign-in is skipped.
+- The final logo is pending; `packages/core/src/brand.ts` holds the placeholder mark and the
+  terminal wordmark, and every surface should draw from it.
+- The Windows installer builds and passes its packaged acceptance check in Actions; publishing
+  `desktop-v0.4.0` waits for the logo.
 
 ## Done
 
