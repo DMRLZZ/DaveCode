@@ -71,12 +71,12 @@ flowchart TB
 
 ## Packages
 
-| Package | Responsibility |
-| :------ | :------------- |
-| [`@davecode/core`](../packages/core) | Domain contracts, config, SQLite storage, keyring, sandboxes, connection checks, quota engine, budget, providers, router, dual brain, task graph, autonomous runner, goal mode |
-| [`@davecode/server`](../packages/server) | Fastify gateway: `/v1` proxy, `/api` REST, SSE event stream, serves the built dashboard |
-| [`davecode`](../packages/cli) | The published CLI (`davecode start`, `status`, `add-account`, `run`) and the Ink-based TUI |
-| [`@davecode/ui`](../packages/ui) | Vite + React + Tailwind dashboard (dark by default) |
+| Package                                  | Responsibility                                                                                                                                                                 |
+| :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@davecode/core`](../packages/core)     | Domain contracts, config, SQLite storage, keyring, sandboxes, connection checks, quota engine, budget, providers, router, dual brain, task graph, autonomous runner, goal mode |
+| [`@davecode/server`](../packages/server) | Fastify gateway: `/v1` proxy, `/api` REST, SSE event stream, serves the built dashboard                                                                                        |
+| [`davecode`](../packages/cli)            | The published CLI (`davecode start`, `status`, `add-account`, `run`) and the Ink-based TUI                                                                                     |
+| [`@davecode/ui`](../packages/ui)         | Vite + React + Tailwind dashboard (dark by default)                                                                                                                            |
 
 Dependency direction is strictly `cli → server → core` and `ui → (HTTP) → server`. `core`
 never imports from the other packages.
@@ -103,18 +103,18 @@ src/
 
 ## Key design decisions
 
-| Decision | Choice | Why |
-| :------- | :----- | :-- |
-| Runtime | Node.js ≥ 22.12, ESM | Widest contributor reach; Node 20 is EOL |
-| Repo | pnpm workspaces monorepo | Clear package boundaries, one lockfile |
-| Storage | SQLite (WAL) via `better-sqlite3` | Synchronous, fast, multi-process safe, zero ops |
-| Secrets | AES-256-GCM, per-install master key in `~/.davecode/master.key` (0600) | Encryption at rest without an external KMS |
-| Validation | zod | One schema for config, API bodies and task graphs |
-| Token counting | `js-tiktoken` (pure JS) | No native build; good-enough estimates when upstream omits usage |
-| Gateway | Fastify 5 | Fast, typed, first-class streaming |
-| Live updates | Server-Sent Events | One-way stream is all the dashboard needs, proxies well |
-| UI | TUI (Ink) + web dashboard (Vite/React/Tailwind) | Terminal-first like Claude Code/opencode, rich observability in the browser |
-| Judge | Deterministic checks by default; optional TypeSafe Jev or any LLM route | Free by default, calibrated confidence when you want it |
+| Decision       | Choice                                                                  | Why                                                                         |
+| :------------- | :---------------------------------------------------------------------- | :-------------------------------------------------------------------------- |
+| Runtime        | Node.js ≥ 22.12, ESM                                                    | Widest contributor reach; Node 20 is EOL                                    |
+| Repo           | pnpm workspaces monorepo                                                | Clear package boundaries, one lockfile                                      |
+| Storage        | SQLite (WAL) via `better-sqlite3`                                       | Synchronous, fast, multi-process safe, zero ops                             |
+| Secrets        | AES-256-GCM, per-install master key in `~/.davecode/master.key` (0600)  | Encryption at rest without an external KMS                                  |
+| Validation     | zod                                                                     | One schema for config, API bodies and task graphs                           |
+| Token counting | `js-tiktoken` (pure JS)                                                 | No native build; good-enough estimates when upstream omits usage            |
+| Gateway        | Fastify 5                                                               | Fast, typed, first-class streaming                                          |
+| Live updates   | Server-Sent Events                                                      | One-way stream is all the dashboard needs, proxies well                     |
+| UI             | TUI (Ink) + web dashboard (Vite/React/Tailwind)                         | Terminal-first like Claude Code/opencode, rich observability in the browser |
+| Judge          | Deterministic checks by default; optional TypeSafe Jev or any LLM route | Free by default, calibrated confidence when you want it                     |
 
 ## Routing & quotas
 
@@ -187,14 +187,14 @@ all `SUCCESS`; ties keep file order. Status changes are immutable updates that f
 
 Module map (`packages/core/src/brain/`):
 
-| Module | Responsibility |
-| :----- | :------------- |
-| `graph.ts` | zod schema, DAG validation, `nextTask`/`readyTasks`/`blockedTasks`, `summarize`, `updateTask`/`setTaskStatus` |
-| `project.ts` | `ProjectBrain`: scaffold, read/write STATE.md, ARCHITECTURE.md and the graph, `task.updated` events |
-| `markdown.ts` | level-2 section parser behind `updateStateSection` and `appendStateLog` (fence-aware, preserves other content) |
-| `lock.ts` | `.davecode/.lock` (`{ pid, ts }`, stale after 30 s) serialising read-modify-write cycles between the runner and the dashboard |
-| `global.ts` | `GlobalBrain`: flat markdown notes in `~/.davecode/brain/`, names sanitised, no path traversal |
-| `context.ts` | `buildTaskContext` and `DAVECODE_SYSTEM_PROMPT` |
+| Module        | Responsibility                                                                                                                |
+| :------------ | :---------------------------------------------------------------------------------------------------------------------------- |
+| `graph.ts`    | zod schema, DAG validation, `nextTask`/`readyTasks`/`blockedTasks`, `summarize`, `updateTask`/`setTaskStatus`                 |
+| `project.ts`  | `ProjectBrain`: scaffold, read/write STATE.md, ARCHITECTURE.md and the graph, `task.updated` events                           |
+| `markdown.ts` | level-2 section parser behind `updateStateSection` and `appendStateLog` (fence-aware, preserves other content)                |
+| `lock.ts`     | `.davecode/.lock` (`{ pid, ts }`, stale after 30 s) serialising read-modify-write cycles between the runner and the dashboard |
+| `global.ts`   | `GlobalBrain`: flat markdown notes in `~/.davecode/brain/`, names sanitised, no path traversal                                |
+| `context.ts`  | `buildTaskContext` and `DAVECODE_SYSTEM_PROMPT`                                                                               |
 
 All writes are atomic (temp file + rename). `buildTaskContext` emits, in order, `GLOBAL BRAIN`,
 `PROJECT ARCHITECTURE`, `PROJECT STATE` and `CURRENT TASK` sections. Over budget (default
@@ -226,17 +226,17 @@ work finishes first), `stopped` (`stop()`) or `error` (unexpected failure). `idl
 
 Module map (`packages/core/src/autonomous/`):
 
-| Module | Responsibility |
-| :----- | :------------- |
-| `runner.ts` | `AutonomousRunner` state machine; structurally satisfies the gateway's `RunnerControl` |
-| `create.ts` | `createRunner(engine, { brain })` / `createExecutor(engine)` wiring from `runner.*` config |
-| `executor.ts` | `Executor` interface and the default `builtin` tool loop over the router |
-| `claude-cli-executor.ts` | Opt-in `claude-cli` delegation (`claude -p` with the account's `CLAUDE_CONFIG_DIR`) |
-| `tools.ts` | `list_dir`, `read_file`, `write_file`, `edit_file`, `search`, `run_command`, `finish` with repo path confinement |
-| `validator.ts` | Runs `runner.validate.{lint,typecheck,test}` and renders the `ValidationReport` |
-| `judge.ts` | `none` / `jev` (OpenRouter Decisions API) / `llm` acceptance judges |
-| `git.ts` | `execFile('git')` wrapper: branches, commits, `merge --no-ff`, PR mode |
-| `process.ts` | Quote-aware argv splitter, Windows `.cmd` shim rules, tail-first output capture |
+| Module                   | Responsibility                                                                                                   |
+| :----------------------- | :--------------------------------------------------------------------------------------------------------------- |
+| `runner.ts`              | `AutonomousRunner` state machine; structurally satisfies the gateway's `RunnerControl`                           |
+| `create.ts`              | `createRunner(engine, { brain })` / `createExecutor(engine)` wiring from `runner.*` config                       |
+| `executor.ts`            | `Executor` interface and the default `builtin` tool loop over the router                                         |
+| `claude-cli-executor.ts` | Opt-in `claude-cli` delegation (`claude -p` with the account's `CLAUDE_CONFIG_DIR`)                              |
+| `tools.ts`               | `list_dir`, `read_file`, `write_file`, `edit_file`, `search`, `run_command`, `finish` with repo path confinement |
+| `validator.ts`           | Runs `runner.validate.{lint,typecheck,test}` and renders the `ValidationReport`                                  |
+| `judge.ts`               | `none` / `jev` (OpenRouter Decisions API) / `llm` acceptance judges                                              |
+| `git.ts`                 | `execFile('git')` wrapper: branches, commits, `merge --no-ff`, PR mode                                           |
+| `process.ts`             | Quote-aware argv splitter, Windows `.cmd` shim rules, tail-first output capture                                  |
 
 One task, step by step:
 
@@ -302,10 +302,10 @@ Two capabilities described in the [original specification](SPEC.md) automate con
 products in ways their providers may prohibit. They ship **disabled** and require an explicit
 opt-in in `config.json`:
 
-| Flag | Enables | Risk |
-| :--- | :------ | :--- |
-| `experimental.geminiWeb` | The `gemini-web` provider (Chromium-driven Gemini web session) | Likely violates Google's ToS; accounts can be suspended |
-| `experimental.multiAccountRotation` | Balancing across several subscription logins of one provider | May violate Anthropic/OpenAI consumer terms; accounts can be suspended |
+| Flag                                | Enables                                                        | Risk                                                                   |
+| :---------------------------------- | :------------------------------------------------------------- | :--------------------------------------------------------------------- |
+| `experimental.geminiWeb`            | The `gemini-web` provider (Chromium-driven Gemini web session) | Likely violates Google's ToS; accounts can be suspended                |
+| `experimental.multiAccountRotation` | Balancing across several subscription logins of one provider   | May violate Anthropic/OpenAI consumer terms; accounts can be suspended |
 
 API-key providers and cross-provider failover are unaffected by these flags.
 
