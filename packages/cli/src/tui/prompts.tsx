@@ -60,7 +60,11 @@ export function SelectPrompt<T extends string>({
       setChosen(choice);
       done(choice.value);
     } else if (/^[1-9]$/.test(input) && Number(input) <= choices.length) {
+      // A number picks its option straight away, as in Claude Code's menus.
+      const choice = choices[Number(input) - 1]!;
       setIndex(Number(input) - 1);
+      setChosen(choice);
+      done(choice.value);
     }
   });
 
@@ -74,13 +78,18 @@ export function SelectPrompt<T extends string>({
           <Text key={choice.value}>
             <Text bold={active} dimColor={!active && theme.ink.dim}>
               {active ? ` ${theme.glyph.prompt} ` : '   '}
+              {choices.length <= 9 ? `${i + 1}. ` : ''}
               {choice.label}
             </Text>
             {choice.hint ? <Text dimColor={theme.ink.dim}> {choice.hint}</Text> : null}
           </Text>
         );
       })}
-      <Text dimColor={theme.ink.dim}> ↑/↓ to move, Enter to select, Esc to cancel</Text>
+      <Text dimColor={theme.ink.dim}>
+        {choices.length <= 9
+          ? ' ↑/↓ or a number to choose, Enter to confirm, Esc to cancel'
+          : ' ↑/↓ to move, Enter to select, Esc to cancel'}
+      </Text>
     </Box>
   );
 }
