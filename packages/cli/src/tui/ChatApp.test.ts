@@ -108,7 +108,7 @@ describe('ChatApp', () => {
     expect(ui.lastFrame()).toContain('1/1 failovers');
     expect(ui.lastFrame()).toContain('5h');
     expect(ui.lastFrame()).toContain('25%');
-    expect(ui.lastFrame()).toContain('in-process 4999');
+    expect(ui.frames.join('\n')).not.toContain('4999');
     expect(requests[0]).toEqual({
       model: 'davecode/auto',
       messages: [{ role: 'user', content: 'hi' }],
@@ -168,7 +168,7 @@ describe('ChatApp', () => {
     await type(ui, '/model claude-sonnet-5-5');
     await type(ui, '\r');
     await tick(50);
-    expect(ui.lastFrame()).toContain('claude-sonnet-5-5 · ');
+    expect(ui.frames.join('\n')).toContain('Model set to claude-sonnet-5-5');
 
     await type(ui, '/route');
     await type(ui, '\r');
@@ -179,6 +179,34 @@ describe('ChatApp', () => {
     await type(ui, '\r');
     await tick(50);
     expect(ui.frames.join('\n')).toContain('Unknown command /bogus');
+    expect(requests).toHaveLength(0);
+    ui.unmount();
+  });
+
+  it('moves through the slash menu with the arrows and runs the highlighted command', async () => {
+    const { backend, requests } = fakeBackend(async function* () {
+      yield chunk('x');
+    });
+    const ui = mount(backend);
+    await tick();
+    await type(ui, '/');
+    expect(ui.lastFrame()).toContain('› /model');
+    await type(ui, '\u001b[B');
+    expect(ui.lastFrame()).toContain('› /route');
+    await type(ui, '\u001b[A');
+    await type(ui, '\u001b[A');
+    expect(ui.lastFrame()).toContain('› /exit');
+    await type(ui, '\u001b[B');
+    await type(ui, '\u001b[B');
+    await type(ui, '\r');
+    await tick(50);
+    expect(ui.frames.join('\n')).toContain('1. anthropic/claude-sonnet-5-5');
+
+    await type(ui, '/acc');
+    await type(ui, '\u001b');
+    await tick(50);
+    expect(ui.lastFrame()).not.toContain('/accounts');
+    expect(ui.lastFrame()).toContain('Ask anything');
     expect(requests).toHaveLength(0);
     ui.unmount();
   });

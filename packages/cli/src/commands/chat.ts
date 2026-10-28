@@ -1,4 +1,5 @@
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { resolve, sep } from 'node:path';
 import { loadConfig, VERSION } from '@davecode/core';
 import { findGateway, GatewayClient } from '../client';
 import type { CliContext } from '../context';
@@ -15,6 +16,12 @@ export interface ChatOptions {
  * Open the chat TUI against the running gateway, or start an in-process gateway on an ephemeral
  * loopback port when none is running (it stops when the TUI exits).
  */
+/** `C:\Users\me\code\app` → `~\code\app`, for the banner. */
+function displayPath(path: string): string {
+  const home = homedir();
+  return path === home || path.startsWith(home + sep) ? `~${path.slice(home.length)}` : path;
+}
+
 export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<number> {
   if (!ctx.io.stdin.isTTY || !ctx.io.stdout.isTTY) {
     throw new CliError('The chat TUI needs an interactive terminal', {
@@ -63,6 +70,7 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
         theme: ctx.theme,
         model: opts.model ?? `davecode/${config.routing.defaultRoute}`,
         version: VERSION,
+        project: displayPath(projectRoot ?? ctx.cwd),
       }),
       {
         stdout: ctx.io.stdout as NodeJS.WriteStream,

@@ -46,7 +46,7 @@ jobs:
 
           Includes the independent desktop window, native project picker, local gateway lifecycle, Start menu and desktop shortcuts. The installer is unsigned. Vendor CLIs and Git are installed separately when needed.
 
-          Validation: lint, typecheck, 732 tests, build, and a packaged executable acceptance check covering the workspace, authenticated gateway and clean shutdown. The attached screenshot uses a disposable test project.
+          Validation: lint, typecheck, the full test suite, build, and a packaged executable acceptance check covering the workspace, authenticated gateway and clean shutdown. The attached screenshot uses a disposable test project.
           NOTES
           gh release create desktop-v0.3.0 release/*.exe release/SHA256SUMS release/smoke/desktop.png \
             --target "$SOURCE_SHA" --title 'DaveCode Desktop v0.3.0 Preview' \

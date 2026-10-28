@@ -44,8 +44,16 @@ All notable changes to this project are documented here. The format follows
 
 - `davecode accounts login` runs `claude auth login` for Claude Code accounts (was the
   interactive `claude` session) and prints the connection status afterwards.
+- Chat TUI: `/` opens a command menu navigated with ↑/↓ (Enter runs, Tab fills, Esc closes).
+  The banner shows only the version and project folder; the status line no longer prints the
+  gateway URL, port or a zero failover count, and reports the connection only when unhealthy.
+- The terminal theme is monochrome: emphasis is bold text instead of a teal accent.
 
 ### Fixed
+
+- The Windows installer shipped the bundled gateway without its `node_modules`
+  (electron-builder drops them from `extraResources`), so opening a project failed. They are
+  now copied in after packing, and the packaged acceptance check covers it.
 
 - Gemini CLI eligibility failures (`IneligibleTierError` / `UNSUPPORTED_CLIENT`) now map to
   an actionable `auth` provider error. Live Codex and Claude adapter verification is recorded
