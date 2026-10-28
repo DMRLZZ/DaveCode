@@ -93,7 +93,7 @@ export function loginPage(base: string, providers: readonly string[], nonce: str
       : '',
   ].join('');
   const body = `<h1 id="title">Sign in to DaveCode</h1>
-<p class="lede">Your account keeps DaveCode in sync across your devices.</p>
+<p class="lede">Continue with Google, GitHub or your email.</p>
 ${buttons ? `<div class="stack">${buttons}</div><p class="or">or</p>` : ''}
 <form id="email" class="stack" novalidate>
 <div><label for="address">Email</label><input id="address" name="email" type="email" autocomplete="email" required></div>
