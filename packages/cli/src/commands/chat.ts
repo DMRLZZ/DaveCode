@@ -6,6 +6,8 @@ import type { CliContext } from '../context';
 import { CliError, EXIT } from '../errors';
 import { detectProjectRoot, type Runtime, startRuntime } from '../runtime';
 import { type ChatBackend, httpBackend } from '../tui/backend';
+import { chatAccountActions } from './account';
+import { ensureReady } from './onboard';
 
 export interface ChatOptions {
   model?: string;
@@ -28,6 +30,9 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
       hint: 'For scripts, call the OpenAI-compatible API: POST http://127.0.0.1:4040/v1/chat/completions',
     });
   }
+  const ready = await ensureReady(ctx);
+  if (!ready) return EXIT.failure;
+  ctx = ready;
   const projectRoot = opts.project
     ? resolve(ctx.cwd, opts.project)
     : await detectProjectRoot(ctx.cwd, ctx.home);
@@ -58,6 +63,7 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
     backend = httpBackend(new GatewayClient(target), true);
   }
 
+  const accountActions = chatAccountActions(ctx);
   try {
     const [{ render }, { createElement }, { ChatApp }] = await Promise.all([
       import('ink'),
@@ -71,6 +77,7 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
         model: opts.model ?? `davecode/${config.routing.defaultRoute}`,
         version: VERSION,
         project: displayPath(projectRoot ?? ctx.cwd),
+        ...(accountActions ? { account: accountActions } : {}),
       }),
       {
         stdout: ctx.io.stdout as NodeJS.WriteStream,

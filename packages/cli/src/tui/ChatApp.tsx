@@ -24,6 +24,12 @@ export interface ChatAppProps {
   theme: Theme;
   model: string;
   version: string;
+  /** DaveCode account actions for /login, /logout and /account (absent when accounts are off). */
+  account?: {
+    status(): Promise<string>;
+    login(notify: (text: string) => void): Promise<string>;
+    logout(): Promise<string>;
+  };
   /** Where the conversation runs, shown once in the banner (e.g. `~/code/app`). */
   project?: string;
   /** Health polling interval (tests use a short one). */
@@ -39,7 +45,15 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function Chat({ backend, model, version, project, pollMs = 10_000, now = Date.now }: ChatAppProps) {
+function Chat({
+  backend,
+  model,
+  version,
+  project,
+  account,
+  pollMs = 10_000,
+  now = Date.now,
+}: ChatAppProps) {
   const theme = useTheme();
   const { exit } = useApp();
   const { write } = useStdout();
@@ -230,12 +244,31 @@ function Chat({ backend, model, version, project, pollMs = 10_000, now = Date.no
           case 'status':
             dispatch({ type: 'info', text: await statusText(theme, backend) });
             break;
+          case 'login':
+          case 'logout':
+          case 'account': {
+            if (!account) {
+              dispatch({
+                type: 'info',
+                text: 'DaveCode accounts are not available in this build.',
+              });
+              break;
+            }
+            const text =
+              command.name === 'login'
+                ? await account.login((note) => dispatch({ type: 'info', text: theme.dim(note) }))
+                : command.name === 'logout'
+                  ? await account.logout()
+                  : await account.status();
+            dispatch({ type: 'info', text });
+            break;
+          }
         }
       } catch (err) {
         dispatch({ type: 'error', text: `/${command.name} failed: ${errorText(err)}` });
       }
     },
-    [backend, exit, theme, width, write],
+    [account, backend, exit, theme, width, write],
   );
 
   const submit = useCallback(() => {

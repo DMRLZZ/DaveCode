@@ -167,6 +167,34 @@ function registerCommands(program: Command, run: Runner): void {
       }),
     );
 
+  program
+    .command('login')
+    .description('sign in to your DaveCode account in the browser')
+    .action(
+      run(async (ctx) => {
+        const { loginCommand } = await import('./commands/account');
+        return loginCommand(ctx);
+      }),
+    );
+  program
+    .command('logout')
+    .description('sign out of your DaveCode account')
+    .action(
+      run(async (ctx) => {
+        const { logoutCommand } = await import('./commands/account');
+        return logoutCommand(ctx);
+      }),
+    );
+  program
+    .command('account')
+    .description('show the signed-in DaveCode account')
+    .action(
+      run(async (ctx) => {
+        const { accountCommand } = await import('./commands/account');
+        return accountCommand(ctx);
+      }),
+    );
+
   registerAccounts(program, run);
   registerProject(program, run);
 
