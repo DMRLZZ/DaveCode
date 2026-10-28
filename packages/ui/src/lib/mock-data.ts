@@ -69,7 +69,7 @@ export const ACCOUNT_SEEDS: MockAccountSeed[] = [
   },
   {
     account: {
-      id: 'acc_ollama_local',
+      id: 'acc_openrouter',
       provider: 'openai-compatible',
       label: 'OpenRouter',
       enabled: true,
@@ -134,7 +134,7 @@ export const MOCK_ROUTES: Route[] = [
     name: 'local',
     description: 'Never leaves the machine.',
     targets: [
-      { provider: 'openai-compatible', model: 'openrouter/auto', accountId: 'acc_ollama_local' },
+      { provider: 'openai-compatible', model: 'openrouter/auto', accountId: 'acc_openrouter' },
     ],
   },
 ];

@@ -53,11 +53,11 @@ describe('MockEngine', () => {
     expect(budget.context).toContain('ACCOUNT BUDGET');
     expect(budget.context).not.toContain('Gemini web');
 
-    const updated = await e.updateAccount('acc_ollama_local', {
+    const updated = await e.updateAccount('acc_openrouter', {
       subscription: { plan: 'Self-hosted' },
     });
     expect(updated.subscription).toEqual({ plan: 'Self-hosted' });
-    const cleared = await e.updateAccount('acc_ollama_local', { subscription: null });
+    const cleared = await e.updateAccount('acc_openrouter', { subscription: null });
     expect(cleared.subscription).toBeUndefined();
   });
 
@@ -84,8 +84,8 @@ describe('MockEngine', () => {
     const usage = await engine().usage();
     const claude = usage.find((u) => u.accountId === 'acc_claude_pro');
     expect(claude?.windows['5h'].utilization).toBeGreaterThan(0.75);
-    const ollama = usage.find((u) => u.accountId === 'acc_ollama_local');
-    expect(ollama?.windows['5h'].utilization).toBe(0);
+    const openrouter = usage.find((u) => u.accountId === 'acc_openrouter');
+    expect(openrouter?.windows['5h'].utilization).toBe(0);
   });
 
   it('serves a ~12 task graph in mixed states whose dependencies exist', async () => {
