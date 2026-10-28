@@ -72,7 +72,7 @@ export function SelectPrompt<T extends string>({
         const active = i === index;
         return (
           <Text key={choice.value}>
-            <Text color={active ? theme.ink.accent : undefined}>
+            <Text bold={active} dimColor={!active && theme.ink.dim}>
               {active ? ` ${theme.glyph.prompt} ` : '   '}
               {choice.label}
             </Text>

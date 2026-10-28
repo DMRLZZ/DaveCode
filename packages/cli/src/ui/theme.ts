@@ -126,7 +126,7 @@ export interface Theme {
   color: boolean;
   unicode: boolean;
   glyph: Glyphs;
-  /** The one brand colour: headings, ids, the active element. */
+  /** Emphasis for headings, ids and the active element (bold, not a hue). */
   accent: Style;
   ok: Style;
   warn: Style;
@@ -143,10 +143,6 @@ export interface Theme {
     dim: boolean;
   };
 }
-
-/** Accent: a calm teal from the 256-colour palette (supported by every modern terminal). */
-const ACCENT_256 = 80;
-const ACCENT_HEX = '#5fd7d7';
 
 function sgr(open: string, close: string): Style {
   return (text) => (text === '' ? text : `\u001b[${open}m${text}\u001b[${close}m`);
@@ -175,13 +171,15 @@ export function createTheme(options: { color: boolean; unicode: boolean }): Them
     color,
     unicode,
     glyph,
-    accent: sgr(`38;5;${ACCENT_256}`, '39'),
+    // Monochrome by design: the accent is the terminal's own foreground in bold, so it reads on
+    // dark and light backgrounds alike. Colour is reserved for state (ok, warn, error).
+    accent: sgr('1', '22'),
     ok: sgr('32', '39'),
     warn: sgr('33', '39'),
     error: sgr('31', '39'),
     dim: sgr('2', '22'),
     bold: sgr('1', '22'),
-    ink: { accent: ACCENT_HEX, ok: 'green', warn: 'yellow', error: 'red', dim: true },
+    ink: { accent: undefined, ok: 'green', warn: 'yellow', error: 'red', dim: true },
   };
 }
 
