@@ -229,6 +229,38 @@ describe('ChatApp', () => {
     ui.unmount();
   });
 
+  it('picks an agent in /connect and hands it over to run its login', async () => {
+    const { backend } = fakeBackend(async function* () {});
+    const chosen: string[] = [];
+    const ui = render(
+      h(ChatApp, {
+        backend,
+        theme: plain,
+        model: 'davecode/auto',
+        version: '0.1.0',
+        pollMs: 60_000,
+        connect: {
+          agents: async () => [
+            { value: 'claude-cli', label: 'Claude Code', hint: 'installed' },
+            { value: 'codex-cli', label: 'Codex', hint: 'installed' },
+          ],
+          choose: (provider) => chosen.push(provider),
+        },
+      }),
+    );
+    await tick();
+    await type(ui, '/connect');
+    await type(ui, '\r');
+    await tick(50);
+    expect(ui.lastFrame()).toContain('Connect an agent');
+    expect(ui.lastFrame()).toContain('2. Codex');
+    await type(ui, '\u001b[B');
+    await type(ui, '\r');
+    await tick(50);
+    expect(chosen).toEqual(['codex-cli']);
+    ui.unmount();
+  });
+
   it('asks for a second Ctrl+C before exiting', async () => {
     const { backend } = fakeBackend(async function* () {});
     const ui = mount(backend);
