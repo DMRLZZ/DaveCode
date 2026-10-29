@@ -1,5 +1,6 @@
 import { hashPassword, randomToken, sha256, signJwt, verifyJwt, verifyPassword } from './crypto';
 import { OAuthError, type Provider, providerAuthorizeUrl, providerProfile } from './oauth';
+import { loginPage, messagePage } from './pages';
 import { SCHEMA } from './schema';
 import { type D1Like, Store, type User } from './store';
 
@@ -7,6 +8,9 @@ import { type D1Like, Store, type User } from './store';
  * DaveCode accounts: the endpoints the CLI's AccountClient speaks (a subset of Supabase Auth's
  * REST shape), served from Cloudflare Workers with D1.
  *
+ *   GET  /login?redirect_to&code_challenge[&mode]   the sign-in page `davecode login` opens
+ *   POST /login                                      its email form
+ *   GET  /login/done, /login/failed                  where the CLI sends the browser at the end
  *   GET  /auth/v1/settings                          enabled sign-in methods
  *   GET  /auth/v1/authorize?provider&redirect_to&code_challenge
  *   GET  /auth/v1/callback/:provider                 provider redirect target
@@ -54,6 +58,7 @@ export interface Deps {
 
 const ACCESS_TTL_SECONDS = 3600;
 const LOOPBACK = /^http:\/\/(127\.0\.0\.1|localhost):\d{1,5}\/[\w/-]*$/;
+const CHALLENGE = /^[\w-]{43}$/;
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -183,6 +188,108 @@ async function sendExisting(env: Env, to: string): Promise<void> {
   });
 }
 
+type Failure = { status: number; error: string; description: string };
+
+const TOO_MANY: Failure = {
+  status: 429,
+  error: 'over_request_rate_limit',
+  description: 'Too many attempts. Wait a minute and try again.',
+};
+
+async function readForm(request: Request): Promise<Map<string, string>> {
+  const fields = new Map<string, string>();
+  try {
+    for (const [key, value] of await request.formData()) {
+      if (typeof value === 'string') fields.set(key, value);
+    }
+  } catch {
+    // Not a form: every field is missing.
+  }
+  return fields;
+}
+
+/** Create (or re-claim an unconfirmed) email account and send its confirmation link. */
+async function emailSignUp(
+  env: Env,
+  store: Store,
+  request: Request,
+  input: { email: string; password: string; redirectTo: string; challenge: string },
+): Promise<{ id: string; email: string } | Failure> {
+  if (await limited(env, request, 'signup')) return TOO_MANY;
+  const email = input.email.trim().toLowerCase();
+  const { password, redirectTo, challenge } = input;
+  if (!EMAIL.test(email) || email.length > 320) {
+    return { status: 400, error: 'validation_failed', description: 'Enter a valid email address.' };
+  }
+  if (password.length < 8 || password.length > 200) {
+    return {
+      status: 400,
+      error: 'weak_password',
+      description: 'Use a password of at least 8 characters.',
+    };
+  }
+  if (!LOOPBACK.test(redirectTo) || !CHALLENGE.test(challenge)) {
+    return {
+      status: 400,
+      error: 'validation_failed',
+      description: 'Start again from your terminal with davecode login.',
+    };
+  }
+  if (!env.EMAIL) {
+    return {
+      status: 503,
+      error: 'email_unavailable',
+      description: 'Email sign-up is not available yet.',
+    };
+  }
+  const existing = await store.userByEmail(email);
+  if (existing?.email_verified) {
+    // Same reply as a new sign-up, so nobody can probe which emails have accounts.
+    await sendExisting(env, email);
+    return { id: crypto.randomUUID(), email };
+  }
+  const passwordHash = await hashPassword(password);
+  const user = existing ?? (await store.createUser({ email, verified: false, passwordHash }));
+  // An unconfirmed account can be claimed again: only whoever reads the inbox finishes it.
+  if (existing) await store.setPassword(existing.id, passwordHash);
+  const token = await store.saveVerification(user.id, redirectTo, challenge);
+  try {
+    await sendVerification(env, email, `${env.PUBLIC_URL}/auth/v1/verify?token=${token}`);
+  } catch {
+    return {
+      status: 503,
+      error: 'email_unavailable',
+      description: 'We could not send the confirmation email. Try again in a few minutes.',
+    };
+  }
+  return { id: user.id, email };
+}
+
+/** Check an email and password; only confirmed accounts may sign in. */
+async function emailSignIn(
+  env: Env,
+  store: Store,
+  request: Request,
+  email: string,
+  password: string,
+): Promise<User | Failure> {
+  if (await limited(env, request, 'password')) return TOO_MANY;
+  const user = await store.userByEmail(email.trim().toLowerCase());
+  // Hash even when the account does not exist, so timing does not reveal which emails do.
+  const ok = await verifyPassword(password, user?.password_hash ?? (await dummyHash()));
+  if (!user?.password_hash || !ok) {
+    return { status: 400, error: 'invalid_grant', description: 'Invalid email or password.' };
+  }
+  if (!user.email_verified) {
+    return {
+      status: 400,
+      error: 'email_not_confirmed',
+      description: 'Confirm your email first, using the link we sent you.',
+    };
+  }
+  return user;
+}
+
 export async function handle(request: Request, env: Env, deps: Deps = {}): Promise<Response> {
   const now = (deps.now ?? Date.now)();
   const fetcher = deps.fetch ?? fetch;
@@ -195,21 +302,73 @@ export async function handle(request: Request, env: Env, deps: Deps = {}): Promi
     return json({ status: 'ok' });
   }
 
+  const enabled = {
+    email: Boolean(env.EMAIL),
+    github: Boolean(credentials(env, 'github')),
+    google: Boolean(credentials(env, 'google')),
+  };
+  const invalidLink = () =>
+    messagePage('Sign-in link not valid', 'Start again from your terminal with davecode login.');
+
+  if (request.method === 'GET' && path === '/login') {
+    const redirectTo = url.searchParams.get('redirect_to') ?? '';
+    const challenge = url.searchParams.get('code_challenge') ?? '';
+    if (!LOOPBACK.test(redirectTo) || !CHALLENGE.test(challenge)) return invalidLink();
+    const mode = url.searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
+    return loginPage({ redirectTo, challenge, mode, providers: enabled });
+  }
+
+  if (request.method === 'POST' && path === '/login') {
+    // Only this site's own form may post here.
+    if (request.headers.get('Origin') !== new URL(env.PUBLIC_URL).origin) return invalidLink();
+    const form = await readForm(request);
+    const redirectTo = form.get('redirect_to') ?? '';
+    const challenge = form.get('code_challenge') ?? '';
+    if (!LOOPBACK.test(redirectTo) || !CHALLENGE.test(challenge)) return invalidLink();
+    const mode = form.get('mode') === 'signup' ? 'signup' : 'signin';
+    const email = (form.get('email') ?? '').trim();
+    const password = form.get('password') ?? '';
+    const again = (error: string) =>
+      loginPage({ redirectTo, challenge, mode, providers: enabled, email, error });
+    if (mode === 'signup') {
+      const result = await emailSignUp(env, store, request, {
+        email,
+        password,
+        redirectTo,
+        challenge,
+      });
+      if ('error' in result) return again(result.description);
+      return messagePage(
+        'Check your email',
+        `We sent a confirmation link to ${result.email}. Open it on this computer to finish signing in.`,
+      );
+    }
+    const user = await emailSignIn(env, store, request, email, password);
+    if ('error' in user) return again(user.description);
+    const code = await store.issueCode(user.id, challenge, 'email');
+    return Response.redirect(withParams(redirectTo, { code }), 303);
+  }
+
+  if (request.method === 'GET' && path === '/login/done') {
+    return messagePage('You are signed in', 'Return to your terminal. You can close this tab.');
+  }
+
+  if (request.method === 'GET' && path === '/login/failed') {
+    return messagePage(
+      'Sign-in did not finish',
+      'Your terminal says what went wrong. Run davecode login to try again.',
+    );
+  }
+
   if (request.method === 'GET' && path === '/auth/v1/settings') {
-    return json({
-      external: {
-        email: Boolean(env.EMAIL),
-        github: Boolean(credentials(env, 'github')),
-        google: Boolean(credentials(env, 'google')),
-      },
-    });
+    return json({ external: enabled });
   }
 
   if (request.method === 'GET' && path === '/auth/v1/authorize') {
     const provider = url.searchParams.get('provider') as Provider;
     const redirectTo = url.searchParams.get('redirect_to') ?? '';
     const challenge = url.searchParams.get('code_challenge') ?? '';
-    if (!LOOPBACK.test(redirectTo) || !/^[\w-]{43}$/.test(challenge)) {
+    if (!LOOPBACK.test(redirectTo) || !CHALLENGE.test(challenge)) {
       return page('Sign-in link not valid', 'Start again from your terminal with davecode login.');
     }
     const creds =
@@ -289,51 +448,14 @@ export async function handle(request: Request, env: Env, deps: Deps = {}): Promi
   }
 
   if (request.method === 'POST' && path === '/auth/v1/signup') {
-    if (await limited(env, request, 'signup')) {
-      return fail(
-        429,
-        'over_request_rate_limit',
-        'Too many attempts. Wait a minute and try again.',
-      );
-    }
     const body = await readJson(request);
-    const email = str(body.email).trim().toLowerCase();
-    const password = str(body.password);
-    const challenge = str(body.code_challenge);
-    const redirectTo = url.searchParams.get('redirect_to') ?? '';
-    if (!EMAIL.test(email) || email.length > 320) {
-      return fail(400, 'validation_failed', 'Enter a valid email address.');
-    }
-    if (password.length < 8 || password.length > 200) {
-      return fail(400, 'weak_password', 'Use a password of at least 8 characters.');
-    }
-    if (!LOOPBACK.test(redirectTo) || !/^[\w-]{43}$/.test(challenge)) {
-      return fail(400, 'validation_failed', 'Start again from your terminal with davecode login.');
-    }
-    if (!env.EMAIL) {
-      return fail(503, 'email_unavailable', 'Email sign-up is not available yet.');
-    }
-    const existing = await store.userByEmail(email);
-    if (existing?.email_verified) {
-      // Same reply as a new sign-up, so nobody can probe which emails have accounts.
-      await sendExisting(env, email);
-      return json({ id: crypto.randomUUID(), email });
-    }
-    const passwordHash = await hashPassword(password);
-    const user = existing ?? (await store.createUser({ email, verified: false, passwordHash }));
-    // An unconfirmed account can be claimed again: only whoever reads the inbox finishes it.
-    if (existing) await store.setPassword(existing.id, passwordHash);
-    const token = await store.saveVerification(user.id, redirectTo, challenge);
-    try {
-      await sendVerification(env, email, `${env.PUBLIC_URL}/auth/v1/verify?token=${token}`);
-    } catch {
-      return fail(
-        503,
-        'email_unavailable',
-        'We could not send the confirmation email. Try again in a few minutes.',
-      );
-    }
-    return json({ id: user.id, email });
+    const result = await emailSignUp(env, store, request, {
+      email: str(body.email),
+      password: str(body.password),
+      redirectTo: url.searchParams.get('redirect_to') ?? '',
+      challenge: str(body.code_challenge),
+    });
+    return 'error' in result ? fail(result.status, result.error, result.description) : json(result);
   }
 
   if (request.method === 'POST' && path === '/auth/v1/token') {
@@ -351,29 +473,8 @@ export async function handle(request: Request, env: Env, deps: Deps = {}): Promi
     }
 
     if (grant === 'password') {
-      if (await limited(env, request, 'password')) {
-        return fail(
-          429,
-          'over_request_rate_limit',
-          'Too many attempts. Wait a minute and try again.',
-        );
-      }
-      const user = await store.userByEmail(str(body.email).trim().toLowerCase());
-      // Hash even when the account does not exist, so timing does not reveal which emails do.
-      const ok = await verifyPassword(
-        str(body.password),
-        user?.password_hash ?? (await dummyHash()),
-      );
-      if (!user?.password_hash || !ok) {
-        return fail(400, 'invalid_grant', 'Invalid email or password.');
-      }
-      if (!user.email_verified) {
-        return fail(
-          400,
-          'email_not_confirmed',
-          'Confirm your email first, using the link we sent you.',
-        );
-      }
+      const user = await emailSignIn(env, store, request, str(body.email), str(body.password));
+      if ('error' in user) return fail(user.status, user.error, user.description);
       return session(env, store, user, 'email', now);
     }
 

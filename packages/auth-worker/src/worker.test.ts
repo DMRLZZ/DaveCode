@@ -80,21 +80,54 @@ const client = () =>
     { fetch: upstream as typeof fetch },
   );
 
-/** Follow the browser through GitHub and back to the CLI's loopback callback. */
+/** What a browser does with the hosted page: find a link by its text, without escapes. */
+async function linkOn(path: string, text: string): Promise<string> {
+  const html = await (await call(path)).text();
+  const href = [...html.matchAll(/<a [^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/g)].find((m) =>
+    m[2]?.endsWith(text),
+  )?.[1];
+  expect(href, `link "${text}"`).toBeDefined();
+  return (href ?? '').replace(/&amp;/g, '&');
+}
+
+const pathOf = (url: string) => {
+  const u = new URL(url);
+  return u.pathname + u.search;
+};
+
+/** Hand the provider's redirect to the CLI listener; returns the hosted page it sends us to. */
+async function toLoopback(location: string): Promise<string> {
+  const done = await fetch(location, { redirect: 'manual' });
+  return (await call(pathOf(done.headers.get('location') ?? ''))).text();
+}
+
+/** Follow the browser from the hosted page through GitHub and back to the CLI. */
 async function browserGitHub(loginUrl: string): Promise<string> {
-  const start = await fetch(`${loginUrl}oauth/github`, { redirect: 'manual' });
-  const authorize = await call(
-    new URL(start.headers.get('location') ?? '').pathname +
-      new URL(start.headers.get('location') ?? '').search,
-  );
+  const authorize = await call(await linkOn(pathOf(loginUrl), 'Continue with GitHub'));
   const atGitHub = new URL(authorize.headers.get('location') ?? '');
   expect(atGitHub.hostname).toBe('github.com');
   const callback = new URL(atGitHub.searchParams.get('redirect_uri') ?? '');
   callback.searchParams.set('code', 'from-github');
   callback.searchParams.set('state', atGitHub.searchParams.get('state') ?? '');
   const back = await call(callback.pathname + callback.search);
-  const loopback = back.headers.get('location') ?? '';
-  return (await fetch(loopback)).text();
+  return toLoopback(back.headers.get('location') ?? '');
+}
+
+/** Submit the hosted email form the way a browser does. */
+function submit(loginUrl: string, fields: Record<string, string>, origin = ORIGIN) {
+  const params = new URL(loginUrl).searchParams;
+  return call('/login', {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: origin },
+    body: new URLSearchParams({
+      redirect_to: params.get('redirect_to') ?? '',
+      code_challenge: params.get('code_challenge') ?? '',
+      email: 'Dev@Example.com',
+      password: 'hunter2hunter2',
+      ...fields,
+    }),
+  });
 }
 
 describe('crypto', () => {
@@ -115,8 +148,12 @@ describe('crypto', () => {
 });
 
 describe('auth worker with the real CLI client', () => {
-  it('signs in with GitHub through the CLI login page, then refreshes and logs out', async () => {
+  it('signs in with GitHub through the hosted page, then refreshes and logs out', async () => {
     const login = await startAccountLogin({ client: client() });
+    expect(login.url.startsWith(`${ORIGIN}/login?`)).toBe(true);
+    const page = await (await call(pathOf(login.url))).text();
+    expect(page).toContain('Continue with Google');
+    expect(page).not.toMatch(/Continue with Apple|<script/i);
     expect(await browserGitHub(login.url)).toContain('You are signed in');
     const session = await login.session;
     expect(session.user).toMatchObject({
@@ -158,29 +195,39 @@ describe('auth worker with the real CLI client', () => {
 
   it('creates an email account only after the emailed link is opened', async () => {
     const login = await startAccountLogin({ client: client() });
-    const origin = new URL(login.url).origin;
-    const form = (mode: string, password = 'hunter2hunter2') =>
-      fetch(`${login.url}email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Origin: origin },
-        body: JSON.stringify({ mode, email: 'Dev@Example.com', password }),
-      }).then((r) => r.json());
+    // Only the hosted page itself may post the form.
+    expect(
+      await (await submit(login.url, { mode: 'signup' }, 'https://evil.test')).text(),
+    ).toContain('Sign-in link not valid');
+    expect(mail).toHaveLength(0);
 
-    expect(await form('signup')).toEqual({ confirm: true });
+    expect(await (await submit(login.url, { mode: 'signup' })).text()).toContain(
+      'Check your email',
+    );
     expect(mail).toHaveLength(1);
     expect(mail[0]?.to).toBe('dev@example.com');
-    expect(await form('signin')).toEqual({
-      error: 'Confirm your email first, using the link we sent you.',
-    });
+    expect(await (await submit(login.url, { mode: 'signin' })).text()).toContain(
+      'Confirm your email first, using the link we sent you.',
+    );
 
     const link = new URL(mail[0]?.text.match(/https:\S+/)?.[0] ?? '');
     const confirmed = await call(link.pathname + link.search);
     const html = await confirmed.text();
     expect(html).toContain('Email confirmed');
     const target = html.match(/url=([^"]+)"/)?.[1]?.replace(/&amp;/g, '&') ?? '';
-    await fetch(target);
+    expect(await toLoopback(target)).toContain('You are signed in');
     expect((await login.session).user.email).toBe('dev@example.com');
     await login.close();
+
+    // The hosted form signs in with the password, straight back to the CLI.
+    const again = await startAccountLogin({ client: client() });
+    const wrong = await submit(again.url, { mode: 'signin', password: 'nope-nope' });
+    expect(await wrong.text()).toContain('Invalid email or password.');
+    const right = await submit(again.url, { mode: 'signin' });
+    expect(right.status).toBe(303);
+    await toLoopback(right.headers.get('location') ?? '');
+    expect((await again.session).user.email).toBe('dev@example.com');
+    await again.close();
 
     // Afterwards the password works, and a wrong one gets the same generic answer.
     const ok = await client().signInWithPassword('dev@example.com', 'hunter2hunter2');
@@ -251,9 +298,7 @@ describe('auth worker with the real CLI client', () => {
 
   it('expires one-time codes', async () => {
     const login = await startAccountLogin({ client: client() });
-    const start = await fetch(`${login.url}oauth/github`, { redirect: 'manual' });
-    const location = new URL(start.headers.get('location') ?? '');
-    const authorize = await call(location.pathname + location.search);
+    const authorize = await call(await linkOn(pathOf(login.url), 'Continue with GitHub'));
     const state = new URL(authorize.headers.get('location') ?? '').searchParams.get('state');
     clock += 11 * 60_000;
     const late = await call(`/auth/v1/callback/github?code=c&state=${state}`);

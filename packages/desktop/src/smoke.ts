@@ -28,12 +28,14 @@ export async function verifyWindow(
   }
   if (!rendered) throw new Error('workspace_not_rendered');
   await mkdir(output, { recursive: true });
-  await writeFile(join(output, 'desktop.png'), (await window.webContents.capturePage()).toPNG());
+  // The screenshot is evidence, not the check: headless Linux CI has no GPU to capture with.
+  const image = await window.webContents.capturePage().catch(() => undefined);
+  if (image) await writeFile(join(output, 'desktop.png'), image.toPNG());
   await writeFile(
     join(output, 'result.json'),
     JSON.stringify({
       status: 'passed',
-      version: '0.3.0',
+      version: '0.4.0',
       url: gateway,
       workspace: true,
       authenticated: true,

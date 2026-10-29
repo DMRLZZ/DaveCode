@@ -9,8 +9,21 @@ permissions:
   contents: write
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  installer:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: DaveCode-Windows
+            files: packages/desktop/release/*.exe
+          - os: macos-latest
+            name: DaveCode-macOS
+            files: packages/desktop/release/*.dmg
+          - os: ubuntu-latest
+            name: DaveCode-Linux
+            files: packages/desktop/release/*.AppImage
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -23,18 +36,16 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm desktop:package
-      - run: pnpm --filter @davecode/desktop smoke --packaged
+      - if: runner.os != 'Linux'
+        run: pnpm --filter @davecode/desktop smoke --packaged
+      - if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum pnpm --filter @davecode/desktop smoke --packaged
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: DaveCode-Windows
+          name: ${{ matrix.name }}
           path: |
-            packages/desktop/release/*.exe
+            ${{ matrix.files }}
             packages/desktop/release/smoke/desktop.png
             packages/desktop/release/smoke/startup.png
             packages/desktop/release/smoke/startup.json
-      - if: startsWith(github.ref, 'refs/tags/desktop-v')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload $env:GITHUB_REF_NAME packages/desktop/release/*.exe --clobber

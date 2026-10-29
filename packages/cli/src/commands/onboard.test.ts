@@ -29,14 +29,11 @@ function accountFetch() {
   }) as unknown as typeof fetch;
 }
 
-/** A browser that clicks "Continue with GitHub" and comes back with a code. */
+/** A browser that signs in on the hosted page and comes back to the CLI with a code. */
 async function browser(url: string): Promise<boolean> {
-  const start = await fetch(`${url}oauth/github`, { redirect: 'manual' });
-  const back = new URL(
-    new URL(start.headers.get('location') ?? '').searchParams.get('redirect_to') ?? '',
-  );
+  const back = new URL(new URL(url).searchParams.get('redirect_to') ?? '');
   back.searchParams.set('code', 'code-from-github');
-  void fetch(back);
+  void fetch(back, { redirect: 'manual' });
   return true;
 }
 

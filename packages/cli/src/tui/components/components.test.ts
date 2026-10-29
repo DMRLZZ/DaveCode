@@ -43,7 +43,7 @@ describe('InputBox', () => {
   it('lists slash suggestions', () => {
     const ui = render(themed(h(SlashHints, { commands: SLASH_COMMANDS.slice(0, 2), width: 80 })));
     expect(ui.lastFrame()).toContain('/model [id]');
-    expect(ui.lastFrame()).toContain('routes and their failover targets');
+    expect(ui.lastFrame()).toContain('/connect');
     ui.unmount();
   });
 });

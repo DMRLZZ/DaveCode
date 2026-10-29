@@ -7,6 +7,10 @@ on:
         description: Successful Desktop installer workflow run ID
         required: true
         type: string
+      version:
+        description: Version to release, without the v (for example 0.4.0)
+        required: true
+        type: string
 
 permissions:
   actions: read
@@ -19,35 +23,45 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
       BUILD_RUN: ${{ inputs.build_run }}
+      VERSION: ${{ inputs.version }}
     steps:
-      - name: Verify the build and download its tested artifacts
+      - name: Verify the build and download its tested installers
         shell: bash
         run: |
           set -euo pipefail
           [[ "$BUILD_RUN" =~ ^[0-9]+$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           gh api "repos/$GH_REPO/actions/runs/$BUILD_RUN" > run.json
           test "$(jq -r .conclusion run.json)" = success
           test "$(jq -r .name run.json)" = 'Desktop installer'
           source_sha="$(jq -r .head_sha run.json)"
           [[ "$source_sha" =~ ^[a-f0-9]{40}$ ]]
           echo "SOURCE_SHA=$source_sha" >> "$GITHUB_ENV"
-          gh run download "$BUILD_RUN" --name DaveCode-Windows --dir release
-          test -f release/DaveCode-Setup-0.3.0-x64.exe
+          for name in Windows macOS Linux; do
+            gh run download "$BUILD_RUN" --name "DaveCode-$name" --dir "build/$name"
+          done
+          mkdir release
+          cp build/Windows/*.exe build/macOS/*.dmg build/Linux/*.AppImage release/
+          cp build/Windows/smoke/desktop.png release/desktop.png
+          test -f release/DaveCode-Setup-x64.exe
+          test -f release/DaveCode-macOS-arm64.dmg
+          test -f release/DaveCode-Linux-x86_64.AppImage
           cd release
-          sha256sum ./*.exe > SHA256SUMS
-      - name: Publish the verified Windows installer
+          sha256sum DaveCode-* > SHA256SUMS
+      - name: Publish the verified installers
         shell: bash
         run: |
           set -euo pipefail
           cat > notes.md <<'NOTES'
-          DaveCode desktop preview for Windows x64.
+          DaveCode desktop for Windows, macOS and Linux.
 
-          Download and run **DaveCode-Setup-0.3.0-x64.exe**. Node.js is included; no separate Node or npm installation is required. Open a project from the app and connect your AI provider.
+          - **Windows (x64):** download `DaveCode-Setup-x64.exe`, run it and choose where to install. It adds DaveCode to the Start menu and the desktop.
+          - **macOS (Apple silicon):** open `DaveCode-macOS-arm64.dmg` and drag DaveCode to Applications. The app is not notarized yet: the first time, right-click it and choose Open.
+          - **Linux (x64):** download `DaveCode-Linux-x86_64.AppImage`, make it executable (`chmod +x`) and run it.
 
-          Includes the independent desktop window, native project picker, local gateway lifecycle, Start menu and desktop shortcuts. The installer is unsigned. Vendor CLIs and Git are installed separately when needed.
+          Node.js is included. Claude Code, Codex, Antigravity and Git are installed separately when you connect them. Installers are unsigned previews; checksums are in `SHA256SUMS`.
 
-          Validation: lint, typecheck, the full test suite, build, and a packaged executable acceptance check covering the workspace, authenticated gateway and clean shutdown. The attached screenshot uses a disposable test project.
+          Each installer passed lint, typecheck, the full test suite and a packaged acceptance run on its own platform (workspace, authenticated gateway, clean shutdown).
           NOTES
-          gh release create desktop-v0.3.0 release/*.exe release/SHA256SUMS release/smoke/desktop.png \
-            --target "$SOURCE_SHA" --title 'DaveCode Desktop v0.3.0 Preview' \
-            --notes-file notes.md --prerelease
+          gh release create "v$VERSION" release/DaveCode-* release/SHA256SUMS release/desktop.png \
+            --target "$SOURCE_SHA" --title "DaveCode v$VERSION" --notes-file notes.md --latest

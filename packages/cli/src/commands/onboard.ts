@@ -134,6 +134,88 @@ async function setDefaultRoute(ctx: CliContext, route: Route): Promise<void> {
   });
 }
 
+/**
+ * Connect one agent: reuse its account (or create one), run the official login when it is not
+ * signed in, choose a model and make it the default route. Returns false when the agent is not
+ * installed.
+ */
+export async function connectAgent(
+  ctx: CliContext,
+  provider: ProviderKind,
+  prompter: Prompter,
+  backend: AccountsBackend,
+  deps: OnboardDeps = {},
+): Promise<boolean> {
+  const { theme } = ctx;
+  const which = deps.which ?? ((binary: string) => whichOnPath(binary, ctx.env));
+  const agent = AGENTS.find((a) => a.provider === provider);
+  const spec = CLI_LOGINS[provider];
+  if (!agent || !spec) throw new Error(`${provider} is not an agent DaveCode can connect`);
+  if (!which(spec.binary)) {
+    ctx.out(theme.warn(` ${agent.name} is not installed.`));
+    ctx.out(theme.dim(` ${spec.installHint}`));
+    ctx.out();
+    return false;
+  }
+
+  const account =
+    (await backend.list()).find((a) => a.provider === provider) ??
+    (await backend.create({ provider, label: agent.name }));
+  const connection = await backend.connection(account.id).catch(() => undefined);
+  if (connection?.status !== 'connected' || account.status === 'error') {
+    const exit = await (deps.vendorLogin ?? ((c, id) => accountsLogin(c, id, [], {}, { backend })))(
+      ctx,
+      account.id,
+    );
+    if (exit !== 0) {
+      ctx.out(theme.warn(` ${agent.name} did not finish signing in. You can retry later with:`));
+      ctx.out(theme.dim(`   davecode accounts login ${account.id}`));
+    }
+  } else {
+    ctx.out(`${theme.ok(theme.glyph.ok)} ${agent.name} is already signed in.`);
+  }
+
+  const discovered =
+    provider === 'antigravity-cli'
+      ? await (deps.models ?? (() => agyModels(which(spec.binary) ?? spec.binary, ctx.env)))(
+          provider,
+        )
+      : [];
+  let model = await prompter.select(`Model for ${agent.name}`, [
+    ...agent.models,
+    ...discovered,
+    { value: OTHER_MODEL, label: 'Another model…', hint: 'type its id' },
+  ]);
+  if (model === OTHER_MODEL) {
+    model = await prompter.text('Model id', {
+      validate: (v) =>
+        /^[\w.:[\]-]+$/.test(v.trim()) ? undefined : 'Use letters, digits, . : - _',
+    });
+    model = model.trim();
+  }
+  await setDefaultRoute(ctx, {
+    name: 'auto',
+    description: `${agent.name} (${model})`,
+    targets: [{ provider, model, accountId: account.id }],
+  });
+  ctx.out(`${theme.ok(theme.glyph.ok)} DaveCode will use ${theme.bold(agent.name)} · ${model}`);
+  ctx.out();
+  return true;
+}
+
+/** The agent picker shared by first-run setup and /connect. */
+export function agentChoices(
+  ctx: CliContext,
+  deps: Pick<OnboardDeps, 'which'> = {},
+): Array<{ value: ProviderKind; label: string; hint: string }> {
+  const which = deps.which ?? ((binary: string) => whichOnPath(binary, ctx.env));
+  return AGENTS.map((agent) => ({
+    value: agent.provider,
+    label: agent.name,
+    hint: which(CLI_LOGINS[agent.provider]?.binary ?? '') ? 'installed' : 'not installed',
+  }));
+}
+
 /** First agent: pick one that is installed, log in with its official CLI, choose a model. */
 async function connectAgentStep(
   ctx: CliContext,
@@ -141,70 +223,13 @@ async function connectAgentStep(
   backend: AccountsBackend,
   deps: OnboardDeps,
 ): Promise<void> {
-  const { theme } = ctx;
-  const which = deps.which ?? ((binary: string) => whichOnPath(binary, ctx.env));
   for (;;) {
-    const choice = await prompter.select('Connect your first agent', [
-      ...AGENTS.map((agent) => {
-        const binary = CLI_LOGINS[agent.provider]?.binary ?? '';
-        return {
-          value: agent.provider as string,
-          label: agent.name,
-          hint: which(binary) ? 'installed' : 'not installed',
-        };
-      }),
+    const choice = await prompter.select<string>('Connect your first agent', [
+      ...agentChoices(ctx, deps),
       { value: 'later', label: 'Later', hint: 'davecode accounts add' },
     ]);
     if (choice === 'later') return;
-    const agent = AGENTS.find((a) => a.provider === choice)!;
-    const spec = CLI_LOGINS[agent.provider]!;
-    if (!which(spec.binary)) {
-      ctx.out(theme.warn(` ${agent.name} is not installed.`));
-      ctx.out(theme.dim(` ${spec.installHint}`));
-      ctx.out();
-      continue;
-    }
-
-    const account = await backend.create({ provider: agent.provider, label: agent.name });
-    const connection = await backend.connection(account.id).catch(() => undefined);
-    if (connection?.status !== 'connected') {
-      const exit = await (
-        deps.vendorLogin ?? ((c, id) => accountsLogin(c, id, [], {}, { backend }))
-      )(ctx, account.id);
-      if (exit !== 0) {
-        ctx.out(theme.warn(` ${agent.name} did not finish signing in. You can retry later with:`));
-        ctx.out(theme.dim(`   davecode accounts login ${account.id}`));
-      }
-    } else {
-      ctx.out(`${theme.ok(theme.glyph.ok)} ${agent.name} is already signed in.`);
-    }
-
-    const discovered =
-      agent.provider === 'antigravity-cli'
-        ? await (deps.models ?? (() => agyModels(which(spec.binary) ?? spec.binary, ctx.env)))(
-            agent.provider,
-          )
-        : [];
-    let model = await prompter.select(`Model for ${agent.name}`, [
-      ...agent.models,
-      ...discovered,
-      { value: OTHER_MODEL, label: 'Another model…', hint: 'type its id' },
-    ]);
-    if (model === OTHER_MODEL) {
-      model = await prompter.text('Model id', {
-        validate: (v) =>
-          /^[\w.:[\]-]+$/.test(v.trim()) ? undefined : 'Use letters, digits, . : - _',
-      });
-      model = model.trim();
-    }
-    await setDefaultRoute(ctx, {
-      name: 'auto',
-      description: `${agent.name} (${model})`,
-      targets: [{ provider: agent.provider, model, accountId: account.id }],
-    });
-    ctx.out(`${theme.ok(theme.glyph.ok)} DaveCode will use ${theme.bold(agent.name)} · ${model}`);
-    ctx.out();
-    return;
+    if (await connectAgent(ctx, choice as ProviderKind, prompter, backend, deps)) return;
   }
 }
 

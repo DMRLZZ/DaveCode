@@ -82,7 +82,7 @@ export async function prepare() {
     const npmCli =
       process.platform === 'win32'
         ? join(dirname(process.execPath), 'node_modules/npm/bin/npm-cli.js')
-        : fileURLToPath(import.meta.resolve('npm/bin/npm-cli.js'));
+        : join(dirname(process.execPath), '../lib/node_modules/npm/bin/npm-cli.js');
     await run(
       process.execPath,
       [npmCli, 'install', '--omit=dev', '--prefer-offline', '--no-audit', '--no-fund'],

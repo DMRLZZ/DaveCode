@@ -129,6 +129,22 @@ export class AccountClient {
     this.now = options.now ?? Date.now;
   }
 
+  /**
+   * The hosted sign-in page (Google, GitHub or email). Every method ends by sending the browser
+   * to `redirectTo` with `?code=` bound to `challenge`.
+   */
+  loginUrl(redirectTo: string, challenge: string): string {
+    const url = new URL(`${this.service.url}/login`);
+    url.searchParams.set('redirect_to', redirectTo);
+    url.searchParams.set('code_challenge', challenge);
+    return url.toString();
+  }
+
+  /** A page of the hosted service, such as `/login/done`. */
+  pageUrl(path: string): string {
+    return `${this.service.url}${path}`;
+  }
+
   /** Browser URL that starts Google or GitHub sign-in and returns to `redirectTo` with `?code=`. */
   authorizeUrl(provider: OAuthProvider, redirectTo: string, challenge: string): string {
     const url = new URL(`${this.service.url}/auth/v1/authorize`);

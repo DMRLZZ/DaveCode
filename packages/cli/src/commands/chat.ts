@@ -1,13 +1,15 @@
 import { homedir } from 'node:os';
 import { resolve, sep } from 'node:path';
-import { loadConfig, VERSION } from '@davecode/core';
+import { loadConfig, type ProviderKind, VERSION } from '@davecode/core';
 import { findGateway, GatewayClient } from '../client';
 import type { CliContext } from '../context';
 import { CliError, EXIT } from '../errors';
+import { openAccounts } from '../lib/accounts-backend';
+import { PromptCancelledError } from '../lib/prompter';
 import { detectProjectRoot, type Runtime, startRuntime } from '../runtime';
 import { type ChatBackend, httpBackend } from '../tui/backend';
 import { chatAccountActions } from './account';
-import { ensureReady } from './onboard';
+import { agentChoices, connectAgent, ensureReady } from './onboard';
 
 export interface ChatOptions {
   model?: string;
@@ -36,6 +38,38 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
   const projectRoot = opts.project
     ? resolve(ctx.cwd, opts.project)
     : await detectProjectRoot(ctx.cwd, ctx.home);
+  // /connect closes the chat so the vendor login can use the terminal, then opens it again.
+  for (;;) {
+    const provider = await runChat(ctx, opts, projectRoot);
+    if (!provider) return EXIT.ok;
+    await connectFromChat(ctx, provider);
+  }
+}
+
+async function connectFromChat(ctx: CliContext, provider: ProviderKind): Promise<void> {
+  const { createInkPrompter } = await import('../tui/prompts');
+  const prompter = createInkPrompter({
+    stdout: ctx.io.stdout,
+    stdin: ctx.io.stdin,
+    theme: ctx.theme,
+  });
+  const backend = await openAccounts({ home: ctx.home, env: ctx.env, local: true });
+  try {
+    ctx.out();
+    await connectAgent(ctx, provider, prompter, backend);
+  } catch (err) {
+    if (!(err instanceof PromptCancelledError)) throw err;
+  } finally {
+    backend.close();
+  }
+}
+
+/** One chat session; resolves with the agent picked in /connect, if any. */
+async function runChat(
+  ctx: CliContext,
+  opts: ChatOptions,
+  projectRoot: string | undefined,
+): Promise<ProviderKind | undefined> {
   const config = loadConfig({
     home: ctx.home,
     env: ctx.env,
@@ -64,6 +98,13 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
   }
 
   const accountActions = chatAccountActions(ctx);
+  let connectTo: ProviderKind | undefined;
+  const connect = {
+    agents: async () => agentChoices(ctx),
+    choose: (provider: string) => {
+      connectTo = provider as ProviderKind;
+    },
+  };
   try {
     const [{ render }, { createElement }, { ChatApp }] = await Promise.all([
       import('ink'),
@@ -78,6 +119,7 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
         version: VERSION,
         project: displayPath(projectRoot ?? ctx.cwd),
         ...(accountActions ? { account: accountActions } : {}),
+        connect,
       }),
       {
         stdout: ctx.io.stdout as NodeJS.WriteStream,
@@ -90,5 +132,5 @@ export async function chatCommand(ctx: CliContext, opts: ChatOptions): Promise<n
   } finally {
     await runtime?.close();
   }
-  return EXIT.ok;
+  return connectTo;
 }
