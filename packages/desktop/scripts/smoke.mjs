@@ -20,10 +20,20 @@ const env = {
   DAVECODE_DESKTOP_SMOKE_DIR: output,
 };
 delete env.ELECTRON_RUN_AS_NODE;
+const UNPACKED = {
+  win32: 'release/win-unpacked/DaveCode.exe',
+  darwin: 'release/mac-arm64/DaveCode.app/Contents/MacOS/DaveCode',
+  linux: 'release/linux-unpacked/davecode-desktop',
+};
 const command = packaged
-  ? join(root, 'release/win-unpacked/DaveCode.exe')
+  ? join(root, UNPACKED[process.platform])
   : (await import('electron')).default;
-const args = [...(packaged ? [] : [join(root, 'dist/main.cjs')]), `--project=${project}`];
+const args = [
+  ...(packaged ? [] : [join(root, 'dist/main.cjs')]),
+  `--project=${project}`,
+  // CI containers lack the setuid helper Chromium's Linux sandbox needs.
+  ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
+];
 try {
   await new Promise((resolve, reject) => {
     const child = spawn(command, args, { env, stdio: 'inherit', windowsHide: false });
