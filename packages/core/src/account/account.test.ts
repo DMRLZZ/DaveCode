@@ -148,64 +148,43 @@ describe('AccountStore', () => {
 });
 
 describe('startAccountLogin', () => {
-  it('serves a monochrome page with Google, GitHub and e-mail only', async () => {
+  it('opens the hosted page and listens only for the final redirect', async () => {
     const { fetch } = upstream(() => ({ body: sessionReply() }));
     const login = await startAccountLogin({ client: new AccountClient(service, { fetch }) });
     try {
-      expect(login.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/s\/[\w-]+\/$/);
-      const page = await globalThis.fetch(login.url);
-      const html = await page.text();
-      expect(page.headers.get('content-security-policy')).toContain("default-src 'none'");
-      expect(html).toContain('Continue with Google');
-      expect(html).toContain('Continue with GitHub');
-      expect(html).toContain('Create an account');
-      expect(html).not.toMatch(/Continue with Apple/i);
-      // Paths outside the one-time prefix are not served.
-      expect((await globalThis.fetch(new URL('/', login.url))).status).toBe(404);
+      const url = new URL(login.url);
+      expect(`${url.origin}${url.pathname}`).toBe(`${service.url}/login`);
+      expect(url.searchParams.get('code_challenge')).toMatch(/^[\w-]{43}$/);
+      const back = new URL(url.searchParams.get('redirect_to') ?? '');
+      expect(back.href).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/s\/[\w-]+\/callback$/);
+      // Nothing else is served locally.
+      expect((await globalThis.fetch(new URL('/', back))).status).toBe(404);
     } finally {
       await login.close();
     }
   });
 
-  it('completes a GitHub sign-in through the PKCE callback', async () => {
+  it('exchanges the code and sends the browser to the hosted done page', async () => {
     const { fetch, calls } = upstream(() => ({ body: sessionReply() }));
-    const client = new AccountClient(service, { fetch });
-    const login = await startAccountLogin({ client });
-    const start = await globalThis.fetch(`${login.url}oauth/github`, { redirect: 'manual' });
-    const authorize = new URL(start.headers.get('location') ?? '');
-    expect(authorize.origin).toBe(service.url);
-    const back = new URL(authorize.searchParams.get('redirect_to') ?? '');
+    const login = await startAccountLogin({ client: new AccountClient(service, { fetch }) });
+    const back = new URL(new URL(login.url).searchParams.get('redirect_to') ?? '');
     back.searchParams.set('code', 'from-github');
-    const done = await globalThis.fetch(back);
-    expect(await done.text()).toContain('You are signed in');
-    const session = await login.session;
-    expect(session.user.email).toBe('dev@example.com');
+    const done = await globalThis.fetch(back, { redirect: 'manual' });
+    expect(done.status).toBe(302);
+    expect(done.headers.get('location')).toBe(`${service.url}/login/done`);
+    expect((await login.session).user.email).toBe('dev@example.com');
     expect(calls.at(-1)?.body).toMatchObject({ auth_code: 'from-github' });
     await login.close();
   });
 
-  it('signs in with e-mail only from its own page', async () => {
-    const { fetch } = upstream(() => ({ body: sessionReply('mail@example.com') }));
+  it('reports a provider error and sends the browser to the failure page', async () => {
+    const { fetch } = upstream(() => ({ body: sessionReply() }));
     const login = await startAccountLogin({ client: new AccountClient(service, { fetch }) });
-    const origin = new URL(login.url).origin;
-    const body = JSON.stringify({
-      mode: 'signin',
-      email: 'mail@example.com',
-      password: 'hunter22',
-    });
-    const foreign = await globalThis.fetch(`${login.url}email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: 'https://evil.test' },
-      body,
-    });
-    expect(foreign.status).toBe(403);
-    const own = await globalThis.fetch(`${login.url}email`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Origin: origin },
-      body,
-    });
-    expect(await own.json()).toEqual({ ok: true });
-    expect((await login.session).user.email).toBe('mail@example.com');
+    const back = new URL(new URL(login.url).searchParams.get('redirect_to') ?? '');
+    back.searchParams.set('error_description', 'Sign-in was cancelled.');
+    const res = await globalThis.fetch(back, { redirect: 'manual' });
+    expect(res.headers.get('location')).toBe(`${service.url}/login/failed`);
+    await expect(login.session).rejects.toThrow('Sign-in was cancelled.');
     await login.close();
   });
 
