@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -113,7 +113,8 @@ describe('AntigravityCliProvider', () => {
     expect(message.message.content).toContain('Be terse.');
     expect(message.message.content).toContain('ping');
     // Headless agy may write files in its working directory: it must be the sandbox.
-    expect(path.resolve(seen.cwd)).toBe(path.resolve(dir));
+    // realpath: on macOS the temp dir lives under the /var -> /private/var symlink.
+    expect(realpathSync(seen.cwd)).toBe(realpathSync(dir));
     expect(res.usage).toEqual({ prompt_tokens: 30, completion_tokens: 6, total_tokens: 36 });
   });
 
