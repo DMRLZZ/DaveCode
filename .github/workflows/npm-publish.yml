@@ -1,0 +1,62 @@
+name: Publish CLI to npm
+
+# Publishes @dmrlzz/davecode through npm Trusted Publishing: npm trusts this workflow in this
+# repository, so no token or one-time password is stored anywhere. Provenance is attached.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish, without the v (must match packages/cli/package.json)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: Check the version
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(node -p "require('./packages/cli/package.json').version")" = "$VERSION"
+          if npm view "@dmrlzz/davecode@$VERSION" version >/dev/null 2>&1; then
+            echo "@dmrlzz/davecode@$VERSION is already published" >&2
+            exit 1
+          fi
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - name: Pack
+        working-directory: packages/cli
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
+      # Trusted Publishing needs npm 11.5 or later.
+      - run: npm install -g npm@11
+      - name: Publish
+        run: npm publish "$RUNNER_TEMP/dmrlzz-davecode-$VERSION.tgz" --access public
+      - name: Confirm it is installable
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5 6; do
+            if [ "$(npm view @dmrlzz/davecode version)" = "$VERSION" ]; then exit 0; fi
+            sleep 10
+          done
+          echo "npm does not list $VERSION as latest yet" >&2
+          exit 1
