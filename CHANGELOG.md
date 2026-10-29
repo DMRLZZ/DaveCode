@@ -6,14 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+
 ### Added
 
+- Desktop installers for Windows (NSIS `.exe`, Start menu and desktop shortcuts), macOS
+  (Apple silicon `.dmg`) and Linux (x64 AppImage), each built and acceptance-tested on its own
+  platform, with stable names under `releases/latest/download/`. Unsigned preview builds.
+- `/connect` in the chat: pick Claude Code, Codex or Antigravity and run its official login
+  (the chat closes for it and reopens), then choose a model. `/model` opens a picker (arrows or
+  a number). `/status` shows the model and whether each agent is ready or needs to sign in.
+- The website at davecode.app: monochrome, the bird mark, download buttons for the visitor's
+  system, served from Cloudflare.
 - First-run setup when `davecode` starts: the wordmark, a theme choice (dark, light or
   match the terminal), sign-in to a DaveCode account, then the first agent (Claude Code, Codex
-  or Gemini CLI) with its official login and a model. Later runs only ask to sign in again.
+  or Antigravity) with its official login and a model. Later runs only ask to sign in again.
 - DaveCode accounts: `davecode login|logout|account` and `/login`, `/logout`, `/account` in the
-  chat. Sign-in happens in the browser (Google, GitHub or email, including account creation)
-  through a one-shot loopback server with PKCE; the session is stored encrypted with the
+  chat. Sign-in happens in the browser on the hosted page at auth.davecode.app (Google, GitHub
+  or email, including account creation); the CLI only listens on 127.0.0.1 for the final
+  PKCE redirect; the session is stored encrypted with the
   keyring master key and refreshed before it expires. The service is
   `packages/auth-worker`, a Cloudflare Worker with D1 at `auth.davecode.app`
   (override with `DAVECODE_ACCOUNT_URL`). The sign-in page only offers enabled methods.
@@ -65,6 +76,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- A CLI agent whose login expired now says how to sign in again (`/connect`, or
+  `davecode accounts login <id>`) instead of repeating the vendor's "Run /login", and
+  "No available account" is replaced by that instruction. Claude Code reporting only a global
+  login no longer counts as connected, so setup signs it in for DaveCode.
 - The Windows installer shipped the bundled gateway without its `node_modules`
   (electron-builder drops them from `extraResources`), so opening a project failed. They are
   now copied in after packing, and the packaged acceptance check covers it.
