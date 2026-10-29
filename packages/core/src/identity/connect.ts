@@ -40,6 +40,14 @@ export const CLI_LOGINS: Partial<Record<ProviderKind, CliLoginSpec>> = {
     installHint: 'Install Codex: npm install -g @openai/codex',
     instructions: 'Codex opens the ChatGPT sign-in page and exits once you are logged in.',
   },
+  'antigravity-cli': {
+    binary: 'agy',
+    loginArgs: [],
+    statusArgs: ['models'],
+    installHint: 'Install Antigravity: https://antigravity.google/docs/cli/install',
+    instructions:
+      'Antigravity opens Google sign-in the first time it starts. Once its prompt appears, type /quit.',
+  },
   'gemini-cli': {
     binary: 'gemini',
     loginArgs: [],
@@ -248,6 +256,16 @@ export class ConnectionChecker {
           ? 'Claude Code reports a login for this account.'
           : 'Claude Code reports a login, but none is stored in this account’s sandbox: it is probably your global Claude Code login, so this account is not isolated.',
       );
+    }
+
+    if (account.provider === 'antigravity-cli') {
+      // `agy models` needs a signed-in Google account; it fails without one.
+      return probed.code === 0
+        ? result(
+            'connected',
+            'Antigravity is signed in. Its login is shared by every Antigravity account on this machine.',
+          )
+        : result('not_connected', 'Antigravity is not signed in on this machine.');
     }
 
     // Codex: `codex login status` exits 0 when logged in.

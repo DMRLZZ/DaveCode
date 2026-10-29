@@ -339,7 +339,7 @@ export {
   startAccountLogin,
 } from './account/login-server';
 export { AccountStore, accountFile } from './account/store';
-export { BRAND_MARK_SVG, brandWordmark } from './brand';
+export { BRAND_MARK_SVG, brandLogo } from './brand';
 // --- goal mode ---
 export {
   type GoalTaskRunner,

@@ -1,5 +1,6 @@
 import type { Provider, ProviderKind } from '../types';
 import { AnthropicProvider } from './anthropic';
+import { AntigravityCliProvider } from './antigravity-cli';
 import { ClaudeCliProvider } from './claude-cli';
 import { CodexCliProvider } from './codex-cli';
 import { GeminiProvider } from './gemini';
@@ -26,6 +27,7 @@ export function createProviders(options: CreateProvidersOptions = {}): Map<Provi
     new ClaudeCliProvider(),
     new CodexCliProvider(),
     new GeminiCliProvider(),
+    new AntigravityCliProvider(),
     new GeminiWebProvider(options.geminiWebDriver),
   ];
   return new Map(providers.map((p) => [p.kind, p]));

@@ -88,6 +88,14 @@ export const PROVIDERS: Record<ProviderKind, ProviderMeta> = {
     blurb: 'Your Google login (Login with Google), isolated in its own GEMINI_CLI_HOME sandbox.',
     subscription: true,
   },
+  'antigravity-cli': {
+    kind: 'antigravity-cli',
+    label: 'Antigravity',
+    icon: Sparkles,
+    auth: 'cli',
+    blurb: 'Your Google sign-in in the Antigravity CLI (agy), shared by this machine.',
+    subscription: true,
+  },
   'gemini-web': {
     kind: 'gemini-web',
     label: 'Gemini web',
@@ -106,6 +114,7 @@ export const PROVIDER_ORDER: ProviderKind[] = [
   'openai-compatible',
   'claude-cli',
   'codex-cli',
+  'antigravity-cli',
   'gemini-cli',
   'gemini-web',
 ];

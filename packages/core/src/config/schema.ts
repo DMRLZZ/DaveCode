@@ -8,6 +8,7 @@ const providerKind = z.enum([
   'claude-cli',
   'codex-cli',
   'gemini-cli',
+  'antigravity-cli',
   'gemini-web',
 ]);
 

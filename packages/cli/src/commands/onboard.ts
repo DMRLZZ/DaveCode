@@ -1,5 +1,5 @@
+import { execFile } from 'node:child_process';
 import {
-  brandWordmark,
   CLI_LOGINS,
   loadConfig,
   type ProviderKind,
@@ -12,6 +12,7 @@ import { type AccountsBackend, openAccounts } from '../lib/accounts-backend';
 import { readPreferences, writePreferences } from '../lib/preferences';
 import { which as whichOnPath } from '../lib/proc';
 import { PromptCancelledError, type Prompter } from '../lib/prompter';
+import { brandBanner } from '../ui/banner';
 import { createTheme, type ThemeMode } from '../ui/theme';
 import { type AccountDeps, accountsEnabled, currentAccount, describeUser, signIn } from './account';
 import { accountsLogin } from './accounts';
@@ -38,11 +39,30 @@ export const AGENTS: ReadonlyArray<{
     models: [{ value: 'default', label: 'Default', hint: 'Codex decides' }],
   },
   {
-    provider: 'gemini-cli',
-    name: 'Gemini CLI',
-    models: [{ value: 'default', label: 'Default', hint: 'Gemini CLI decides' }],
+    provider: 'antigravity-cli',
+    name: 'Antigravity',
+    models: [{ value: 'default', label: 'Default', hint: 'Antigravity decides' }],
   },
 ];
+
+type ModelChoice = { value: string; label: string; hint?: string };
+
+/** Antigravity lists its models with `agy models` as `id<TAB>name` lines. */
+export function parseAgyModels(stdout: string): ModelChoice[] {
+  return stdout
+    .split(/\r?\n/)
+    .map((line) => line.split('\t'))
+    .filter(([id, name]) => id && name && /^[\w.:-]+$/.test(id.trim()))
+    .map(([id, name]) => ({ value: (id as string).trim(), label: (name as string).trim() }));
+}
+
+function agyModels(binary: string, env: NodeJS.ProcessEnv): Promise<ModelChoice[]> {
+  return new Promise((resolve) => {
+    execFile(binary, ['models'], { env, timeout: 30_000, windowsHide: true }, (error, stdout) =>
+      resolve(error ? [] : parseAgyModels(String(stdout))),
+    );
+  });
+}
 
 const OTHER_MODEL = '__other__';
 
@@ -50,6 +70,8 @@ export interface OnboardDeps extends AccountDeps {
   prompter?: Prompter;
   backend?: AccountsBackend;
   which?: (binary: string) => string | undefined;
+  /** Models an agent offers beyond its built-in list (defaults to asking `agy models`). */
+  models?: (provider: ProviderKind) => Promise<ModelChoice[]>;
   /** Runs the vendor's official login for an account (defaults to `accounts login`). */
   vendorLogin?: (ctx: CliContext, accountId: string) => Promise<number>;
 }
@@ -63,10 +85,11 @@ async function prompterFor(ctx: CliContext, deps: OnboardDeps): Promise<Prompter
 function welcome(ctx: CliContext): void {
   const { theme } = ctx;
   ctx.out();
-  for (const line of brandWordmark(theme.unicode)) ctx.out(` ${theme.accent(line)}`);
-  ctx.out();
-  ctx.out(` ${theme.bold('Welcome to DaveCode')} ${theme.dim(`v${VERSION}`)}`);
-  ctx.out(theme.dim(' Run Claude Code, Codex and more side by side from one place.'));
+  const text = [
+    `${theme.bold('Welcome to DaveCode')} ${theme.dim(`v${VERSION}`)}`,
+    theme.dim('Run Claude Code, Codex and Antigravity side by side.'),
+  ];
+  for (const line of brandBanner(theme, text, ctx.columns)) ctx.out(` ${line}`);
   ctx.out();
 }
 
@@ -156,8 +179,15 @@ async function connectAgentStep(
       ctx.out(`${theme.ok(theme.glyph.ok)} ${agent.name} is already signed in.`);
     }
 
+    const discovered =
+      agent.provider === 'antigravity-cli'
+        ? await (deps.models ?? (() => agyModels(which(spec.binary) ?? spec.binary, ctx.env)))(
+            agent.provider,
+          )
+        : [];
     let model = await prompter.select(`Model for ${agent.name}`, [
       ...agent.models,
+      ...discovered,
       { value: OTHER_MODEL, label: 'Another model…', hint: 'type its id' },
     ]);
     if (model === OTHER_MODEL) {

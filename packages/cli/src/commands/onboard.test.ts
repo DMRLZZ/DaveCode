@@ -8,7 +8,7 @@ import { readPreferences } from '../lib/preferences';
 import { scriptedPrompter } from '../lib/prompter';
 import { type TempDir, tempDir, testEnv, testIO } from '../test-utils';
 import { accountCommand, logoutCommand } from './account';
-import { ensureReady } from './onboard';
+import { ensureReady, parseAgyModels } from './onboard';
 
 const service = { url: 'https://auth.example.test', publishableKey: 'sb_publishable_test' };
 
@@ -167,5 +167,37 @@ describe('account command', () => {
     });
     expect(await accountCommand(ctx, { service, fetch: accountFetch() })).toBe(0);
     expect(io.stdout.text()).toContain('Signed in as dev@example.com (google)');
+  });
+});
+
+describe('Antigravity models', () => {
+  it('parses `agy models` output', () => {
+    expect(
+      parseAgyModels(
+        'gemini-4-argon-high\tGemini 4 Argon (High)\r\nclaude-opus-5-5-medium\tClaude Opus 5.5 (Medium)\n\nnoise',
+      ),
+    ).toEqual([
+      { value: 'gemini-4-argon-high', label: 'Gemini 4 Argon (High)' },
+      { value: 'claude-opus-5-5-medium', label: 'Claude Opus 5.5 (Medium)' },
+    ]);
+  });
+
+  it('offers the models Antigravity reports during first run', async () => {
+    const { ctx, io } = context();
+    const prompter = scriptedPrompter(['dark', 'antigravity-cli', 'gemini-4-argon-high']);
+    const real = await openAccounts({ home: home.path, env: ctx.env, local: true });
+    const backend = Object.assign(Object.create(real), {
+      connection: async () => ({ status: 'connected' }) as never,
+    });
+    await ensureReady(ctx, {
+      prompter,
+      backend,
+      which: (binary) => (binary === 'agy' ? '/bin/agy' : undefined),
+      models: async () => [{ value: 'gemini-4-argon-high', label: 'Gemini 4 Argon (High)' }],
+    });
+    real.close();
+    expect(io.stdout.text()).toContain('DaveCode will use Antigravity · gemini-4-argon-high');
+    const route = loadConfig({ home: home.path, env: ctx.env }).routing.routes[0];
+    expect(route?.targets[0]).toMatchObject({ provider: 'antigravity-cli' });
   });
 });
