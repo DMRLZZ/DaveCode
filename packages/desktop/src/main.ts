@@ -177,7 +177,7 @@ else {
       minHeight: 660,
       title: 'DaveCode',
       icon: join(__dirname, 'icon.png'),
-      backgroundColor: '#101010',
+      backgroundColor: '#000000',
       show: false,
       webPreferences: {
         preload: join(__dirname, 'preload.cjs'),

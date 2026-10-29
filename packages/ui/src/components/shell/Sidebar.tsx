@@ -1,4 +1,5 @@
 import { BookOpen, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { BRAND_PATH, BRAND_VIEWBOX } from '../../lib/brand';
 import { cn } from '../../lib/cn';
 import { NAV, type NavItem } from '../../lib/nav';
 import { Link } from '../../lib/router';
@@ -8,22 +9,8 @@ const DOCS_URL = 'https://github.com/DMRLZZ/DaveCode/tree/main/docs';
 
 export function BrandMark({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden className={className}>
-      <rect
-        x="0.5"
-        y="0.5"
-        width="31"
-        height="31"
-        rx="7.5"
-        className="fill-raised stroke-line-strong"
-      />
-      <path
-        d="M10 9h5.5a7 7 0 0 1 0 14H10V9Z"
-        className="stroke-fg"
-        strokeWidth="2.25"
-        strokeLinejoin="round"
-      />
-      <path d="m15 12 4.5 4-4.5 4" className="stroke-accent" strokeWidth="2.25" />
+    <svg viewBox={BRAND_VIEWBOX} aria-hidden className={className}>
+      <path d={BRAND_PATH} fillRule="evenodd" className="fill-fg" />
     </svg>
   );
 }

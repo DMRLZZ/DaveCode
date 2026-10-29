@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #101010;
-  color: #f1f0eb;
+  background: #000000;
+  color: #f5f5f5;
 }
 * {
   box-sizing: border-box;
@@ -27,7 +27,7 @@ main {
   margin: auto;
 }
 .intro {
-  color: #a7a59f;
+  color: #a3a3a3;
   font-size: 17px;
   margin: 0 0 22px;
 }
@@ -39,7 +39,7 @@ h1 {
   margin: 0 0 28px;
 }
 .description {
-  color: #aaa8a1;
+  color: #a3a3a3;
   max-width: 470px;
   font-size: 18px;
   line-height: 1.65;
@@ -49,8 +49,8 @@ button {
   border: 0;
   border-radius: 8px;
   padding: 15px 21px;
-  background: #eeeae0;
-  color: #171715;
+  background: #f5f5f5;
+  color: #000000;
   font: inherit;
   font-weight: 600;
   cursor: pointer;
@@ -61,7 +61,7 @@ button:hover {
   background: white;
 }
 button:focus-visible {
-  outline: 2px solid #e4c89a;
+  outline: 2px solid #ffffff;
   outline-offset: 5px;
 }
 button:disabled {
@@ -69,13 +69,13 @@ button:disabled {
   cursor: wait;
 }
 #status {
-  color: #77766f;
+  color: #737373;
   font-size: 13px;
   margin-top: 18px;
 }
 footer {
-  color: #77766f;
+  color: #737373;
   font-size: 12px;
   padding: 25px 42px;
-  border-top: 1px solid #242423;
+  border-top: 1px solid #262626;
 }
