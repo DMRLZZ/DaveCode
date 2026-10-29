@@ -6,6 +6,7 @@ import type { Theme } from '../ui/theme';
 import type { ChatBackend } from './backend';
 import { chatReducer, initialChatState } from './chat-state';
 import { InputBox, SlashHints } from './components/InputBox';
+import { Picker, type PickerOption } from './components/Picker';
 import { StatusLine } from './components/StatusLine';
 import { EntryView, StreamingView } from './components/Transcript';
 import * as ed from './editor';
@@ -31,6 +32,14 @@ export interface ChatAppProps {
     login(notify: (text: string) => void): Promise<string>;
     logout(): Promise<string>;
   };
+  /**
+   * /connect: the agents to offer, and what to do with the one picked. The chat closes so the
+   * vendor's own login can use the terminal; the caller opens it again afterwards.
+   */
+  connect?: {
+    agents(): Promise<PickerOption[]>;
+    choose(provider: string): void;
+  };
   /** Where the conversation runs, shown once in the banner (e.g. `~/code/app`). */
   project?: string;
   /** Health polling interval (tests use a short one). */
@@ -52,6 +61,7 @@ function Chat({
   version,
   project,
   account,
+  connect,
   pollMs = 10_000,
   now = Date.now,
 }: ChatAppProps) {
@@ -70,6 +80,10 @@ function Chat({
   const [notice, setNotice] = useState<string | undefined>();
   const [clock, setClock] = useState(now());
   const [slashIndex, setSlashIndex] = useState(0);
+  const [picker, setPicker] = useState<
+    | { title: string; options: PickerOption[]; index: number; pick: (value: string) => void }
+    | undefined
+  >();
 
   const abortRef = useRef<AbortController | undefined>(undefined);
   const exitArmedAt = useRef<number | undefined>(undefined);
@@ -191,14 +205,18 @@ function Chat({
         } else {
           const status = (err as { status?: number }).status;
           if (status === 0) dispatch({ type: 'connection', connection: 'offline' });
-          dispatch({ type: 'stream-end', now: now(), error: errorText(err) });
+          let text = errorText(err);
+          // A lost agent login is fixed from here: point at /connect, not a shell command.
+          if (connect)
+            text = text.replace(/Run: davecode accounts login \S+/, 'Type /connect to sign in.');
+          dispatch({ type: 'stream-end', now: now(), error: text });
         }
       } finally {
         if (abortRef.current === controller) abortRef.current = undefined;
       }
       if (accountId) void refreshQuota(accountId);
     },
-    [backend, now, refreshQuota],
+    [backend, connect, now, refreshQuota],
   );
 
   const runSlash = useCallback(
@@ -227,17 +245,59 @@ function Chat({
             write('\u001b[2J\u001b[3J\u001b[H');
             dispatch({ type: 'clear' });
             break;
-          case 'model':
+          case 'model': {
+            const choose = (id: string) => {
+              dispatch({ type: 'set-model', model: id });
+              dispatch({ type: 'info', text: `Model set to ${theme.accent(id)}` });
+            };
             if (args) {
-              dispatch({ type: 'set-model', model: args });
-              dispatch({ type: 'info', text: `Model set to ${theme.accent(args)}` });
-            } else {
+              choose(args);
+              break;
+            }
+            const ids = (await backend.models())
+              .map((m) => m.id)
+              .sort(
+                (a, b) =>
+                  Number(!a.startsWith('davecode/')) - Number(!b.startsWith('davecode/')) ||
+                  a.localeCompare(b),
+              );
+            if (ids.length === 0) {
               dispatch({
                 type: 'info',
                 text: await modelsText(theme, backend, stateRef.current.model),
               });
+              break;
             }
+            const current = stateRef.current.model;
+            setPicker({
+              title: 'Choose a model',
+              options: ids.map((id) => ({
+                value: id,
+                label: id,
+                ...(id === current ? { hint: '(current)' } : {}),
+              })),
+              index: Math.max(0, ids.indexOf(current)),
+              pick: choose,
+            });
             break;
+          }
+          case 'connect': {
+            if (!connect) {
+              dispatch({ type: 'info', text: 'Connect agents with davecode accounts add.' });
+              break;
+            }
+            setPicker({
+              title: 'Connect an agent',
+              options: await connect.agents(),
+              index: 0,
+              pick: (provider) => {
+                abortRef.current?.abort();
+                connect.choose(provider);
+                exit();
+              },
+            });
+            break;
+          }
           case 'route':
             dispatch({ type: 'info', text: await routesText(theme, backend) });
             break;
@@ -251,7 +311,10 @@ function Chat({
             dispatch({ type: 'info', text: await tasksText(theme, backend, width - 4) });
             break;
           case 'status':
-            dispatch({ type: 'info', text: await statusText(theme, backend) });
+            dispatch({
+              type: 'info',
+              text: await statusText(theme, backend, stateRef.current.model),
+            });
             break;
           case 'login':
           case 'logout':
@@ -277,7 +340,7 @@ function Chat({
         dispatch({ type: 'error', text: `/${command.name} failed: ${errorText(err)}` });
       }
     },
-    [account, backend, exit, theme, width, write],
+    [account, backend, connect, exit, theme, width, write],
   );
 
   const submit = useCallback(() => {
@@ -325,6 +388,22 @@ function Chat({
       return;
     }
     exitArmedAt.current = undefined;
+
+    // An open picker takes the keyboard: arrows or a number choose, Esc closes it.
+    if (picker) {
+      const count = picker.options.length;
+      const move = (index: number) => setPicker({ ...picker, index });
+      if (key.escape) return setPicker(undefined);
+      if (key.upArrow) return move((picker.index - 1 + count) % count);
+      if (key.downArrow) return move((picker.index + 1) % count);
+      const digit = count <= 9 && /^[1-9]$/.test(input) ? Number(input) - 1 : undefined;
+      if (key.return || (digit !== undefined && digit < count)) {
+        const option = picker.options[digit ?? picker.index];
+        setPicker(undefined);
+        if (option) picker.pick(option.value);
+      }
+      return;
+    }
 
     // While the slash menu is open, arrows move through it and Enter/Tab act on the highlight.
     const menu = slashSuggestions(ed.textOf(editor));
@@ -407,13 +486,19 @@ function Chat({
         {(entry) => <EntryView key={entry.id} entry={entry} />}
       </Static>
       {state.streaming ? <StreamingView streaming={state.streaming} now={clock} /> : null}
-      <InputBox editor={editor} width={width} placeholder={PLACEHOLDER} />
-      <SlashHints
-        commands={suggestions}
-        width={width}
-        selected={Math.min(slashIndex, Math.max(0, suggestions.length - 1))}
-      />
-      {suggestions.length === 0 ? (
+      {picker ? (
+        <Picker title={picker.title} options={picker.options} index={picker.index} />
+      ) : (
+        <>
+          <InputBox editor={editor} width={width} placeholder={PLACEHOLDER} />
+          <SlashHints
+            commands={suggestions}
+            width={width}
+            selected={Math.min(slashIndex, Math.max(0, suggestions.length - 1))}
+          />
+        </>
+      )}
+      {!picker && suggestions.length === 0 ? (
         <StatusLine state={state} width={width} info={notice ? { notice } : {}} />
       ) : null}
     </Box>

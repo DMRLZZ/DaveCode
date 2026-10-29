@@ -3,6 +3,7 @@
 export type SlashName =
   | 'help'
   | 'model'
+  | 'connect'
   | 'route'
   | 'accounts'
   | 'tasks'
@@ -22,10 +23,14 @@ export interface SlashCommand {
 
 export const SLASH_COMMANDS: readonly SlashCommand[] = [
   { name: 'model', args: '[id]', description: 'show models or switch, e.g. /model davecode/auto' },
+  {
+    name: 'connect',
+    description: 'connect Claude Code, Codex or Antigravity, or sign in to one again',
+  },
   { name: 'route', description: 'routes and their failover targets' },
   { name: 'accounts', description: 'accounts with 5h quota usage' },
   { name: 'tasks', description: 'the project task graph' },
-  { name: 'status', description: 'gateway health and runner state' },
+  { name: 'status', description: 'model, agents and whether they are signed in' },
   { name: 'login', description: 'sign in to your DaveCode account in the browser' },
   { name: 'logout', description: 'sign out of your DaveCode account' },
   { name: 'account', description: 'the signed-in DaveCode account' },

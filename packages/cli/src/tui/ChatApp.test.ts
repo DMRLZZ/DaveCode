@@ -192,12 +192,14 @@ describe('ChatApp', () => {
     await type(ui, '/');
     expect(ui.lastFrame()).toContain('› /model');
     await type(ui, '\u001b[B');
-    expect(ui.lastFrame()).toContain('› /route');
+    expect(ui.lastFrame()).toContain('› /connect');
     await type(ui, '\u001b[A');
     await type(ui, '\u001b[A');
     expect(ui.lastFrame()).toContain('› /exit');
     await type(ui, '\u001b[B');
     await type(ui, '\u001b[B');
+    await type(ui, '\u001b[B');
+    expect(ui.lastFrame()).toContain('› /route');
     await type(ui, '\r');
     await tick(50);
     expect(ui.frames.join('\n')).toContain('1. anthropic/claude-sonnet-5-5');
@@ -208,6 +210,22 @@ describe('ChatApp', () => {
     expect(ui.lastFrame()).not.toContain('/accounts');
     expect(ui.lastFrame()).toContain('Ask anything');
     expect(requests).toHaveLength(0);
+    ui.unmount();
+  });
+
+  it('opens /model as a picker and switches with a number', async () => {
+    const { backend } = fakeBackend(async function* () {});
+    const ui = mount(backend);
+    await tick();
+    await type(ui, '/model');
+    await type(ui, '\r');
+    await tick(50);
+    expect(ui.lastFrame()).toContain('Choose a model');
+    expect(ui.lastFrame()).toContain('esc cancel');
+    await type(ui, '2');
+    await tick(50);
+    expect(ui.frames.join('\n')).toMatch(/Model set to \S+/);
+    expect(ui.lastFrame()).toContain('Ask anything');
     ui.unmount();
   });
 

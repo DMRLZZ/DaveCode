@@ -1,6 +1,6 @@
 import { emptyUsage, renderAccounts } from '../commands/status';
 import { formatTaskTree, summaryLine } from '../lib/task-tree';
-import { formatDuration, padEnd } from '../ui/format';
+import { padEnd } from '../ui/format';
 import type { Theme } from '../ui/theme';
 import type { ChatBackend } from './backend';
 import { KEY_HINTS, SLASH_COMMANDS } from './slash';
@@ -87,16 +87,28 @@ export async function tasksText(theme: Theme, backend: ChatBackend, columns: num
   ].join('\n');
 }
 
-export async function statusText(theme: Theme, backend: ChatBackend) {
+export async function statusText(theme: Theme, backend: ChatBackend, model: string) {
   const health = await backend.health();
-  if (!health) return theme.error(`Gateway at ${backend.url} is not answering.`);
-  const runner = await backend.runner().catch(() => undefined);
-  const flags = Object.entries(health.experimental)
-    .filter(([, on]) => on)
-    .map(([k]) => k);
-  return [
-    `${theme.ok(theme.glyph.dot)} ${backend.url}${backend.inProcess ? theme.dim(' (in-process)') : ''}  ${theme.dim(`v${health.version} · up ${formatDuration(health.uptimeSec)}`)}`,
-    `${theme.dim('runner')}       ${runner ? runner.state : 'unknown'}${runner?.taskId ? theme.dim(` · ${runner.taskId}`) : ''}`,
-    `${theme.dim('experimental')} ${flags.length > 0 ? theme.warn(flags.join(', ')) : 'none'}`,
-  ].join('\n');
+  if (!health) return theme.error('DaveCode is not answering. Restart it with davecode.');
+  const [accounts, runner] = await Promise.all([
+    backend.accounts(),
+    backend.runner().catch(() => undefined),
+  ]);
+  const state = (status: string) =>
+    status === 'error'
+      ? theme.error('needs sign-in · /connect')
+      : status === 'cooldown'
+        ? theme.warn('cooling down')
+        : status === 'disabled'
+          ? theme.dim('off')
+          : theme.ok('ready');
+  const lines = [`${theme.dim('model ')}  ${model}`];
+  if (accounts.length === 0) lines.push(`${theme.dim('agents')}  none yet · /connect`);
+  for (const [i, account] of accounts.entries()) {
+    lines.push(
+      `${theme.dim(i === 0 ? 'agents' : '      ')}  ${account.label}  ${state(account.status)}`,
+    );
+  }
+  lines.push(`${theme.dim('runner')}  ${runner ? runner.state : 'unknown'}`);
+  return lines.join('\n');
 }
