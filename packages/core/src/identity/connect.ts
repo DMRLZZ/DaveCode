@@ -249,13 +249,15 @@ export class ConnectionChecker {
       }
       if (!loggedIn)
         return result('not_connected', 'Claude Code is not logged in for this account.');
+      // Elsewhere the login is a file in the sandbox. Without it Claude Code is reporting a login
+      // from outside (the global one or an environment token), which requests here do not use.
       const isolated = this.platform === 'darwin' || existsSync(join(dir, '.credentials.json'));
-      return result(
-        'connected',
-        isolated
-          ? 'Claude Code reports a login for this account.'
-          : 'Claude Code reports a login, but none is stored in this account’s sandbox: it is probably your global Claude Code login, so this account is not isolated.',
-      );
+      return isolated
+        ? result('connected', 'Claude Code reports a login for this account.')
+        : result(
+            'not_connected',
+            'Claude Code is signed in globally, but not for this account: sign in once for DaveCode.',
+          );
     }
 
     if (account.provider === 'antigravity-cli') {

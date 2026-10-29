@@ -247,6 +247,26 @@ describe('Router.complete', () => {
     expect(meta.accountId).toBe(b.id);
   });
 
+  it('tells how to sign a CLI account in again instead of echoing the CLI', async () => {
+    const h = harness();
+    const a = h.add({ provider: 'claude-cli', label: 'Claude Code', priority: 1 });
+    h.fake('claude-cli').script(a.id, {
+      type: 'error',
+      error: providerError('auth'),
+    });
+    const hint = `Claude Code needs you to sign in again. Run: davecode accounts login ${a.id}`;
+    await expect(h.router.complete(chat('claude-cli/default'))).rejects.toMatchObject({
+      kind: 'auth',
+      message: hint,
+    });
+    expect(h.accounts.get(a.id)).toMatchObject({ status: 'error', lastError: hint });
+    // With no other account, the next request repeats the fix rather than "no account".
+    await expect(h.router.complete(chat('claude-cli/default'))).rejects.toMatchObject({
+      name: 'RouterError',
+      message: hint,
+    });
+  });
+
   it('propagates bad_request and unknown errors without touching the account', async () => {
     const h = harness();
     const a = h.add({ provider: 'openai', label: 'a', priority: 1 });

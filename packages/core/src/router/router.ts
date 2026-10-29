@@ -2,6 +2,7 @@ import type { DaveConfig } from '../config/schema';
 import { ProviderError } from '../errors';
 import type { EventBus } from '../events';
 import type { ChromiumProfileManager } from '../identity/chromium';
+import { CLI_LOGINS, loginCommandFor } from '../identity/connect';
 import { type Keyring, KeyringError } from '../identity/keyring';
 import type { SandboxManager } from '../identity/sandbox';
 import { type ReportedLimitsStore, reportedFraction } from '../rate-limiter/reported';
@@ -134,8 +135,29 @@ function messageText(message: Partial<ChatMessage> | undefined): string {
   return text;
 }
 
+/**
+ * A vendor CLI's own sign-in advice ("Run /login") names commands that mean something else in
+ * DaveCode, so auth failures on CLI-login accounts say how to sign in again here instead.
+ */
+function signInMessage(account: Account): string | undefined {
+  if (!CLI_LOGINS[account.provider]) return undefined;
+  return `${account.label} needs you to sign in again. Run: ${loginCommandFor(account.id)}`;
+}
+
+function withSignInHint(error: ProviderError, account: Account): ProviderError {
+  const message = error.kind === 'auth' ? signInMessage(account) : undefined;
+  if (!message) return error;
+  return new ProviderError(message, {
+    kind: 'auth',
+    provider: error.provider,
+    accountId: error.accountId,
+    ...(error.status !== undefined ? { status: error.status } : {}),
+    cause: error,
+  });
+}
+
 function toProviderError(err: unknown, account: Account): ProviderError {
-  if (err instanceof ProviderError) return err;
+  if (err instanceof ProviderError) return withSignInHint(err, account);
   if (err instanceof KeyringError) {
     return new ProviderError(err.message, {
       kind: 'auth',
@@ -304,6 +326,12 @@ export class Router {
         `"${req.model}" is only served by experimental providers; enable experimental.geminiWeb to use them`,
         { requestId },
       );
+    }
+    if (reasons.size === 1 && reasons.has('error')) {
+      // Every account failed before (usually a lost login): repeat what fixes it.
+      const failed = this.options.accounts.get(plan.skipped[0]!.accountId);
+      const message = failed && (signInMessage(failed) ?? failed.lastError);
+      if (message) return new RouterError('no_available_account', message, { requestId });
     }
     return new RouterError(
       'no_available_account',
