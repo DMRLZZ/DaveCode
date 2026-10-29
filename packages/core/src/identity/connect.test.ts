@@ -76,25 +76,25 @@ describe('ConnectionChecker', () => {
     expect((await c.check(account('openai-compatible'))).status).toBe('connected');
   });
 
-  it('asks Claude Code for its status inside the sandbox and flags a non-isolated login', async () => {
+  it('asks Claude Code for its status inside the sandbox and needs a login of its own', async () => {
     const seen: ProbeCommand[] = [];
     const acc = account('claude-cli');
     const c = checker({ code: 0, stdout: '{"loggedIn": true, "authMethod": "oauth_token"}' }, seen);
     const shared = await c.check(acc);
     expect(seen[0]?.args).toEqual(['auth', 'status', '--json']);
     expect(seen[0]?.env.CLAUDE_CONFIG_DIR).toBe(sandboxes.dirFor(acc.id));
-    expect(shared.status).toBe('connected');
-    expect(shared.detail).toMatch(/not isolated/);
+    expect(shared.status).toBe('not_connected');
+    expect(shared.detail).toMatch(/globally/);
     expect(shared.loginCommand).toBe(`davecode accounts login ${acc.id}`);
     expect(shared.checkedAt).toBe('2026-10-15T12:00:00.000Z');
 
     const dir = sandboxes.ensure(acc.id);
     writeFileSync(join(dir, '.credentials.json'), '{}');
-    expect((await c.check(acc)).detail).not.toMatch(/not isolated/);
+    expect((await c.check(acc)).status).toBe('connected');
     // macOS keeps the login in the keychain, so a missing file proves nothing there.
     rmSync(join(dir, '.credentials.json'));
     const mac = await checker({ code: 0, stdout: '{"loggedIn":true}' }, [], 'darwin').check(acc);
-    expect(mac.detail).not.toMatch(/not isolated/);
+    expect(mac.status).toBe('connected');
   });
 
   it('runs status commands with the configured base environment', async () => {
