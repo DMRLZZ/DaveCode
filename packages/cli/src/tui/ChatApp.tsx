@@ -1,6 +1,7 @@
 import type { Usage } from '@davecode/core';
 import { Box, Static, useApp, useInput, usePaste, useStdout, useWindowSize } from 'ink';
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { brandBanner } from '../ui/banner';
 import type { Theme } from '../ui/theme';
 import type { ChatBackend } from './backend';
 import { chatReducer, initialChatState } from './chat-state';
@@ -59,6 +60,9 @@ function Chat({
   const { write } = useStdout();
   const { columns } = useWindowSize();
   const width = Math.max(20, columns);
+  // The banner is drawn once; it reads the width at mount without redrawing on resize.
+  const widthRef = useRef(width);
+  widthRef.current = width;
 
   const [state, dispatch] = useReducer(chatReducer, model, initialChatState);
   const [editor, setEditor] = useState<ed.EditorState>(ed.emptyEditor);
@@ -78,9 +82,14 @@ function Chat({
   useEffect(() => {
     dispatch({
       type: 'banner',
-      text: `${theme.bold('DaveCode')} ${theme.dim(`v${version}`)}${
-        project ? `\n${theme.dim(project)}` : ''
-      }`,
+      text: brandBanner(
+        theme,
+        [
+          `${theme.bold('DaveCode')} ${theme.dim(`v${version}`)}`,
+          ...(project ? [theme.dim(project)] : []),
+        ],
+        widthRef.current,
+      ).join('\n'),
     });
     let alive = true;
     const check = async () => {

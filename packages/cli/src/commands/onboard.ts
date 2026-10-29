@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
 import {
-  brandWordmark,
   CLI_LOGINS,
   loadConfig,
   type ProviderKind,
@@ -13,6 +12,7 @@ import { type AccountsBackend, openAccounts } from '../lib/accounts-backend';
 import { readPreferences, writePreferences } from '../lib/preferences';
 import { which as whichOnPath } from '../lib/proc';
 import { PromptCancelledError, type Prompter } from '../lib/prompter';
+import { brandBanner } from '../ui/banner';
 import { createTheme, type ThemeMode } from '../ui/theme';
 import { type AccountDeps, accountsEnabled, currentAccount, describeUser, signIn } from './account';
 import { accountsLogin } from './accounts';
@@ -85,10 +85,11 @@ async function prompterFor(ctx: CliContext, deps: OnboardDeps): Promise<Prompter
 function welcome(ctx: CliContext): void {
   const { theme } = ctx;
   ctx.out();
-  for (const line of brandWordmark(theme.unicode)) ctx.out(` ${theme.accent(line)}`);
-  ctx.out();
-  ctx.out(` ${theme.bold('Welcome to DaveCode')} ${theme.dim(`v${VERSION}`)}`);
-  ctx.out(theme.dim(' Run Claude Code, Codex and more side by side from one place.'));
+  const text = [
+    `${theme.bold('Welcome to DaveCode')} ${theme.dim(`v${VERSION}`)}`,
+    theme.dim('Run Claude Code, Codex and Antigravity side by side.'),
+  ];
+  for (const line of brandBanner(theme, text, ctx.columns)) ctx.out(` ${line}`);
   ctx.out();
 }
 
