@@ -27,7 +27,6 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-          registry-url: https://registry.npmjs.org
       - name: Check the version
         shell: bash
         run: |
@@ -48,6 +47,8 @@ jobs:
         run: pnpm pack --pack-destination "$RUNNER_TEMP"
       # Trusted Publishing needs npm 11.5 or later.
       - run: npm install -g npm@11
+      # No registry-url above: setup-node would export a placeholder NODE_AUTH_TOKEN, and npm
+      # must authenticate with the workflow's OIDC identity instead.
       - name: Publish
         run: npm publish "$RUNNER_TEMP/dmrlzz-davecode-$VERSION.tgz" --access public
       - name: Confirm it is installable
