@@ -6,7 +6,6 @@ import {
   type AccountClient,
   AccountError,
   type AccountSession,
-  OAUTH_PROVIDERS,
   type OAuthProvider,
   pkcePair,
 } from './client';
@@ -79,7 +78,7 @@ function send(
  */
 export async function startAccountLogin(options: AccountLoginOptions): Promise<AccountLogin> {
   const { client } = options;
-  const providers = options.providers ?? OAUTH_PROVIDERS;
+  const providers = options.providers ?? (await client.providers());
   const prefix = `/s/${randomBytes(18).toString('base64url')}`;
   const pkce = pkcePair();
   let origin = '';
