@@ -27,6 +27,21 @@ importers:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@24.19.2)(vite@8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
+  packages/auth-worker:
+    devDependencies:
+      '@davecode/core':
+        specifier: workspace:*
+        version: link:../core
+      '@types/better-sqlite3':
+        specifier: ^9.6.0
+        version: 9.6.0
+      better-sqlite3:
+        specifier: ^13.0.3
+        version: 13.0.3
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
+
   packages/cli:
     dependencies:
       '@fastify/cors':
@@ -3694,7 +3709,7 @@ snapshots:
 
   '@types/better-sqlite3@9.6.0':
     dependencies:
-      '@types/node': 24.19.1
+      '@types/node': 24.19.2
 
   '@types/cacheable-request@6.0.3':
     dependencies:
