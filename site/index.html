@@ -36,7 +36,6 @@
     <main id="main">
       <section class="hero wrap" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Open source · Preview</p>
           <h1 id="hero-title">Every coding agent.<br /><span>One terminal.</span></h1>
           <p class="lede">DaveCode runs Claude Code, Codex and Antigravity side by side with the subscriptions you already pay for, and routes each task to the agent that should do it.</p>
           <div class="actions">
@@ -47,13 +46,13 @@
         </div>
 
         <figure class="term" aria-label="The DaveCode terminal: the welcome banner and the slash command menu">
-          <div class="term-bar"><span class="light"></span><span class="light"></span><span class="light"></span><p>davecode — ~/projects/shop</p></div>
+          <div class="term-bar"><p>davecode — ~/projects/shop</p></div>
           <div class="term-body">
             <div class="banner">
 <img class="bird" src="/assets/mark.svg" width="64" height="64" alt="" />
               <div class="banner-text"><p><b>DaveCode</b> <i>v0.4</i></p><p><i>~/projects/shop</i></p></div>
             </div>
-            <p class="line"><i>●</i> Signed in as you@example.com · claude-cli/opus</p>
+            <p class="line">Signed in as you@example.com, using claude-cli/opus</p>
             <div class="input"><span>›</span> /<span class="caret" aria-hidden="true"></span></div>
             <ul class="menu">
               <li class="on"><b>› /model</b><i>show models or switch</i></li>
@@ -62,30 +61,29 @@
               <li><b>/accounts</b><i>accounts with 5h quota usage</i></li>
               <li><b>/status</b><i>model, agents and sign-in state</i></li>
             </ul>
-            <p class="keys">↑↓ select · enter run · tab complete · esc cancel</p>
+            <p class="keys">↑↓ select   enter run   tab complete   esc cancel</p>
           </div>
         </figure>
       </section>
 
       <section class="agents wrap" id="agents" aria-labelledby="agents-title">
-        <p class="section-note">Agents</p>
         <h2 id="agents-title">Bring the agents you use.<br /><span>Keep their real login.</span></h2>
         <p class="body">DaveCode signs in through each vendor's official CLI and never sees your passwords. Pick a model per agent, or let the router choose and fail over when a quota runs out.</p>
         <div class="panes">
-          <article class="pane" style="--tone: #7aa2f7">
-            <header><span class="tone"></span>Claude Code<em>opus</em></header>
+          <article class="pane">
+            <header><img src="/assets/agents/claude-code.svg" width="20" height="20" alt="" />Claude Code<em>opus</em></header>
             <p><i>›</i> Refactor the checkout flow into smaller modules</p>
-            <p class="out">Edited 4 files · tests pass</p>
+            <p class="out">Edited 4 files, tests pass</p>
           </article>
-          <article class="pane" style="--tone: #9ece6a">
-            <header><span class="tone"></span>Codex<em>default</em></header>
+          <article class="pane">
+            <header><img src="/assets/agents/codex.svg" width="20" height="20" alt="" />Codex<em>default</em></header>
             <p><i>›</i> Write tests for the new payment client</p>
-            <p class="out">12 tests added · 1 failing → fixed</p>
+            <p class="out">12 tests added, 1 failing → fixed</p>
           </article>
-          <article class="pane" style="--tone: #bb9af7">
-            <header><span class="tone"></span>Antigravity<em>gemini</em></header>
+          <article class="pane">
+            <header><img src="/assets/agents/antigravity.svg" width="20" height="20" alt="" />Antigravity<em>gemini</em></header>
             <p><i>›</i> Review the diff for security issues</p>
-            <p class="out">No blocking findings · 2 notes</p>
+            <p class="out">No blocking findings, 2 notes</p>
           </article>
         </div>
         <p class="caption">Multi-pane workspace with a DaveCode orchestrator: coming to the desktop app.</p>
@@ -103,7 +101,6 @@
 
       <section class="start wrap" id="install" aria-labelledby="install-title">
         <div>
-          <p class="section-note">Get started</p>
           <h2 id="install-title">Running in<br /><span>under a minute.</span></h2>
         </div>
         <ol class="steps">
@@ -114,17 +111,16 @@
       </section>
 
       <section class="download wrap" id="download-all" aria-labelledby="download-title">
-        <p class="section-note">Desktop</p>
         <h2 id="download-title">DaveCode for desktop.<br /><span>Node.js included.</span></h2>
         <div class="platforms">
           <a class="platform" data-os="windows" href="https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Setup-x64.exe">
-            <h3>Windows</h3><p>Installer · x64</p><span class="get">Download .exe ↓</span>
+            <h3>Windows</h3><p>Installer, x64</p><span class="get">Download .exe ↓</span>
           </a>
           <a class="platform" data-os="mac" href="https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-macOS-arm64.dmg">
             <h3>macOS</h3><p>Apple silicon</p><span class="get">Download .dmg ↓</span>
           </a>
           <a class="platform" data-os="linux" href="https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Linux-x86_64.AppImage">
-            <h3>Linux</h3><p>AppImage · x64</p><span class="get">Download .AppImage ↓</span>
+            <h3>Linux</h3><p>AppImage, x64</p><span class="get">Download .AppImage ↓</span>
           </a>
         </div>
         <p class="caption">Preview builds are not code-signed yet. On Windows choose More info → Run anyway; on macOS right-click the app and choose Open the first time. <a href="https://github.com/DMRLZZ/DaveCode/releases/latest">All files and checksums ↗</a></p>
