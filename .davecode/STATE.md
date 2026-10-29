@@ -32,12 +32,15 @@ installed in an isolated temp directory and its CLI help was verified.
 
 ## In progress (v0.4.0)
 
-- First-run setup (wordmark, theme, DaveCode sign-in, first agent and model) and DaveCode
-  account commands are merged. The account service is not provisioned yet: a Supabase Auth
-  project, its Google and GitHub OAuth apps and the `http://127.0.0.1:*/**` redirect still
-  need the owner; until then `ACCOUNT_SERVICE` is empty and sign-in is skipped.
-- The final logo is pending; `packages/core/src/brand.ts` holds the placeholder mark and the
-  terminal wordmark, and every surface should draw from it.
+- DaveCode accounts run on Cloudflare (no Supabase): Worker `davecode-auth` with D1
+  `davecode-accounts` (tables created, worker deployed on workers.dev). Pending owner actions:
+  the `auth.davecode.app` custom domain and Email Sending for `davecode.app` (both DNS
+  changes), then GitHub and Google OAuth apps whose secrets go into the worker.
+- The bird logo is final: masters in `assets/brand/`, mirrored in `packages/core/src/brand.ts`
+  and `packages/ui/src/lib/brand.ts`.
+- Antigravity replaces Gemini CLI in first-run setup (adapter verified live with agy 1.4.8).
+- The site is still served by ChatGPT Sites through a Cloudflare custom hostname; moving it to
+  a Worker in the owner's account means replacing the apex A records (a DNS change).
 - The Windows installer builds and passes its packaged acceptance check in Actions; publishing
   `desktop-v0.4.0` waits for the logo.
 

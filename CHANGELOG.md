@@ -14,8 +14,13 @@ All notable changes to this project are documented here. The format follows
 - DaveCode accounts: `davecode login|logout|account` and `/login`, `/logout`, `/account` in the
   chat. Sign-in happens in the browser (Google, GitHub or email, including account creation)
   through a one-shot loopback server with PKCE; the session is stored encrypted with the
-  keyring master key and refreshed before it expires. Accounts stay off until a build is
-  pointed at the account service (`DAVECODE_ACCOUNT_URL`, `DAVECODE_ACCOUNT_KEY`).
+  keyring master key and refreshed before it expires. The service is
+  `packages/auth-worker`, a Cloudflare Worker with D1 at `auth.davecode.app`
+  (override with `DAVECODE_ACCOUNT_URL`). The sign-in page only offers enabled methods.
+- Antigravity (`antigravity-cli`): drives Google Antigravity's `agy` headless mode. First run
+  offers Claude Code, Codex and Antigravity, with Antigravity's models read from `agy models`.
+- The bird logo in the terminal, the sign-in page, the dashboard, favicons and desktop icons,
+  from masters in `assets/brand/`. The UI is monochrome: no orange accent.
 - Numbered menus: pressing an option's number picks it.
 - First npm publication: `@dmrlzz/davecode@0.3.0`.
   Install with `npm install -g @dmrlzz/davecode`. The command remains

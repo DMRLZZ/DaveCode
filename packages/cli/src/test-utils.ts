@@ -53,6 +53,8 @@ export function testEnv(home: string, extra: NodeJS.ProcessEnv = {}): NodeJS.Pro
     PATH: process.env.PATH,
     // Unicode glyphs on every platform, so snapshots match on legacy Windows consoles too.
     WT_SESSION: 'vitest',
+    // Tests never reach the real account service; account tests pass their own.
+    DAVECODE_ACCOUNT_URL: '',
     ...extra,
   };
 }

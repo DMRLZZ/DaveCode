@@ -33,8 +33,11 @@ function upstream(reply: (url: URL, body: unknown) => { status?: number; body: u
 }
 
 describe('accountService', () => {
-  it('is unset until a project is configured, and honours the environment', () => {
-    expect(accountService({})).toBeUndefined();
+  it('points at DaveCode accounts on Cloudflare and honours the environment', () => {
+    expect(accountService({})).toEqual({
+      url: 'https://auth.davecode.app',
+      publishableKey: 'davecode-cli',
+    });
     expect(
       accountService({ DAVECODE_ACCOUNT_URL: 'https://x.test/', DAVECODE_ACCOUNT_KEY: 'k' }),
     ).toEqual({ url: 'https://x.test', publishableKey: 'k' });

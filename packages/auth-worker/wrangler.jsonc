@@ -1,0 +1,24 @@
+// DaveCode accounts. Deploy: pnpm --filter @davecode/auth-worker build && wrangler deploy
+// Secrets (never committed): JWT_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
+// GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET. Set them with `wrangler secret put <NAME>`.
+{
+  "name": "davecode-auth",
+  "main": "dist/worker.js",
+  "compatibility_date": "2026-10-01",
+  "routes": [{ "pattern": "auth.davecode.app", "custom_domain": true }],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "davecode-accounts",
+      "database_id": "00ab1f84-ba4a-45c3-9912-34de3938a9eb"
+    }
+  ],
+  "send_email": [{ "name": "EMAIL" }],
+  "ratelimits": [
+    { "name": "RATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }
+  ],
+  "vars": {
+    "PUBLIC_URL": "https://auth.davecode.app",
+    "EMAIL_FROM": "accounts@davecode.app"
+  }
+}

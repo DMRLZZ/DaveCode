@@ -13,8 +13,8 @@ export interface AccountServiceConfig {
  * `DAVECODE_ACCOUNT_KEY` point a build at another project (development, tests).
  */
 export const ACCOUNT_SERVICE: AccountServiceConfig = {
-  url: '',
-  publishableKey: '',
+  url: 'https://auth.davecode.app',
+  publishableKey: 'davecode-cli',
 };
 
 export function accountService(
@@ -71,6 +71,8 @@ const sessionSchema = z.object({
   expires_in: z.number().positive(),
   user: userSchema,
 });
+
+const settingsSchema = z.object({ external: z.record(z.string(), z.boolean()) });
 
 const errorSchema = z
   .object({
@@ -160,6 +162,21 @@ export class AccountClient {
     });
     if (sessionSchema.safeParse(raw).success) return { session: toSession(raw, this.now()) };
     return { confirmEmail: true };
+  }
+
+  /** Sign-in methods the service has enabled; on any failure, assume all of them. */
+  async providers(): Promise<OAuthProvider[]> {
+    try {
+      const response = await this.fetch(`${this.service.url}/auth/v1/settings`, {
+        headers: { apikey: this.service.publishableKey },
+        signal: AbortSignal.timeout(10_000),
+      });
+      const parsed = settingsSchema.safeParse(await response.json());
+      if (!response.ok || !parsed.success) return [...OAUTH_PROVIDERS];
+      return OAUTH_PROVIDERS.filter((p) => parsed.data.external[p] !== false);
+    } catch {
+      return [...OAUTH_PROVIDERS];
+    }
   }
 
   refresh(refreshToken: string): Promise<AccountSession> {
