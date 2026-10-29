@@ -7,7 +7,11 @@
   "compatibility_date": "2026-10-01",
   "routes": [{ "pattern": "auth.davecode.app", "custom_domain": true }],
   "d1_databases": [
-    { "binding": "DB", "database_name": "davecode-accounts", "database_id": "00ab1f84-ba4a-45c3-9912-34de3938a9eb" }
+    {
+      "binding": "DB",
+      "database_name": "davecode-accounts",
+      "database_id": "00ab1f84-ba4a-45c3-9912-34de3938a9eb"
+    }
   ],
   "send_email": [{ "name": "EMAIL" }],
   "ratelimits": [
