@@ -416,7 +416,7 @@ h2 {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
 }
-.term-bar span {
+.term-bar .light {
   width: 10px;
   height: 10px;
   border-radius: 50%;
