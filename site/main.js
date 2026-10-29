@@ -33,3 +33,22 @@ if (
     observer.observe(section);
   }
 }
+
+// Offer the installer for this computer first.
+const platform = navigator.userAgentData?.platform ?? navigator.platform ?? '';
+const os = /win/i.test(platform)
+  ? 'windows'
+  : /mac/i.test(platform)
+    ? 'mac'
+    : /linux/i.test(platform) && !/android/i.test(navigator.userAgent)
+      ? 'linux'
+      : undefined;
+const mine = os && document.querySelector(`.platform[data-os="${os}"]`);
+const download = document.getElementById('download');
+if (mine && download) {
+  mine.classList.add('mine');
+  download.href = mine.href;
+  download.textContent = `Download for ${mine.querySelector('h3')?.textContent}`;
+  const hint = document.getElementById('download-hint');
+  if (hint) hint.innerHTML = 'Also for <a href="#download-all">other platforms</a> and as a CLI.';
+}

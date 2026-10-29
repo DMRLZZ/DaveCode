@@ -30,7 +30,7 @@
         <a href="#why">Why DaveCode</a>
         <a href="https://github.com/DMRLZZ/DaveCode" target="_blank" rel="noreferrer">GitHub ↗</a>
       </nav>
-      <a class="button small" href="#install">Install</a>
+      <a class="button small" href="#download-all">Download</a>
     </header>
 
     <main id="main">
@@ -39,11 +39,11 @@
           <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Open source · Preview</p>
           <h1 id="hero-title">Every coding agent.<br /><span>One terminal.</span></h1>
           <p class="lede">DaveCode runs Claude Code, Codex and Antigravity side by side with the subscriptions you already pay for, and routes each task to the agent that should do it.</p>
-          <div class="copy-box" data-copy>
-            <span class="prompt" aria-hidden="true">$</span><code>npm i -g @dmrlzz/davecode</code>
-            <button type="button" aria-label="Copy install command">Copy</button>
+          <div class="actions">
+            <a class="button" id="download" href="#download-all">Download DaveCode</a>
+            <a class="button ghost" href="#install">Install the CLI</a>
           </div>
-          <p class="hint">Then run <code>davecode</code>. Needs Node.js 22.12 or later.</p>
+          <p class="hint" id="download-hint">Free for Windows, macOS and Linux.</p>
         </div>
 
         <figure class="term" aria-label="The DaveCode terminal: the welcome banner and the slash command menu">
@@ -57,10 +57,10 @@
             <div class="input"><span>›</span> /<span class="caret" aria-hidden="true"></span></div>
             <ul class="menu">
               <li class="on"><b>› /model</b><i>show models or switch</i></li>
+              <li><b>/connect</b><i>connect Claude Code, Codex or Antigravity</i></li>
               <li><b>/route</b><i>routes and their failover targets</i></li>
               <li><b>/accounts</b><i>accounts with 5h quota usage</i></li>
-              <li><b>/tasks</b><i>the project task graph</i></li>
-              <li><b>/login</b><i>sign in to your DaveCode account</i></li>
+              <li><b>/status</b><i>model, agents and sign-in state</i></li>
             </ul>
             <p class="keys">↑↓ select · enter run · tab complete · esc cancel</p>
           </div>
@@ -109,15 +109,32 @@
         <ol class="steps">
           <li><span>01</span><div><h3>Install</h3><div class="copy-box" data-copy><span class="prompt" aria-hidden="true">$</span><code>npm i -g @dmrlzz/davecode</code><button type="button" aria-label="Copy install command">Copy</button></div></div></li>
           <li><span>02</span><div><h3>Start</h3><div class="copy-box" data-copy><span class="prompt" aria-hidden="true">$</span><code>davecode</code><button type="button" aria-label="Copy start command">Copy</button></div><p>Choose a theme, sign in with Google, GitHub or email, and connect an agent.</p></div></li>
-          <li><span>03</span><div><h3>Work</h3><p>Ask in plain words, or type <code>/</code> for commands. Desktop app for Windows and macOS is on the way.</p></div></li>
+          <li><span>03</span><div><h3>Work</h3><p>Ask in plain words, or type <code>/</code> for commands: <code>/connect</code> adds an agent, <code>/model</code> switches models.</p></div></li>
         </ol>
+      </section>
+
+      <section class="download wrap" id="download-all" aria-labelledby="download-title">
+        <p class="section-note">Desktop</p>
+        <h2 id="download-title">DaveCode for desktop.<br /><span>Node.js included.</span></h2>
+        <div class="platforms">
+          <a class="platform" data-os="windows" href="https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Setup-x64.exe">
+            <h3>Windows</h3><p>Installer · x64</p><span class="get">Download .exe ↓</span>
+          </a>
+          <a class="platform" data-os="mac" href="https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-macOS-arm64.dmg">
+            <h3>macOS</h3><p>Apple silicon</p><span class="get">Download .dmg ↓</span>
+          </a>
+          <a class="platform" data-os="linux" href="https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Linux-x86_64.AppImage">
+            <h3>Linux</h3><p>AppImage · x64</p><span class="get">Download .AppImage ↓</span>
+          </a>
+        </div>
+        <p class="caption">Preview builds are not code-signed yet. On Windows choose More info → Run anyway; on macOS right-click the app and choose Open the first time. <a href="https://github.com/DMRLZZ/DaveCode/releases/latest">All files and checksums ↗</a></p>
       </section>
 
       <section class="faq wrap" aria-labelledby="faq-title">
         <h2 id="faq-title">Questions</h2>
         <div class="questions">
           <details><summary>Is DaveCode free?</summary><p>Yes. DaveCode is open source under MIT. You use your own agent subscriptions or API keys; DaveCode charges nothing on top.</p></details>
-          <details><summary>Why do I need a DaveCode account?</summary><p>The account identifies you across your machines and the coming desktop app. It holds your email and sign-in method only. Your agent logins, keys and code stay on your machine.</p></details>
+          <details><summary>Why do I need a DaveCode account?</summary><p>The account identifies you across your machines, in the terminal and the desktop app. It holds your email and sign-in method only. Your agent logins, keys and code stay on your machine.</p></details>
           <details><summary>Which agents work today?</summary><p>Claude Code, Codex CLI and Antigravity, plus Anthropic, OpenAI, Gemini and OpenAI-compatible API keys.</p></details>
           <details><summary>Where does my work live?</summary><p>On your machine: a local SQLite database, an encrypted keyring and the <code>.davecode/</code> folder in your project. Only the agent you route to receives your prompt.</p></details>
         </div>

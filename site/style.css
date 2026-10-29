@@ -127,6 +127,60 @@ code {
   padding: 7px 14px;
   font-size: 14px;
 }
+.button.ghost {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+.button.ghost:hover {
+  background: var(--raised);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 32px;
+}
+.download {
+  padding-block: 112px;
+}
+.platforms {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 48px;
+}
+.platform {
+  display: block;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.platform:hover,
+.platform.mine {
+  border-color: #3a3a3a;
+}
+.platform h3 {
+  font-size: 20px;
+  font-weight: 600;
+}
+.platform p {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.platform .get {
+  display: inline-block;
+  margin-top: 28px;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.download .caption a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 
 /* Hero */
 .hero {
@@ -565,6 +619,7 @@ h2 {
     margin-left: auto;
   }
   .panes,
+  .platforms,
   .grid {
     grid-template-columns: minmax(0, 1fr);
   }
