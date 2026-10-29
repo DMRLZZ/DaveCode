@@ -1,0 +1,12 @@
+// davecode.app on Cloudflare Workers static assets. Deploy: node site/build.mjs && wrangler deploy
+{
+  "name": "davecode-site",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist"
+  },
+  "routes": [
+    { "pattern": "davecode.app", "custom_domain": true },
+    { "pattern": "www.davecode.app", "custom_domain": true }
+  ]
+}

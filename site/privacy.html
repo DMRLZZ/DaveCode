@@ -1,1 +1,22 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Privacy | DaveCode</title><link rel="stylesheet" href="/style.css"></head><body><main class="wrap" style="padding-block:80px;max-width:760px"><a href="/">← DaveCode</a><h1 style="font-size:48px;margin-top:50px">Privacy</h1><p class="body">This landing page does not collect signups, use analytics scripts or set tracking cookies. Hosting providers can process request metadata needed to deliver and protect the site.</p><h2 style="font-size:28px;margin-top:40px">The local application</h2><p class="body">DaveCode runs a gateway on your machine. Connecting an AI provider sends the prompts and context required for your requests to that provider. Its terms and privacy policy apply.</p><p class="body">Optional Google and GitHub sign-in identifies users allowed by the workspace owner. Login uses the provider's official authorization flow. Sessions use a local HttpOnly cookie. Model credentials and app sign-in are separate.</p><p class="body">The source and implementation are available on <a href="https://github.com/DMRLZZ/DaveCode" style="text-decoration:underline">GitHub</a>. Review your deployment configuration before exposing a local gateway to other people.</p></main></body></html>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy · DaveCode</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="wrap legal">
+      <a class="brand" href="/"><img src="/assets/mark.svg" width="22" height="22" alt="" />DaveCode</a>
+      <h1 style="margin-top: 56px">Privacy</h1>
+      <p class="body">This website does not use analytics scripts, tracking cookies or signup forms. Cloudflare, which hosts it, processes the request data needed to deliver and protect it.</p>
+      <h2>DaveCode accounts</h2>
+      <p class="body">Signing in to DaveCode stores your email address, your name if your provider shares it, and how you sign in: a Google or GitHub account id, or a salted PBKDF2 hash of your password. Sessions are signed tokens; refresh tokens are stored only as hashes. We send email only to confirm your address.</p>
+      <h2>The application</h2>
+      <p class="body">DaveCode runs on your machine. Your code, prompts, agent logins and API keys stay there, except what you send to the AI provider you choose; that provider's terms and privacy policy apply.</p>
+      <p class="body">The source is on <a class="underline" href="https://github.com/DMRLZZ/DaveCode">GitHub</a>. To delete your account, open an issue there or write to the repository owner.</p>
+    </main>
+  </body>
+</html>

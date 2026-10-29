@@ -3,83 +3,134 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#0b0b0b" />
-    <title>DaveCode. Make something that matters.</title>
-    <meta name="description" content="An open-source AI gateway and autonomous workspace. Unify Claude, Codex and Gemini subscriptions with API keys behind one quota-aware local router, DAG task runner and goal workspace." />
+    <meta name="theme-color" content="#000000" />
+    <title>DaveCode. Every coding agent, one terminal.</title>
+    <meta name="description" content="DaveCode runs Claude Code, Codex and Antigravity from one terminal with your own subscriptions. Open source, local-first, MIT." />
     <link rel="canonical" href="https://davecode.app/" />
-    <meta property="og:title" content="DaveCode. Make something that matters." />
-    <meta property="og:description" content="Unify Claude, Codex and Gemini subscriptions with API keys behind one local AI gateway and autonomous workspace." />
+    <meta property="og:title" content="DaveCode. Every coding agent, one terminal." />
+    <meta property="og:description" content="Run Claude Code, Codex and Antigravity from one terminal with your own subscriptions. Open source and local-first." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://davecode.app/" />
-    <meta property="og:image" content="https://davecode.app/assets/hero.webp" />
+    <meta property="og:image" content="https://davecode.app/assets/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="icon" href="/assets/mark.svg" type="image/svg+xml" />
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/assets/app-icon.png" />
     <link rel="preload" href="/assets/geist.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/assets/hero.webp" as="image" />
     <link rel="stylesheet" href="/style.css" />
     <script type="module" src="/main.js"></script>
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
     <header class="nav wrap">
-      <a class="brand" href="/" aria-label="DaveCode home"><img src="/assets/mark.svg" width="28" height="28" alt="" />DaveCode</a>
-      <nav aria-label="Main"><a href="#workspace">Workspace</a><a href="#principles">Why DaveCode</a><a href="https://github.com/DMRLZZ/DaveCode" target="_blank" rel="noreferrer">GitHub ↗</a></nav>
-      <a class="button small" href="#get-started">Get started <span aria-hidden>↗</span></a>
+      <a class="brand" href="/" aria-label="DaveCode home"><img src="/assets/mark.svg" width="26" height="26" alt="" />DaveCode</a>
+      <nav aria-label="Main">
+        <a href="#agents">Agents</a>
+        <a href="#why">Why DaveCode</a>
+        <a href="https://github.com/DMRLZZ/DaveCode" target="_blank" rel="noreferrer">GitHub ↗</a>
+      </nav>
+      <a class="button small" href="#install">Install</a>
     </header>
+
     <main id="main">
-      <div class="hero-scroll"><section class="hero wrap" aria-labelledby="hero-title">
-        <img class="hero-art" src="/assets/hero.webp" width="1672" height="941" alt="A folded graphite doorway with a fine seam of warm orange light" fetchpriority="high" />
+      <section class="hero wrap" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <p class="eyebrow">Open-source AI gateway &amp; autonomous workspace.</p>
-          <h1 id="hero-title">Make something<br />that matters.</h1>
-          <p class="hero-description">Unify Claude, Codex and Gemini subscriptions with API keys behind one quota-aware local gateway, DAG task runner and goal workspace.</p>
-          <div class="actions"><a class="button" href="#get-started">Get started <span aria-hidden>↗</span></a><a class="text-link" href="#workspace">See how it works <span aria-hidden>↓</span></a></div>
-        </div>
-        <div class="hero-next"><h2>Your subscriptions.<br>Zero wasted quota.</h2><p>Route across Claude Code, Codex CLI, Gemini CLI and API keys with automatic 429 failover and live budget tracking.</p></div>
-      </section></div>
-
-      <section class="intro wrap" id="workspace" aria-labelledby="workspace-title">
-        <p class="section-note">DaveCode v0.2</p>
-        <h2 id="workspace-title">Plan the goal. Route the models.<br /><span>Ship verified code.</span></h2>
-        <p class="body">Give DaveCode a high-level objective or point any OpenAI-compatible editor at <code>http://127.0.0.1:4040/v1</code>. Planner, researcher, writer and implementer roles coordinate over a dependency graph while quality gates verify every commit.</p>
-        <section class="workflow demo" aria-label="Illustrative DaveCode workflow" data-stage="describe">
-          <div class="workflow-tabs" role="tablist" aria-label="Workflow stages">
-            <button type="button" id="tab-describe" role="tab" aria-selected="true" aria-controls="panel-describe" tabindex="0">01 · Define objective <span aria-hidden>↗</span></button>
-            <button type="button" id="tab-plan" role="tab" aria-selected="false" aria-controls="panel-plan" tabindex="-1">02 · Inspect DAG plan <span aria-hidden>↗</span></button>
-            <button type="button" id="tab-build" role="tab" aria-selected="false" aria-controls="panel-build" tabindex="-1">03 · Execute &amp; verify <span aria-hidden>↗</span></button>
+          <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Open source · Preview</p>
+          <h1 id="hero-title">Every coding agent.<br /><span>One terminal.</span></h1>
+          <p class="lede">DaveCode runs Claude Code, Codex and Antigravity side by side with the subscriptions you already pay for, and routes each task to the agent that should do it.</p>
+          <div class="copy-box" data-copy>
+            <span class="prompt" aria-hidden="true">$</span><code>npm i -g @dmrlzz/davecode</code>
+            <button type="button" aria-label="Copy install command">Copy</button>
           </div>
-          <div class="demo-window">
-            <div class="demo-toolbar"><span>davecode/auto · 3 accounts active</span><span>Live SSE stream</span></div>
-            <div class="workflow-content">
-              <section id="panel-describe" role="tabpanel" aria-labelledby="tab-describe"><p class="demo-person">Objective (Dry run or Plan &amp; work)</p><p class="example-prompt demo-message">“Audit our authentication flow, draft the security changelog, and implement PKCE session binding with tests.”</p><div class="demo-reply"><img src="/assets/mark.svg" width="22" height="22" alt="DaveCode" /><p>Planner decomposed objective into 3 DAG tasks.<br /><span class="demo-reply-detail">Budget check: Claude Pro (82% 5h window left) · OpenAI API fallback ready.</span></p></div></section>
-              <section id="panel-plan" role="tabpanel" aria-labelledby="tab-plan" hidden><p class="example-label">Task graph (.davecode/goals/)</p><h3>Role-based DAG execution.</h3><ol class="demo-plan"><li><span>researcher</span>Audit OAuth state &amp; session cookies (artifact)</li><li><span>implementer</span>Add PKCE binding on isolated git branch (code)</li><li><span>writer</span>Draft release security notes for review (artifact)</li></ol><p>Approve and execute the planned graph without re-planning.</p></section>
-              <section id="panel-build" role="tabpanel" aria-labelledby="tab-build" hidden><div class="demo-result"><div><p class="example-label">Autonomous verification</p><h3>Merged to main.<br />Gates passed.</h3><p>lint ✓ · typecheck ✓ · vitest ✓ · 0 failovers</p></div><div class="demo-sculpture" aria-hidden="true"><span class="demo-fold"></span></div></div><div class="demo-complete"><span aria-hidden="true">✓</span><span>Branch merged cleanly. Markdown artifacts ready to read in dashboard.</span></div></section>
+          <p class="hint">Then run <code>davecode</code>. Needs Node.js 22.12 or later.</p>
+        </div>
+
+        <figure class="term" aria-label="The DaveCode terminal: the welcome banner and the slash command menu">
+          <div class="term-bar"><span class="light"></span><span class="light"></span><span class="light"></span><p>davecode — ~/projects/shop</p></div>
+          <div class="term-body">
+            <div class="banner">
+<img class="bird" src="/assets/mark.svg" width="64" height="64" alt="" />
+              <div class="banner-text"><p><b>DaveCode</b> <i>v0.4</i></p><p><i>~/projects/shop</i></p></div>
             </div>
-            <div class="demo-controls"><span id="demo-position">1 / 3</span><button type="button" id="demo-toggle" aria-pressed="false">Play demo</button></div>
+            <p class="line"><i>●</i> Signed in as you@example.com · claude-cli/opus</p>
+            <div class="input"><span>›</span> /<span class="caret" aria-hidden="true"></span></div>
+            <ul class="menu">
+              <li class="on"><b>› /model</b><i>show models or switch</i></li>
+              <li><b>/route</b><i>routes and their failover targets</i></li>
+              <li><b>/accounts</b><i>accounts with 5h quota usage</i></li>
+              <li><b>/tasks</b><i>the project task graph</i></li>
+              <li><b>/login</b><i>sign in to your DaveCode account</i></li>
+            </ul>
+            <p class="keys">↑↓ select · enter run · tab complete · esc cancel</p>
           </div>
-        </section>
-        <p class="demo-caption">Runs locally on your machine. Outbound actions (emails, posts, payments, deploys) are automatically converted into reviewable drafts.</p>
+        </figure>
       </section>
 
-      <section class="principles wrap" id="principles" aria-labelledby="principles-title">
-        <h2 id="principles-title">Engineered for control.<br /><span>On your terms.</span></h2>
-        <div class="principle-grid">
-          <article><span class="symbol" aria-hidden>↗</span><h3>Quota-aware hot failover.</h3><p>Connect Anthropic, OpenAI and Gemini API keys alongside Claude Code, Codex CLI and Gemini CLI in isolated sandboxes with 1m/5h/24h sliding windows and circuit breakers.</p></article>
-          <article><span class="symbol" aria-hidden>⌘</span><h3>Local-first &amp; encrypted.</h3><p>Runs on loopback with SQLite WAL storage and AES-256-GCM keyring encryption. Secrets are write-only and never echoed in logs, events or HTTP responses.</p></article>
-          <article><span class="symbol" aria-hidden>+</span><h3>Self-healing DAG runner.</h3><p>Executes task graphs on dedicated git branches, running lint, typecheck and test gates with bounded repair cycles and optional LLM/JEV judge verification.</p></article>
-          <article><span class="symbol" aria-hidden>↔</span><h3>Zero markup or lock-in.</h3><p>MIT-licensed. Expose <code>/v1/chat/completions</code> to Cursor, OpenCode or custom SDKs while tracking every token, failover chain and subscription renewal in real time.</p></article>
+      <section class="agents wrap" id="agents" aria-labelledby="agents-title">
+        <p class="section-note">Agents</p>
+        <h2 id="agents-title">Bring the agents you use.<br /><span>Keep their real login.</span></h2>
+        <p class="body">DaveCode signs in through each vendor's official CLI and never sees your passwords. Pick a model per agent, or let the router choose and fail over when a quota runs out.</p>
+        <div class="panes">
+          <article class="pane" style="--tone: #7aa2f7">
+            <header><span class="tone"></span>Claude Code<em>opus</em></header>
+            <p><i>›</i> Refactor the checkout flow into smaller modules</p>
+            <p class="out">Edited 4 files · tests pass</p>
+          </article>
+          <article class="pane" style="--tone: #9ece6a">
+            <header><span class="tone"></span>Codex<em>default</em></header>
+            <p><i>›</i> Write tests for the new payment client</p>
+            <p class="out">12 tests added · 1 failing → fixed</p>
+          </article>
+          <article class="pane" style="--tone: #bb9af7">
+            <header><span class="tone"></span>Antigravity<em>gemini</em></header>
+            <p><i>›</i> Review the diff for security issues</p>
+            <p class="out">No blocking findings · 2 notes</p>
+          </article>
+        </div>
+        <p class="caption">Multi-pane workspace with a DaveCode orchestrator: coming to the desktop app.</p>
+      </section>
+
+      <section class="why wrap" id="why" aria-labelledby="why-title">
+        <h2 id="why-title">Built like a tool,<br /><span>not a platform.</span></h2>
+        <div class="grid">
+          <article><h3>Your subscriptions</h3><p>Claude, ChatGPT and Google plans through their official CLIs, plus API keys when you want them. No DaveCode credits, no markup.</p></article>
+          <article><h3>Quota-aware routing</h3><p>Sliding 5-hour and daily windows per account, automatic failover on rate limits, and one OpenAI-compatible endpoint for your editor.</p></article>
+          <article><h3>Local first</h3><p>The gateway runs on 127.0.0.1. Keys are encrypted with AES-256-GCM and never logged or returned. Your code goes only to the agent you choose.</p></article>
+          <article><h3>Open source</h3><p>MIT licensed and built in the open. Read every line, file issues, or send a pull request.</p></article>
         </div>
       </section>
 
-      <section class="manifesto wrap" aria-labelledby="manifesto-title"><p class="eyebrow">Built for builders and teams.</p><h2 id="manifesto-title">Your AI subscriptions<br />and API keys belong in<br /><span>one intelligent control plane.</span></h2><p class="body">DaveCode combines a production-grade OpenAI-compatible gateway, a multi-role goal orchestrator, and a git-isolated autonomous runner—with a native desktop app on the way.</p><a class="text-link" href="https://github.com/DMRLZZ/DaveCode/issues" target="_blank" rel="noreferrer">Help shape DaveCode <span aria-hidden>↗</span></a></section>
-
-      <section class="start wrap" id="get-started" aria-labelledby="start-title">
-        <div><p class="section-note">Get started today</p><h2 id="start-title">Run locally in<br /><span>under a minute.</span></h2><p class="body">Install the CLI and dashboard now with Node.js 22.12+, or follow the upcoming standalone desktop app for macOS and Windows.</p><p class="requirements">Open-source MIT release. Runs on Windows, macOS and Linux.</p><div class="actions"><a class="button" href="https://github.com/DMRLZZ/DaveCode/releases" target="_blank" rel="noreferrer">View releases on GitHub <span aria-hidden>↗</span></a></div></div>
-        <div class="start-options"><div class="desktop-coming"><img src="/assets/mark.svg" width="52" height="52" alt="" /><h3 class="desktop-title">DaveCode for desktop</h3><p class="desktop-description">One-click local gateway and workspace installer.</p><div class="platforms"><span class="platform">macOS <em>Coming soon</em></span><span class="platform">Windows <em>Coming soon</em></span></div></div><details class="preview-install" open><summary>Install via npm (v0.2 Preview)</summary><p class="requirements">Available now for Windows, macOS and Linux. Requires Node.js 22.12+ and npm.</p><div class="install"><div class="install-heading"><span>Install v0.2 Preview</span><button type="button" id="copy-install" aria-label="Copy setup commands">Copy ↗</button></div><pre><code id="install-code">npm install -g https://github.com/DMRLZZ/DaveCode/releases/download/workspace-v0.1.0-preview.1/davecode-0.2.0.tgz</code></pre><p id="copy-status" role="status" aria-live="polite">Then run davecode app, or davecode for the terminal.</p></div><a class="text-link" href="https://github.com/DMRLZZ/DaveCode#quick-start" target="_blank" rel="noreferrer">Step-by-step setup <span aria-hidden>↗</span></a></details></div>
+      <section class="start wrap" id="install" aria-labelledby="install-title">
+        <div>
+          <p class="section-note">Get started</p>
+          <h2 id="install-title">Running in<br /><span>under a minute.</span></h2>
+        </div>
+        <ol class="steps">
+          <li><span>01</span><div><h3>Install</h3><div class="copy-box" data-copy><span class="prompt" aria-hidden="true">$</span><code>npm i -g @dmrlzz/davecode</code><button type="button" aria-label="Copy install command">Copy</button></div></div></li>
+          <li><span>02</span><div><h3>Start</h3><div class="copy-box" data-copy><span class="prompt" aria-hidden="true">$</span><code>davecode</code><button type="button" aria-label="Copy start command">Copy</button></div><p>Choose a theme, sign in with Google, GitHub or email, and connect an agent.</p></div></li>
+          <li><span>03</span><div><h3>Work</h3><p>Ask in plain words, or type <code>/</code> for commands. Desktop app for Windows and macOS is on the way.</p></div></li>
+        </ol>
       </section>
 
-      <section class="faq wrap" aria-labelledby="faq-title"><h2 id="faq-title">Good questions.</h2><div class="questions"><details><summary>Is DaveCode free?</summary><p>Yes. DaveCode is open source under MIT, with no DaveCode subscription, markup, or credits to buy. You connect your own API keys or official CLI subscriptions.</p></details><details><summary>Can I bring the AI tools I already use?</summary><p>Yes. Connect Anthropic, OpenAI, Gemini and OpenAI-compatible API keys, or sign in through the official Claude Code, Codex and Gemini CLIs in isolated sandboxes. See the <a href="https://github.com/DMRLZZ/DaveCode/blob/main/docs/WORKSPACE.md" target="_blank" rel="noreferrer">workspace and connection guide</a>.</p></details><details><summary>How does Goal Mode differ from the Autonomous Runner?</summary><p>Goal Mode decomposes a high-level objective into a DAG of role-based tasks (planner, researcher, writer, implementer, reviewer). Code tasks are handed to the Autonomous Runner, which works on an isolated git branch and runs lint, typecheck and test gates before merging.</p></details><details><summary>Where does my work live?</summary><p>Everything stays on your machine: SQLite WAL state, AES-256-GCM encrypted keyring, and `.davecode/` project brain files. Only the provider you route to receives your prompt.</p></details></div></section>
+      <section class="faq wrap" aria-labelledby="faq-title">
+        <h2 id="faq-title">Questions</h2>
+        <div class="questions">
+          <details><summary>Is DaveCode free?</summary><p>Yes. DaveCode is open source under MIT. You use your own agent subscriptions or API keys; DaveCode charges nothing on top.</p></details>
+          <details><summary>Why do I need a DaveCode account?</summary><p>The account identifies you across your machines and the coming desktop app. It holds your email and sign-in method only. Your agent logins, keys and code stay on your machine.</p></details>
+          <details><summary>Which agents work today?</summary><p>Claude Code, Codex CLI and Antigravity, plus Anthropic, OpenAI, Gemini and OpenAI-compatible API keys.</p></details>
+          <details><summary>Where does my work live?</summary><p>On your machine: a local SQLite database, an encrypted keyring and the <code>.davecode/</code> folder in your project. Only the agent you route to receives your prompt.</p></details>
+        </div>
+      </section>
     </main>
-    <footer class="footer wrap"><a class="brand" href="/" aria-label="DaveCode home"><img src="/assets/mark.svg" width="24" height="24" alt="" />DaveCode</a><p>Made for what you want to make.</p><nav aria-label="Footer"><a href="https://github.com/DMRLZZ/DaveCode" target="_blank" rel="noreferrer">Source ↗</a><a href="https://github.com/DMRLZZ/DaveCode/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT license ↗</a><a href="/privacy.html">Privacy</a></nav></footer>
+
+    <footer class="footer wrap">
+      <a class="brand" href="/" aria-label="DaveCode home"><img src="/assets/mark.svg" width="22" height="22" alt="" />DaveCode</a>
+      <nav aria-label="Footer">
+        <a href="https://github.com/DMRLZZ/DaveCode" target="_blank" rel="noreferrer">Source ↗</a>
+        <a href="https://github.com/DMRLZZ/DaveCode/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT license ↗</a>
+        <a href="/privacy.html">Privacy</a>
+      </nav>
+    </footer>
   </body>
 </html>
