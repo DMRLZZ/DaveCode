@@ -29,6 +29,7 @@ export type ProviderKind =
   | 'claude-cli'
   | 'codex-cli'
   | 'gemini-cli'
+  | 'antigravity-cli'
   | 'gemini-web';
 
 export const EXPERIMENTAL_PROVIDER_KINDS: readonly ProviderKind[] = ['gemini-web'];
@@ -37,6 +38,7 @@ export const SUBSCRIPTION_PROVIDER_KINDS: readonly ProviderKind[] = [
   'claude-cli',
   'codex-cli',
   'gemini-cli',
+  'antigravity-cli',
   'gemini-web',
 ];
 

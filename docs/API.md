@@ -155,8 +155,9 @@ resets an enabled account to `active` and clears `cooldownUntil` and `lastError`
 
 `ProviderKind` is one of `anthropic`, `openai`, `gemini`, `openai-compatible` (API keys),
 `claude-cli`, `codex-cli`, `gemini-cli` (subscription logins held by the vendor's own CLI inside
-the account's sandbox: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`) and the
-experimental `gemini-web`. `gemini-cli` runs the official Gemini CLI with "Login with Google";
+the account's sandbox: `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GEMINI_CLI_HOME`), `antigravity-cli`
+(Google Antigravity's `agy`; its sign-in lives in the OS keyring and is shared by the machine) and
+the experimental `gemini-web`. `gemini-cli` runs the official Gemini CLI with "Login with Google";
 a fresh sandbox is seeded with `.gemini/settings.json` selecting `oauth-personal`.
 
 #### Subscription & budget contracts
@@ -240,13 +241,14 @@ interface ConnectResult {
 
 How each method is checked (core `ConnectionChecker`, exposed as `engine.connections`):
 
-| Provider      | Check                                                                                                                                                                                                                                                                                     |
-| :------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API-key kinds | `hasSecret` (keyring). `openai-compatible` without a key counts as connected.                                                                                                                                                                                                             |
-| `claude-cli`  | `claude auth status --json` (`loggedIn`) with `CLAUDE_CONFIG_DIR` set. When it reports a login but the sandbox holds no `.credentials.json` (outside macOS, where the keychain is used), `detail` warns that it is probably the global Claude Code login and the account is not isolated. |
-| `codex-cli`   | exit code of `codex login status` with `CODEX_HOME` set.                                                                                                                                                                                                                                  |
-| `gemini-cli`  | presence of `<sandbox>/.gemini/oauth_creds.json` (written by Gemini CLI; never read).                                                                                                                                                                                                     |
-| `gemini-web`  | `unknown`: checking would mean opening the browser profile.                                                                                                                                                                                                                               |
+| Provider          | Check                                                                                                                                                                                                                                                                                     |
+| :---------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| API-key kinds     | `hasSecret` (keyring). `openai-compatible` without a key counts as connected.                                                                                                                                                                                                             |
+| `claude-cli`      | `claude auth status --json` (`loggedIn`) with `CLAUDE_CONFIG_DIR` set. When it reports a login but the sandbox holds no `.credentials.json` (outside macOS, where the keychain is used), `detail` warns that it is probably the global Claude Code login and the account is not isolated. |
+| `codex-cli`       | exit code of `codex login status` with `CODEX_HOME` set.                                                                                                                                                                                                                                  |
+| `antigravity-cli` | exit code of `agy models`, which needs a signed-in Google account.                                                                                                                                                                                                                        |
+| `gemini-cli`      | presence of `<sandbox>/.gemini/oauth_creds.json` (written by Gemini CLI; never read).                                                                                                                                                                                                     |
+| `gemini-web`      | `unknown`: checking would mean opening the browser profile.                                                                                                                                                                                                                               |
 
 Vendor output is parsed for the logged-in flag only and never returned.
 

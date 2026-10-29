@@ -18,6 +18,7 @@ describe('createProviders', () => {
       'claude-cli',
       'codex-cli',
       'gemini-cli',
+      'antigravity-cli',
       'gemini-web',
     ];
     expect([...providers.keys()].sort()).toEqual([...kinds].sort());

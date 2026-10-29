@@ -112,6 +112,8 @@ export type ProviderKind =
   | 'codex-cli'
   /** Local Gemini CLI ("Login with Google"), isolated per account via GEMINI_CLI_HOME. */
   | 'gemini-cli'
+  /** Local Google Antigravity CLI (`agy`); its sign-in lives in the OS keyring, shared. */
+  | 'antigravity-cli'
   /** EXPERIMENTAL, opt-in: Gemini web session driven through a Chromium profile. */
   | 'gemini-web';
 
@@ -129,6 +131,7 @@ export const SUBSCRIPTION_PROVIDER_KINDS: readonly ProviderKind[] = [
   'claude-cli',
   'codex-cli',
   'gemini-cli',
+  'antigravity-cli',
   'gemini-web',
 ];
 

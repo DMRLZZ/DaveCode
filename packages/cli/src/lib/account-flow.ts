@@ -50,6 +50,13 @@ export const PROVIDERS: readonly ProviderInfo[] = [
     binary: 'codex',
   },
   {
+    kind: 'antigravity-cli',
+    name: 'Antigravity CLI (your Google sign-in in agy)',
+    auth: 'cli-login',
+    defaultLabel: 'Antigravity',
+    binary: 'agy',
+  },
+  {
     kind: 'gemini-cli',
     name: 'Gemini CLI (your Google login)',
     auth: 'cli-login',

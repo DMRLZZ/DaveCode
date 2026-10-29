@@ -8,6 +8,7 @@ export const PROVIDER_KINDS: readonly ProviderKind[] = [
   'claude-cli',
   'codex-cli',
   'gemini-cli',
+  'antigravity-cli',
   'gemini-web',
 ];
 
@@ -84,7 +85,7 @@ export function inferProviders(model: string): ProviderKind[] {
   const id = model.toLowerCase();
   if (id.startsWith('claude')) return ['anthropic', 'claude-cli'];
   if (/^(gpt-|chatgpt|codex|o\d)/.test(id)) return ['openai', 'codex-cli'];
-  if (id.startsWith('gemini')) return ['gemini', 'gemini-cli', 'gemini-web'];
+  if (id.startsWith('gemini')) return ['gemini', 'gemini-cli', 'antigravity-cli', 'gemini-web'];
   return [];
 }
 

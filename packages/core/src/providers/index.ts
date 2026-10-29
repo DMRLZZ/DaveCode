@@ -1,4 +1,5 @@
 export { AnthropicProvider } from './anthropic';
+export { AntigravityCliProvider } from './antigravity-cli';
 export { ClaudeCliProvider } from './claude-cli';
 export { CodexCliProvider } from './codex-cli';
 export { GeminiProvider } from './gemini';

@@ -77,7 +77,12 @@ describe('model matching', () => {
     expect(inferProviders('claude-sonnet')).toEqual(['anthropic', 'claude-cli']);
     expect(inferProviders('gpt-5')).toEqual(['openai', 'codex-cli']);
     expect(inferProviders('o3-mini')).toEqual(['openai', 'codex-cli']);
-    expect(inferProviders('gemini-2.5-pro')).toEqual(['gemini', 'gemini-cli', 'gemini-web']);
+    expect(inferProviders('gemini-2.5-pro')).toEqual([
+      'gemini',
+      'gemini-cli',
+      'antigravity-cli',
+      'gemini-web',
+    ]);
     expect(inferProviders('llama3')).toEqual([]);
   });
 
