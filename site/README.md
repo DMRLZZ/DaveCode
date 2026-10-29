@@ -1,30 +1,16 @@
 # DaveCode public site
 
-Black, responsive marketing site with a full-bleed generated artwork, a scroll-driven
-hero, section reveals, an animated workflow demo and a copyable preview-install flow.
-Reduced-motion users and browsers without scroll timelines get a readable fallback.
+The landing page at https://davecode.app: black and white, the bird mark, a static terminal
+that mirrors the real TUI, and the install command. No analytics, cookies or signup forms.
 
-The workflow is an illustrative animation, not a recorded or live agent run. It advances
-only while visible, pauses in background tabs, and includes manual steps and play/pause.
-Reduced-motion preference disables autoplay. The desktop installer is marked as upcoming;
-the working terminal install stays available inside the preview disclosure. No waitlist
-or notification signup is implied by the link to GitHub releases.
+It is served by the Cloudflare Worker `davecode-site` with static assets, on the same account
+as the domain and the `davecode-auth` account service.
 
-```text
-node site/build.mjs
-python -m http.server 4180 --directory site/dist
+```bash
+node site/build.mjs                 # copies the files into site/dist
+npx serve site/dist                 # preview locally
+cd site && npx wrangler deploy      # publish (wrangler.jsonc attaches davecode.app and www)
 ```
 
-The portable Sites checkout is separate from the app's repository. The exact Site
-identity is tracked in `.openai/hosting.json`; do not create a replacement Site.
-Deployment: https://davecode-app.mor4lez.chatgpt.site
-Requested custom domain: https://davecode.app
-
-The landing page has no account backend, analytics or signup form. The local app's
-Google/GitHub OAuth lives in the DaveCode gateway. Do not expose a user's gateway
-or provider credentials merely to serve this public page.
-
-`assets/hero.webp` was generated with ChatGPT's built-in image tool. Prompt: a wide,
-dark graphite folded doorway, a restrained orange seam of light, negative space
-for website typography, no text, logos or UI. Original PNG is retained alongside it.
-Geist is self-hosted; its license is in `assets/GEIST-LICENSE.txt`.
+`assets/og.png` is the 1200×630 share image; `assets/mark.svg` and `assets/favicon.svg` come
+from `assets/brand/`. Geist is self-hosted; its license is in `assets/GEIST-LICENSE.txt`.
