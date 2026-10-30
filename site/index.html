@@ -19,9 +19,23 @@
     <link rel="apple-touch-icon" href="/assets/app-icon.png" />
     <link rel="preload" href="/assets/geist.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/style.css" />
+    <script>
+      try {
+        if (
+          !matchMedia('(prefers-reduced-motion: reduce)').matches &&
+          !sessionStorage.getItem('davecode-intro')
+        )
+          document.documentElement.classList.add('play-intro');
+      } catch {}
+    </script>
     <script type="module" src="/main.js"></script>
   </head>
   <body>
+    <div class="intro" aria-hidden="true">
+      <div class="intro-mark"><svg viewBox="0 0 1214 1214" aria-hidden="true"><path pathLength="1" fill-rule="evenodd" d="M324.3 1096.5C324.6 1095.4 326.5 1088.3 328.5 1080.8C341.4 1031.3 375.8 953.4 419.7 874.0C445.8 826.9 448.4 822.4 471.8 783.0C501.5 733.1 530.1 687.6 556.4 648.5C563.7 637.5 569.7 628.4 569.5 628.2C569.4 628.1 563.1 631.7 555.4 636.3C513.8 661.4 468.0 683.9 411.0 707.5C337.2 737.9 321.7 744.7 296.0 757.2C241.9 783.5 199.1 809.4 152.0 844.3C119.5 868.4 98.8 885.9 71.3 912.4C64.0 919.5 58.0 925.0 58.0 924.7C58.0 923.1 64.7 902.4 68.8 891.0C116.1 762.1 215.0 644.2 351.0 554.8C385.2 532.3 411.6 516.9 445.5 499.4C521.4 460.4 589.4 435.7 636.0 430.0C676.8 425.1 715.1 437.0 743.9 463.6C763.4 481.6 779.0 509.9 785.2 538.5C787.7 550.1 788.7 579.7 787.1 592.5C782.6 626.4 769.7 661.5 746.5 702.0C717.7 752.5 675.6 806.9 627.0 856.4C599.5 884.4 575.9 905.4 542.5 931.6C510.0 957.1 500.7 964.2 432.5 1015.0C409.4 1032.3 382.6 1052.5 373.0 1060.0C354.5 1074.4 327.4 1095.5 325.1 1097.4C324.0 1098.3 323.8 1098.1 324.3 1096.5ZM783.2 1017.8C797.1 999.5 820.2 966.0 831.7 947.5C868.5 888.3 888.8 840.5 903.4 778.5C917.9 716.9 921.2 643.7 912.0 591.0C904.6 549.3 889.7 511.9 866.7 477.5C856.6 462.3 853.1 457.8 837.4 439.6C817.4 416.6 806.6 402.0 800.5 389.5C793.6 375.5 791.7 368.1 791.7 356.0C791.7 335.3 799.3 319.6 819.0 299.9C849.7 269.2 900.2 247.9 956.8 241.9C963.0 241.2 967.7 240.3 967.3 239.9C966.1 238.8 948.5 236.3 933.0 234.9C913.6 233.2 875.2 234.3 859.0 237.0C839.7 240.2 827.8 242.9 813.0 247.5C753.9 265.9 700.6 300.9 659.2 348.5C648.9 360.4 636.6 376.5 632.4 383.5C630.3 387.1 629.0 388.2 624.7 389.6C603.8 396.4 554.6 417.6 513.5 437.5C447.6 469.4 395.4 496.8 341.5 528.1L337.5 530.4L339.5 527.9C340.6 526.6 346.2 520.3 352.0 514.0C374.4 489.6 390.2 470.8 411.2 443.5C429.3 419.9 444.6 398.2 488.5 333.5C510.5 301.0 529.1 278.0 550.9 256.3C593.0 214.1 640.3 183.6 691.5 165.5C727.7 152.8 756.5 147.7 792.5 147.7C854.3 147.8 906.4 164.9 954.1 200.6C967.5 210.8 974.1 214.6 981.5 217.0C991.4 220.1 1022.1 231.9 1038.5 238.8C1061.9 248.7 1099.0 267.4 1097.7 268.7C1097.4 268.9 1089.3 268.5 1079.7 267.9C1033.7 264.7 984.5 274.1 946.2 293.4C932.3 300.4 915.0 313.0 903.4 324.5C881.0 346.6 870.0 369.6 870.0 394.4C870.0 413.7 876.8 433.1 894.7 465.2C908.8 490.3 914.6 501.1 922.8 517.5C961.3 594.3 980.0 662.5 980.0 725.4C980.0 770.9 967.3 818.9 944.4 860.4C927.6 890.8 912.0 911.0 882.5 940.6C856.5 966.7 828.5 989.7 797.0 1010.7C779.6 1022.2 780.0 1022.0 783.2 1017.8Z"/></svg></div>
+      <p class="intro-word"><span>DaveCode</span></p>
+    </div>
+    <div class="progress" aria-hidden="true"></div>
     <a class="skip" href="#main">Skip to content</a>
     <header class="nav wrap">
       <a class="brand" href="/" aria-label="DaveCode home"><img src="/assets/mark.svg" width="26" height="26" alt="" />DaveCode</a>
@@ -36,16 +50,16 @@
     <main id="main">
       <section class="hero wrap" aria-labelledby="hero-title">
         <div class="hero-copy">
-          <h1 id="hero-title">Every coding agent.<br /><span>One terminal.</span></h1>
-          <p class="lede">DaveCode runs Claude Code, Codex and Antigravity side by side with the subscriptions you already pay for, and routes each task to the agent that should do it.</p>
-          <div class="actions">
+          <h1 id="hero-title"><span class="ln"><span>Every coding agent.</span></span><span class="ln dim"><span>One terminal.</span></span></h1>
+          <p class="lede rise" style="--d: 3">DaveCode runs Claude Code, Codex and Antigravity side by side with the subscriptions you already pay for, and routes each task to the agent that should do it.</p>
+          <div class="actions rise" style="--d: 4">
             <a class="button" id="download" href="#download-all">Download DaveCode</a>
             <a class="button ghost" href="#install">Install the CLI</a>
           </div>
-          <p class="hint" id="download-hint">Free for Windows, macOS and Linux.</p>
+          <p class="hint rise" style="--d: 5" id="download-hint">Free for Windows, macOS and Linux.</p>
         </div>
 
-        <figure class="term" aria-label="The DaveCode terminal: the welcome banner and the slash command menu">
+        <figure class="term rise" style="--d: 3" aria-label="The DaveCode terminal: the welcome banner and the slash command menu">
           <div class="term-bar"><p>davecode — ~/projects/shop</p></div>
           <div class="term-body">
             <div class="banner">
@@ -53,7 +67,7 @@
               <div class="banner-text"><p><b>DaveCode</b> <i>v0.4</i></p><p><i>~/projects/shop</i></p></div>
             </div>
             <p class="line">Signed in as you@example.com, using claude-cli/opus</p>
-            <div class="input"><span>›</span> /<span class="caret" aria-hidden="true"></span></div>
+            <div class="input"><span>›</span> <span class="typed">/</span><span class="caret" aria-hidden="true"></span></div>
             <ul class="menu">
               <li class="on"><b>› /model</b><i>show models or switch</i></li>
               <li><b>/connect</b><i>connect Claude Code, Codex or Antigravity</i></li>
@@ -61,6 +75,13 @@
               <li><b>/accounts</b><i>accounts with 5h quota usage</i></li>
               <li><b>/status</b><i>model, agents and sign-in state</i></li>
             </ul>
+            <div class="picker" hidden>
+              <p><b>Connect an agent</b></p>
+              <p class="on">› 1. <img src="/assets/agents/claude-code.svg" width="14" height="14" alt="" />Claude Code <i>installed</i></p>
+              <p>  2. <img src="/assets/agents/codex.svg" width="14" height="14" alt="" />Codex <i>installed</i></p>
+              <p>  3. <img src="/assets/agents/antigravity.svg" width="14" height="14" alt="" />Antigravity <i>installed</i></p>
+            </div>
+            <p class="done" hidden>✓ DaveCode will use <b>Claude Code</b>, opus</p>
             <p class="keys">↑↓ select   enter run   tab complete   esc cancel</p>
           </div>
         </figure>
@@ -72,17 +93,20 @@
         <div class="panes">
           <article class="pane">
             <header><img src="/assets/agents/claude-code.svg" width="20" height="20" alt="" />Claude Code<em>opus</em></header>
-            <p><i>›</i> Refactor the checkout flow into smaller modules</p>
+            <p class="ask" data-text="Refactor the checkout flow into smaller modules"><i>›</i> <span>Refactor the checkout flow into smaller modules</span></p>
+            <p class="work"><span class="spin" aria-hidden="true"></span>Working</p>
             <p class="out">Edited 4 files, tests pass</p>
           </article>
           <article class="pane">
             <header><img src="/assets/agents/codex.svg" width="20" height="20" alt="" />Codex<em>default</em></header>
-            <p><i>›</i> Write tests for the new payment client</p>
+            <p class="ask" data-text="Write tests for the new payment client"><i>›</i> <span>Write tests for the new payment client</span></p>
+            <p class="work"><span class="spin" aria-hidden="true"></span>Working</p>
             <p class="out">12 tests added, 1 failing → fixed</p>
           </article>
           <article class="pane">
             <header><img src="/assets/agents/antigravity.svg" width="20" height="20" alt="" />Antigravity<em>gemini</em></header>
-            <p><i>›</i> Review the diff for security issues</p>
+            <p class="ask" data-text="Review the diff for security issues"><i>›</i> <span>Review the diff for security issues</span></p>
+            <p class="work"><span class="spin" aria-hidden="true"></span>Working</p>
             <p class="out">No blocking findings, 2 notes</p>
           </article>
         </div>
@@ -111,6 +135,7 @@
       </section>
 
       <section class="download wrap" id="download-all" aria-labelledby="download-title">
+        <div class="big-bird" aria-hidden="true"><svg viewBox="0 0 1214 1214" aria-hidden="true"><path pathLength="1" fill-rule="evenodd" d="M324.3 1096.5C324.6 1095.4 326.5 1088.3 328.5 1080.8C341.4 1031.3 375.8 953.4 419.7 874.0C445.8 826.9 448.4 822.4 471.8 783.0C501.5 733.1 530.1 687.6 556.4 648.5C563.7 637.5 569.7 628.4 569.5 628.2C569.4 628.1 563.1 631.7 555.4 636.3C513.8 661.4 468.0 683.9 411.0 707.5C337.2 737.9 321.7 744.7 296.0 757.2C241.9 783.5 199.1 809.4 152.0 844.3C119.5 868.4 98.8 885.9 71.3 912.4C64.0 919.5 58.0 925.0 58.0 924.7C58.0 923.1 64.7 902.4 68.8 891.0C116.1 762.1 215.0 644.2 351.0 554.8C385.2 532.3 411.6 516.9 445.5 499.4C521.4 460.4 589.4 435.7 636.0 430.0C676.8 425.1 715.1 437.0 743.9 463.6C763.4 481.6 779.0 509.9 785.2 538.5C787.7 550.1 788.7 579.7 787.1 592.5C782.6 626.4 769.7 661.5 746.5 702.0C717.7 752.5 675.6 806.9 627.0 856.4C599.5 884.4 575.9 905.4 542.5 931.6C510.0 957.1 500.7 964.2 432.5 1015.0C409.4 1032.3 382.6 1052.5 373.0 1060.0C354.5 1074.4 327.4 1095.5 325.1 1097.4C324.0 1098.3 323.8 1098.1 324.3 1096.5ZM783.2 1017.8C797.1 999.5 820.2 966.0 831.7 947.5C868.5 888.3 888.8 840.5 903.4 778.5C917.9 716.9 921.2 643.7 912.0 591.0C904.6 549.3 889.7 511.9 866.7 477.5C856.6 462.3 853.1 457.8 837.4 439.6C817.4 416.6 806.6 402.0 800.5 389.5C793.6 375.5 791.7 368.1 791.7 356.0C791.7 335.3 799.3 319.6 819.0 299.9C849.7 269.2 900.2 247.9 956.8 241.9C963.0 241.2 967.7 240.3 967.3 239.9C966.1 238.8 948.5 236.3 933.0 234.9C913.6 233.2 875.2 234.3 859.0 237.0C839.7 240.2 827.8 242.9 813.0 247.5C753.9 265.9 700.6 300.9 659.2 348.5C648.9 360.4 636.6 376.5 632.4 383.5C630.3 387.1 629.0 388.2 624.7 389.6C603.8 396.4 554.6 417.6 513.5 437.5C447.6 469.4 395.4 496.8 341.5 528.1L337.5 530.4L339.5 527.9C340.6 526.6 346.2 520.3 352.0 514.0C374.4 489.6 390.2 470.8 411.2 443.5C429.3 419.9 444.6 398.2 488.5 333.5C510.5 301.0 529.1 278.0 550.9 256.3C593.0 214.1 640.3 183.6 691.5 165.5C727.7 152.8 756.5 147.7 792.5 147.7C854.3 147.8 906.4 164.9 954.1 200.6C967.5 210.8 974.1 214.6 981.5 217.0C991.4 220.1 1022.1 231.9 1038.5 238.8C1061.9 248.7 1099.0 267.4 1097.7 268.7C1097.4 268.9 1089.3 268.5 1079.7 267.9C1033.7 264.7 984.5 274.1 946.2 293.4C932.3 300.4 915.0 313.0 903.4 324.5C881.0 346.6 870.0 369.6 870.0 394.4C870.0 413.7 876.8 433.1 894.7 465.2C908.8 490.3 914.6 501.1 922.8 517.5C961.3 594.3 980.0 662.5 980.0 725.4C980.0 770.9 967.3 818.9 944.4 860.4C927.6 890.8 912.0 911.0 882.5 940.6C856.5 966.7 828.5 989.7 797.0 1010.7C779.6 1022.2 780.0 1022.0 783.2 1017.8Z"/></svg></div>
         <h2 id="download-title">DaveCode for desktop.<br /><span>Node.js included.</span></h2>
         <div class="platforms">
           <a class="platform" data-os="windows" href="https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Setup-x64.exe">

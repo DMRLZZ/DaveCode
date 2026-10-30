@@ -35,6 +35,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["site/style.css"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {
