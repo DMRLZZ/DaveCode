@@ -182,13 +182,21 @@ if (!reduce && 'IntersectionObserver' in window) {
   // The terminal leans toward the pointer; cards light up under it.
   if (window.matchMedia('(pointer: fine)').matches) {
     const hero = document.querySelector('.hero');
+    let pointer;
     hero?.addEventListener('pointermove', (event) => {
       if (!term) return;
-      const box = term.getBoundingClientRect();
-      const x = (event.clientX - (box.left + box.width / 2)) / box.width;
-      const y = (event.clientY - (box.top + box.height / 2)) / box.height;
-      term.style.setProperty('--tilt-y', `${(x * 6).toFixed(2)}deg`);
-      term.style.setProperty('--tilt-x', `${(-y * 6).toFixed(2)}deg`);
+      // One update per frame, however fast the pointer events arrive.
+      if (!pointer) {
+        requestAnimationFrame(() => {
+          const box = term.getBoundingClientRect();
+          const x = (pointer.clientX - (box.left + box.width / 2)) / box.width;
+          const y = (pointer.clientY - (box.top + box.height / 2)) / box.height;
+          term.style.setProperty('--tilt-y', `${(x * 5).toFixed(2)}deg`);
+          term.style.setProperty('--tilt-x', `${(-y * 5).toFixed(2)}deg`);
+          pointer = undefined;
+        });
+      }
+      pointer = event;
     });
     hero?.addEventListener('pointerleave', () => {
       term?.style.setProperty('--tilt-x', '0deg');
@@ -203,7 +211,8 @@ if (!reduce && 'IntersectionObserver' in window) {
     }
   }
 
-  // Scroll: progress bar, nav border and the large bird in the download section.
+  // Scroll: progress bar, nav border and a slow drift of the large bird. Layout is read
+  // first and styles written after, so a frame never forces a second layout.
   const progress = document.querySelector('.progress');
   const nav = document.querySelector('.nav');
   const download = document.querySelector('.download');
@@ -211,18 +220,18 @@ if (!reduce && 'IntersectionObserver' in window) {
   let queued = false;
   const onScroll = () => {
     queued = false;
+    const y = window.scrollY;
     const max = document.documentElement.scrollHeight - window.innerHeight;
-    progress?.style.setProperty('--progress', String(max > 0 ? window.scrollY / max : 0));
-    nav?.classList.toggle('scrolled', window.scrollY > 8);
+    const due = [...pending].filter(
+      (section) => section.getBoundingClientRect().top < window.innerHeight * 0.85,
+    );
+    const birdTop = download && bird ? download.getBoundingClientRect().top : 0;
+
+    progress?.style.setProperty('--progress', String(max > 0 ? y / max : 0));
+    nav?.classList.toggle('scrolled', y > 8);
     // Backstop for the observer: anything scrolled well into view is shown.
-    for (const section of pending) {
-      if (section.getBoundingClientRect().top < window.innerHeight * 0.85) show(section);
-    }
-    if (download && bird) {
-      const box = download.getBoundingClientRect();
-      const seen = (window.innerHeight - box.top) / (window.innerHeight * 0.9 + box.height * 0.4);
-      bird.style.setProperty('--draw', String(1 - Math.min(1, Math.max(0, seen))));
-    }
+    for (const section of due) show(section);
+    bird?.style.setProperty('--drift', `${Math.round(birdTop * -0.12)}px`);
   };
   window.addEventListener(
     'scroll',

@@ -559,6 +559,7 @@ h2 {
   gap: 22px;
   background: var(--bg);
   animation: curtain 0.9s var(--ease) 2.05s forwards;
+  will-change: transform;
 }
 .intro-mark svg {
   width: 112px;
@@ -604,7 +605,7 @@ h2 {
 }
 @keyframes curtain {
   to {
-    clip-path: inset(0 0 100% 0);
+    transform: translateY(-100%);
     visibility: hidden;
   }
 }
@@ -657,28 +658,30 @@ h2 {
 /* Elements that fade up, in order of --d. */
 .motion .rise {
   opacity: 0;
-  transform: translateY(18px);
+  translate: 0 18px;
   transition:
     opacity 0.9s var(--ease),
-    transform 0.9s var(--ease);
+    translate 0.9s var(--ease);
   transition-delay: calc(var(--d, 0) * 0.08s + var(--start, 0s));
 }
 .motion.ready .hero .rise,
 .motion .shown .rise,
 .motion .shown.rise {
   opacity: 1;
-  transform: none;
+  translate: none;
 }
 
 /* The terminal leans toward the pointer. */
 .term {
   transform: perspective(1200px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
-  transition: transform 0.6s var(--ease);
+  transition: transform 0.5s var(--ease);
+  will-change: transform;
 }
 .motion.ready .hero .term {
   transition:
-    opacity 0.9s var(--ease) var(--start),
-    transform 0.6s var(--ease);
+    opacity 0.9s var(--ease) calc(var(--d) * 0.08s + var(--start)),
+    translate 0.9s var(--ease) calc(var(--d) * 0.08s + var(--start)),
+    transform 0.5s var(--ease);
 }
 .term .menu li {
   transition:
@@ -720,15 +723,18 @@ h2 {
 /* Agent panes type their prompt, work, then answer. */
 .motion .pane {
   opacity: 0;
-  transform: translateY(24px) scale(0.98);
+  translate: 0 24px;
+  scale: 0.98;
   transition:
     opacity 0.8s var(--ease) calc(var(--i, 0) * 0.12s),
-    transform 0.8s var(--ease) calc(var(--i, 0) * 0.12s),
+    translate 0.8s var(--ease) calc(var(--i, 0) * 0.12s),
+    scale 0.8s var(--ease) calc(var(--i, 0) * 0.12s),
     border-color 0.3s;
 }
 .motion .shown .pane {
   opacity: 1;
-  transform: none;
+  translate: none;
+  scale: none;
 }
 .pane .work,
 .motion .pane .out {
@@ -771,10 +777,10 @@ h2 {
 .motion .platform,
 .motion .questions details {
   opacity: 0;
-  transform: translateY(20px);
+  translate: 0 20px;
   transition:
     opacity 0.8s var(--ease) calc(var(--i, 0) * 0.1s),
-    transform 0.8s var(--ease) calc(var(--i, 0) * 0.1s),
+    translate 0.8s var(--ease) calc(var(--i, 0) * 0.1s),
     border-color 0.3s;
 }
 .motion .shown .grid article,
@@ -782,7 +788,7 @@ h2 {
 .motion .shown .platform,
 .motion .shown .questions details {
   opacity: 1;
-  transform: none;
+  translate: none;
 }
 .pane,
 .platform {
@@ -813,7 +819,10 @@ h2 {
     border-color 0.3s;
 }
 .motion .shown .platform:hover {
-  transform: translateY(-4px);
+  translate: 0 -4px;
+  transition:
+    translate 0.4s var(--ease),
+    border-color 0.3s;
 }
 
 /* A large bird that draws itself as the download section scrolls by. */
@@ -840,8 +849,18 @@ h2 {
   fill: none;
   stroke: rgb(255 255 255 / 0.14);
   stroke-width: 3;
+}
+.motion .big-bird path {
   stroke-dasharray: 1;
-  stroke-dashoffset: var(--draw, 0);
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 2.6s var(--ease) 0.3s;
+}
+.motion .shown .big-bird path {
+  stroke-dashoffset: 0;
+}
+.big-bird {
+  translate: 0 var(--drift, 0px);
+  will-change: translate;
 }
 
 /* Legal pages */
@@ -879,6 +898,10 @@ h2 {
   }
 }
 @media (max-width: 640px) {
+  .nav {
+    backdrop-filter: none;
+    background: rgb(0 0 0 / 0.94);
+  }
   .nav nav {
     display: none;
   }

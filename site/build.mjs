@@ -7,6 +7,7 @@ for (const name of [
   'style.css',
   'main.js',
   'robots.txt',
+  'favicon.ico',
   'sitemap.xml',
   'assets',
 ]) {
