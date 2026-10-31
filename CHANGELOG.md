@@ -92,8 +92,6 @@ All notable changes to this project are documented here. The format follows
 
 ### Known limitations
 
-- Google Antigravity has an official CLI, but DaveCode has no adapter for it yet. Never reuse
-  IDE OAuth tokens.
 - Claude Code on Windows and Linux can fall back to the global `~/.claude` login, so those
   accounts are not isolated; the connection check reports it.
 - Gemini CLI 0.65.0 was tested against a real install. Google sign-in succeeded, but the

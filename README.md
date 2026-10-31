@@ -1,298 +1,116 @@
 <div align="center">
 
-<img src="docs/brand/davecode.svg" alt="DaveCode" width="720" />
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/brand/logo-white.svg" />
+  <img src="assets/brand/logo.svg" alt="DaveCode" width="96" />
+</picture>
 
-# DaveCode v0.1 Preview
+# DaveCode
 
-**Your ideas. Your AI tools. One open-source workspace.**
+**Every coding agent. One terminal.**
 
-One OpenAI-compatible endpoint in front of Claude, GPT, Gemini and your local models, with
-quota-aware routing and hot failover, plus an engine that turns a task graph into tested,
-merged code while you sleep.
+Run Claude Code, Codex and Antigravity side by side with the subscriptions you already pay for.
+DaveCode routes each task to the right agent, fails over when a quota runs out, and keeps
+everything on your machine.
+
+[Website](https://davecode.app) · [Download](https://github.com/DMRLZZ/DaveCode/releases/latest) ·
+[npm](https://www.npmjs.com/package/@dmrlzz/davecode)
 
 [![CI](https://github.com/DMRLZZ/DaveCode/actions/workflows/ci.yml/badge.svg)](https://github.com/DMRLZZ/DaveCode/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Node](https://img.shields.io/badge/node-%3E%3D22.12-339933?logo=node.js&logoColor=white)
-![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)
-![Status](https://img.shields.io/badge/status-alpha-orange)
+[![npm](https://img.shields.io/npm/v/@dmrlzz/davecode?color=111111&label=npm)](https://www.npmjs.com/package/@dmrlzz/davecode)
+[![License: MIT](https://img.shields.io/badge/license-MIT-111111.svg)](LICENSE)
 
 </div>
 
----
+## Install
 
-> [!WARNING]
-> DaveCode is in **early development**. APIs and config may change between minor versions until
-> `1.0`. See the [roadmap](#roadmap) for what already works.
+**Desktop app** (Node.js included):
 
-## Why DaveCode?
+| Windows                                                                                                      | macOS                                                                                                            | Linux                                                                                                                        |
+| :----------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
+| [DaveCode-Setup-x64.exe](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Setup-x64.exe) | [DaveCode-macOS-arm64.dmg](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-macOS-arm64.dmg) | [DaveCode-Linux-x86_64.AppImage](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Linux-x86_64.AppImage) |
 
-You pay for several AI tools, and you still hit `429 Too Many Requests` in the middle of a
-refactor, copy context between chat windows, and babysit agents that declare victory before the
-tests pass. DaveCode fixes the plumbing:
+The installers are unsigned previews: on Windows choose **More info → Run anyway**; on macOS
+right-click the app and choose **Open** the first time; on Linux `chmod +x` the AppImage.
 
-- **One endpoint, every model.** Point any OpenAI SDK, editor or agent at
-  `http://localhost:4040/v1` and use `davecode/auto`.
-- **Never stall on a rate limit.** Sliding-window quota tracking (TPM, RPM, 5 h, 24 h) per
-  account, smooth backpressure at 85 %, and hot failover to the next account or provider when an
-  upstream returns `429`/`5xx`.
-- **Isolated identities.** Each Claude Code / Codex account runs in its own sandboxed config
-  directory; secrets are AES-256-GCM encrypted at rest and never leave your machine.
-- **A brain that persists.** A global brain for your preferences plus a per-repo brain
-  (`STATE.md`, `ARCHITECTURE.md`, `TASK_GRAPH.json`) injected into every task.
-- **Autonomous, but accountable.** Each task runs on its own `davecode/task-<id>` branch and is only
-  merged after your linters and tests pass, with up to three self-repair cycles. An optional
-  judge ([TypeSafe Jev](https://www.llmreference.com/provider/typesafe-ai/jev) or any of your
-  routes) checks acceptance criteria with calibrated confidence. The default is free,
-  deterministic checks.
-- **Terminal-first, with a cockpit.** A TUI in the spirit of Claude Code and opencode, plus a
-  real-time web dashboard for token burn, failovers and task traces.
+**Terminal** (Node.js 22.12 or later):
+
+```bash
+npm install -g @dmrlzz/davecode
+davecode
+```
+
+The first run shows the logo, lets you pick a dark or light look, signs you in to your DaveCode
+account in the browser (Google, GitHub or email) and connects your first agent with its official
+login.
+
+![The DaveCode desktop workspace](docs/assets/desktop.png)
+
+## In the terminal
+
+Type a question, or `/` for commands. Arrows move, Enter runs, numbers pick.
+
+| Command                         | What it does                                                         |
+| :------------------------------ | :------------------------------------------------------------------- |
+| `/connect`                      | Connect Claude Code, Codex or Antigravity, or sign in to one again   |
+| `/model`                        | Pick the model or route to use                                       |
+| `/status`                       | The model in use and whether each agent is ready                     |
+| `/route`, `/accounts`           | Routes with their failover targets; accounts with 5-hour quota usage |
+| `/login`, `/logout`, `/account` | Your DaveCode account                                                |
+| `/clear`, `/help`, `/exit`      | Start over, list shortcuts, quit                                     |
+
+## Why DaveCode
+
+- **Your subscriptions, their real login.** Claude Code, Codex and Antigravity sign in through
+  their own CLIs. DaveCode never sees your passwords, and each account keeps its login in its own
+  sandbox.
+- **Never stall on a limit.** Sliding 1-minute, 5-hour and 24-hour windows per account, smooth
+  backpressure and hot failover to the next account or agent on `429` or `5xx`.
+- **One endpoint for everything else.** Point any OpenAI SDK or editor at
+  `http://127.0.0.1:4040/v1` and use `davecode/auto`. Anthropic, OpenAI, Gemini and
+  OpenAI-compatible API keys work too.
+- **Local first.** The gateway listens on loopback; API keys are encrypted with AES-256-GCM and
+  are never logged or returned.
+- **Autonomous, but accountable.** Goal mode turns an objective into a task graph; code tasks run
+  on their own `davecode/task-<id>` branch and merge only after your lint, typecheck and tests
+  pass.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-  C[Your tools<br/>SDKs · editors · agents] -->|OpenAI API| G[DaveCode gateway<br/>:4040]
-  T[TUI] --> G
-  D[Dashboard] -->|REST + SSE| G
+  T[Terminal / desktop app] --> G[DaveCode gateway<br/>127.0.0.1]
+  E[Your editor or SDK] -->|OpenAI API| G
   G --> R{Router<br/>quotas + failover}
-  R --> A[Anthropic]
-  R --> O[OpenAI]
-  R --> M[Gemini]
-  R --> L[OpenRouter / compatible endpoints]
-  R --> CC[Claude Code CLI]
-  R --> CX[Codex CLI]
-  G --> E[Autonomous runner]
-  E --> B[(Project brain<br/>.davecode/)]
+  R --> CC[Claude Code]
+  R --> CX[Codex]
+  R --> AG[Antigravity]
+  R --> K[API keys<br/>Anthropic · OpenAI · Gemini · OpenRouter]
+  G --> X[Autonomous runner]
+  X --> B[(Project brain<br/>.davecode/)]
 ```
 
-Read the full design in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the HTTP contract in
-[docs/API.md](docs/API.md).
+The design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the HTTP contract in
+[docs/API.md](docs/API.md) and the desktop app in [docs/DESKTOP.md](docs/DESKTOP.md).
 
-## Quick start
+## Agents and providers
 
-Install DaveCode with Node.js 22.12+ and npm:
+| Agent or provider                   | Kind                            | Sign-in                             |
+| :---------------------------------- | :------------------------------ | :---------------------------------- |
+| Claude Code                         | `claude-cli`                    | Your Claude login, through `claude` |
+| Codex                               | `codex-cli`                     | Your ChatGPT login, through `codex` |
+| Antigravity                         | `antigravity-cli`               | Your Google login, through `agy`    |
+| Anthropic, OpenAI, Gemini APIs      | `anthropic`, `openai`, `gemini` | API key                             |
+| OpenRouter and compatible endpoints | `openai-compatible`             | Key and base URL                    |
 
-```bash
-npm install -g @dmrlzz/davecode
-```
-
-Run `davecode app` for the local app window, or `davecode` for the terminal.
-The npm package contains engine 0.3.0. Historical preview tarballs remain available on GitHub.
-
-### Build from source
-
-For the independent Windows app and installer, see [desktop setup](docs/DESKTOP.md).
-
-> Requires **Node.js 22.12+**. The `davecode` package is standalone: it bundles the engine, the
-> gateway and the dashboard. Its npm name is `@dmrlzz/davecode`; the installed command is
-> `davecode`.
-
-```bash
-git clone https://github.com/DMRLZZ/DaveCode.git
-cd DaveCode
-pnpm install
-pnpm build
-cd packages/cli && pnpm pack && npm install -g ./dmrlzz-davecode-*.tgz   # puts `davecode` on your PATH
-```
-
-### Connect your AI tools
-
-Use official Claude, Codex or Gemini login, or an API provider such as OpenRouter.
-DaveCode adds no subscription; provider plans and usage charges still apply.
-
-Run `davecode` for the terminal, or `davecode app` for a Chrome/Edge app window.
-Keep the gateway process running while you work. Native packaging is still pending.
-
-The workspace is **v0.1 Preview**. The engine/package line remains **0.2.x**;
-historical releases and Git tags are preserved.
-
-Optional [Google/GitHub sign-in](docs/AUTH.md) is separate from AI connections.
-The Creative library prepares design briefs using curated references.
-
-`pnpm build` also builds the CLI. Put `davecode` on your PATH (or run
-`node packages/cli/bin/davecode.js`; `pnpm --filter @dmrlzz/davecode dev <command>` runs from source):
-
-```bash
-alias davecode="node $PWD/packages/cli/bin/davecode.js"   # or: cd packages/cli && npm link
-
-davecode doctor                     # checks Node, SQLite, ports and supported CLI tools
-davecode accounts add               # interactive: provider, label, priority, masked API key
-davecode start                      # gateway on :4040 + dashboard at http://localhost:4040/
-davecode status                     # health, accounts and 1m/5h/24h quota bars (--json too)
-davecode                            # chat TUI in your terminal (same as `davecode chat`)
-```
-
-Scripts can skip the prompts:
-
-```bash
-davecode accounts add --provider anthropic --label work --secret-env ANTHROPIC_API_KEY --yes
-davecode accounts add --provider openai-compatible --label OpenRouter \
-  --base-url https://openrouter.ai/api/v1 --model openrouter/auto --secret-env OPENROUTER_API_KEY --yes
-davecode accounts add --provider claude-cli --label "Claude Pro" --yes
-davecode accounts connect <id>      # official sign-in (claude auth login) in the account sandbox
-```
-
-### Connect a subscription
-
-Subscription accounts (`claude-cli`, `codex-cli`, `gemini-cli`) are signed in by the vendor's own
-CLI, never by DaveCode: there is no password field anywhere, and the resulting tokens stay in the
-vendor CLI's store inside the account's sandbox (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
-`GEMINI_CLI_HOME`). API keys go to the AES-256-GCM keyring.
-
-```bash
-davecode accounts connect <id> --check   # connected / not connected, without touching anything
-davecode accounts connect <id>           # runs the official login if needed
-davecode accounts login <id> -- login --device-auth   # pass your own arguments (Codex device code)
-```
-
-In the dashboard, the account sheet shows the connection status and a **Connect subscription**
-button. When the gateway is bound to `127.0.0.1` it opens a terminal window on that machine with
-the official login and the page updates once it lands; on any other bind address it shows the
-command to run instead.
-
-### Plans and remaining budget
-
-Record what each account costs and when it renews (entered by hand; DaveCode never reads billing
-pages), then see what is left:
-
-```bash
-davecode accounts plan <id> --plan "Claude Pro" --price 20 --renews 2026-11-01
-davecode budget                     # plan, renewal, remaining share of the tightest limit
-davecode budget --context           # the compact summary agents receive in their prompts
-```
-
-Remaining budget combines DaveCode's own sliding windows with the limits providers report
-(rate-limit headers, "usage limit reached… resets at" errors). Accounts a provider reported as
-exhausted are skipped by the router until the reset time.
-
-### Work on a repository
-
-Point DaveCode at a repository and let it work through the task graph:
-
-```bash
-cd ~/code/my-app
-davecode init                       # .davecode/ brain + runner.validate from package.json
-davecode tasks add api "Add the /health endpoint" --acceptance "GET /health returns 200"
-davecode tasks                      # task tree with status glyphs and blocked reasons
-davecode run --once                 # implement the next task, validate, repair, merge
-davecode run                        # 24/7 loop with a live runner view; Ctrl+C stops safely
-davecode run --task api --once      # run one specific task (must be PENDING and unblocked)
-```
-
-Or give it an objective and let a team of agents plan, execute, review and re-plan:
-
-```bash
-davecode goal "Write positioning and landing copy for this app" --dry-run   # plan only
-davecode goal "Add a /health endpoint with tests" --max-rounds 2
-davecode goals                      # list; `goals show <id>`, `goals cancel <id>`
-```
-
-Goal mode is bounded by rounds, a task cap and a token budget (`goal.*` config). Code tasks go
-through the autonomous runner (branch, checks, merge); research and writing tasks produce
-markdown under `.davecode/goals/<goal-id>/`. Agents never send email, post, pay or sign up for
-anything: those steps become drafts for you to review.
-
-Other commands: `davecode config show|path|get <key>` (secrets redacted), `davecode tasks next`,
-`davecode tasks status <id> <STATUS>`, `davecode accounts list|enable|disable|remove|plan|login|connect`. Global
-flags: `--home <dir>` (sets `DAVECODE_HOME`), `--json`, `--no-color` (and `NO_COLOR`).
-
-In the chat TUI, Enter sends, Shift+Enter or Ctrl+J adds a line, Esc cancels a reply and
-Ctrl+C twice exits. Slash commands: `/model`, `/route`, `/accounts`, `/tasks`, `/status`,
-`/clear`, `/help`, `/exit`. The status line shows the model, the account that served the last
-reply, failovers, tokens and the 5 h quota. Without a running gateway the TUI starts one
-in-process.
-
-Any OpenAI-compatible client works against the gateway:
-
-```ts
-import OpenAI from 'openai';
-
-const client = new OpenAI({ baseURL: 'http://localhost:4040/v1', apiKey: 'unused-locally' });
-
-const res = await client.chat.completions.create({
-  model: 'davecode/auto',
-  messages: [{ role: 'user', content: 'Explain this stack trace…' }],
-});
-```
-
-## Dashboard
-
-A keyboard-first web cockpit for the gateway and the autonomous engine (`packages/ui`, Vite +
-React + Tailwind). The gateway serves its production build (`packages/ui/dist`) at
-`http://localhost:4040/`.
-
-![DaveCode dashboard overview: token burn, quota utilization and recent activity](docs/assets/dashboard-overview.png)
-
-|                                            Task graph                                             |                                            Accounts                                             |
-| :-----------------------------------------------------------------------------------------------: | :---------------------------------------------------------------------------------------------: |
-| ![Task graph as a dependency DAG with STATE.md and task details](docs/assets/dashboard-tasks.png) | ![Accounts with quota meters, cooldowns and enable toggles](docs/assets/dashboard-accounts.png) |
-- **Overview**: live token burn (tokens/min over 60 min), requests/min, failovers, health and
-  per-account 1m/5h/24h quota meters with the 85 % backpressure and 90 % shift thresholds.
-- **Accounts, Traffic, Routes**: add accounts with write-only secrets, see each account's
-  connection status and **Connect subscription** to the vendor's official sign-in, record plans
-  and renewals next to the remaining budget, watch every request with its failover chain inline
-  (`acc A → 429 → acc B ✓`), inspect ordered route targets.
-- **Goals**: start an objective (or a dry-run plan), follow the agent team's live log, task
-  board and artifacts, and cancel it.
-- **Tasks and Runner**: the task graph as a DAG, board or list next to `STATE.md`, and the
-  runner's state machine, repair cycles and live logs with start/pause/stop.
-- `Ctrl/⌘ K` opens the command palette; `g o`, `g a`, `g t`… jump between screens; `?` lists
-  every shortcut. Dark by default, with a light theme.
-
-Develop it against a running gateway, or fully offline with simulated data:
-
-```bash
-pnpm dev:ui                     # http://localhost:5173, proxies /api and /v1 to :4040
-# open http://localhost:5173/?mock=1 for mock mode (or set VITE_DAVECODE_MOCK=1)
-```
-
-When the gateway is unreachable the dashboard falls back to mock data automatically and shows a
-**Mock data** badge. The screenshots above were taken in mock mode.
-
-## Providers
-
-| Provider                            | Kind                | Auth                                                          | Default              |
-| :---------------------------------- | :------------------ | :------------------------------------------------------------ | :------------------- |
-| Anthropic API                       | `anthropic`         | API key                                                       | ✅                   |
-| OpenAI API                          | `openai`            | API key                                                       | ✅                   |
-| Google Gemini API                   | `gemini`            | API key                                                       | ✅                   |
-| OpenRouter and compatible endpoints | `openai-compatible` | Provider key + base URL                                       | ✅                   |
-| Claude Code CLI                     | `claude-cli`        | Your Claude login, isolated per account                       | ✅                   |
-| Codex CLI                           | `codex-cli`         | Your ChatGPT/OpenAI login, isolated per account               | ✅                   |
-| Gemini CLI                          | `gemini-cli`        | Your Google login ("Login with Google"), isolated per account | ✅                   |
-| Gemini web session                  | `gemini-web`        | Browser profile                                               | ⚠️ Experimental, off |
-
-Subscriptions are used only through the vendor's own CLI and its official sign-in. Known limits:
-
-- **Google Antigravity is not supported.** It has no public API or CLI, and reusing its OAuth
-  tokens from another program (what community plugins do) breaks Google's terms. The supported way
-  to use a Google AI subscription is `gemini-cli`.
-- None of Anthropic, OpenAI or Google offer an OAuth flow that lets third-party apps use a
-  consumer subscription directly, so "Connect subscription" runs the vendor CLI's login rather
-  than a web OAuth consent screen.
-- On Windows and Linux, Claude Code may fall back to your global login (`~/.claude`) instead of
-  the account sandbox. `accounts connect --check` and the dashboard say so when it happens, because
-  the account is then not isolated.
-- The `gemini-cli` adapter (`GEMINI_CLI_HOME` isolation and the `stream-json` output) has not been
-  verified against a real Gemini CLI install yet.
-
-### Terms of Service
-
-DaveCode's original specification includes two capabilities that automate consumer products in
-ways their providers may prohibit:
-
-- driving a **Gemini web session** through Chromium (`experimental.geminiWeb`), and
-- **rotating several subscription logins** of the same provider to get around per-account limits
-  (`experimental.multiAccountRotation`).
-
-Both are **disabled by default**. If you turn them on, you accept the risk of your accounts being
-rate-limited or suspended by the provider. API-key providers and cross-provider failover are not
-affected.
+Install the agent CLIs you want to use; `/connect` tells you how when one is missing.
+Behaviour that may conflict with a provider's terms (driving a Gemini web session, rotating
+several logins of one provider) is behind `experimental.*` flags that are off by default.
 
 ## Configuration
 
 DaveCode merges built-in defaults, `~/.davecode/config.json`, `<repo>/.davecode/config.json` and
-environment variables. A minimal example:
+environment variables. Routes list targets in order of preference:
 
 ```json
 {
@@ -301,62 +119,45 @@ environment variables. A minimal example:
       {
         "name": "auto",
         "targets": [
-          { "provider": "anthropic", "model": "claude-sonnet-5-5" },
-          { "provider": "openai", "model": "gpt-5.5" },
-          { "provider": "openai-compatible", "model": "openrouter/auto" }
+          { "provider": "claude-cli", "model": "opus" },
+          { "provider": "codex-cli", "model": "default" },
+          { "provider": "antigravity-cli", "model": "default" }
         ]
       }
     ]
-  },
-  "runner": {
-    "validate": { "lint": "pnpm lint", "typecheck": "pnpm typecheck", "test": "pnpm test" },
-    "judge": { "kind": "none" }
   }
 }
 ```
 
-The full schema with documentation lives in
-[`packages/core/src/config/schema.ts`](packages/core/src/config/schema.ts).
+The documented schema is in [`packages/core/src/config/schema.ts`](packages/core/src/config/schema.ts).
 
-## Project layout
+## Build from source
+
+```bash
+git clone https://github.com/DMRLZZ/DaveCode.git
+cd DaveCode
+pnpm install
+pnpm build
+node packages/cli/bin/davecode.js
+```
+
+`pnpm lint`, `pnpm typecheck` and `pnpm test` must pass before a change is merged.
 
 ```
 packages/
-├── core/     @davecode/core: contracts, storage, identity, quotas, providers, router, brain, runner
-├── server/   @davecode/server: Fastify gateway (/v1 proxy, /api, SSE), serves the dashboard
-├── cli/      davecode: CLI commands and the Ink TUI
-└── ui/       @davecode/ui: Vite + React + Tailwind dashboard
-docs/         architecture, API contract, original spec
-.davecode/    DaveCode's own project brain (we dogfood it)
+├── core/         contracts, storage, identity, quotas, providers, router, brain, runner
+├── server/       Fastify gateway (/v1, /api, SSE)
+├── cli/          the davecode command and the terminal UI
+├── ui/           the workspace and dashboard (Vite, React, Tailwind)
+├── desktop/      Electron app and installers
+└── auth-worker/  DaveCode accounts on Cloudflare Workers and D1
+site/             davecode.app
 ```
-
-## Roadmap
-
-- [x] **Foundation:** monorepo, shared contracts, config schema, CI
-- [x] **Phase 1, gateway & identity:** SQLite storage, encrypted keyring, sandbox manager,
-  OpenAI-compatible gateway
-- [x] **Phase 2, quotas & router:** sliding windows, provider adapters, hot failover
-- [x] **Phase 3, dual brain:** global/project brain, task graph DAG with cycle detection
-- [x] **Phase 4, autonomous loop:** runner state machine, validator, repair cycles, git flow, judge
-- [x] **Phase 5, interfaces:** web dashboard, CLI and TUI
-- [x] **v0.1.0:** first tagged release (run from source)
-- [x] Standalone `davecode` package (bundled engine, gateway and dashboard)
-- [x] Publish `@dmrlzz/davecode` to npm (`npx @dmrlzz/davecode`)
-- [x] Verified Codex CLI 0.163.0 event format and live Codex/Claude adapter completions
-- [x] Editing routes and the task graph from the dashboard
-- [x] Targeting a specific task with `davecode run --task <id>`
-- [x] Goal mode: objective → agent team → plan, execute, review, re-plan
-- [x] Plans, renewals and remaining budget per account, shared with agents
-- [x] Connect subscription (official vendor sign-in) from the CLI and the dashboard
-- [ ] Verified Gemini CLI adapter against a real install
-  — CLI 0.65.0 installed and Google login verified; live completion is blocked by Google's
-  `UNSUPPORTED_CLIENT` response. See [provider verification](docs/PROVIDER-VERIFICATION.md).
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) to get set up, and please follow
-our [Code of Conduct](CODE_OF_CONDUCT.md). Security issues go through [SECURITY.md](SECURITY.md),
-not public issues.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Report
+security issues through [SECURITY.md](SECURITY.md), not public issues.
 
 ## License
 

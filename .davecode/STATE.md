@@ -1,48 +1,20 @@
 # DaveCode: project state
 
-_Last updated: 2026-10-28_
+_Last updated: 2026-10-31_
 
 ## Current focus
 
-**Workspace v0.1 Preview on `main`**: goal mode, per-account plans and budget,
-official vendor login flows, a conversational workspace and the public landing.
-Next up: verify official agent sessions against real installs, finish desktop onboarding
-and package an independent desktop installer. The preview tarball is available on GitHub;
-engine 0.3.0 is published on npm as `@dmrlzz/davecode` (the unscoped name was rejected by
-npm for similarity to `dave-code`). npm completed automated validation and the registry's
-`latest` tag resolves to 0.3.0. The installed command remains `davecode`.
+**v0.4.0 on `main`**: monochrome terminal and desktop workspace with the bird mark, first-run
+setup, DaveCode accounts on Cloudflare (`davecode-auth` + D1 at `auth.davecode.app`),
+official vendor sign-in for Claude Code, Codex and Antigravity (`agy`), desktop installers
+for Windows, macOS and Linux, and the public site at `davecode.app` served from the
+`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.4.0`
+(installed command `davecode`).
 
-Workspace direction: local, outcome-oriented UI inspired by Warp's public behavior.
-The default screen now composes real goals with a plan-only default, usage limits,
-configured tools and live goal details. See `docs/WORKSPACE.md` for research, gaps
-and the implementation sequence. Embedded terminals and native agent sessions remain pending.
+## In progress
 
-Workspace v0.1 Preview now has a conversational shell, a curated Creative library,
-optional Google/GitHub OAuth with an owner allowlist, and `davecode app` for a
-Chrome/Edge app window. The published preview contains engine 0.2.0; the working tree is
-published as engine 0.3.0 on npm.
-OAuth has mocked protocol/security coverage; live provider client setup is pending.
-Design defaults reject decorative dots, uppercase eyebrow labels and redundant UI copy.
-
-The public landing is deployed through Sites at https://davecode-app.mor4lez.chatgpt.site.
-`davecode.app` DNS is configured in Cloudflare; Sites confirms hostname and SSL active.
-Site identity lives in `site/.openai/hosting.json`. Workspace preview release:
-`workspace-v0.1.0-preview.1` (engine artifact `davecode-0.2.0.tgz`). The tarball was
-installed in an isolated temp directory and its CLI help was verified.
-
-## In progress (v0.4.0)
-
-- DaveCode accounts run on Cloudflare (no Supabase): Worker `davecode-auth` with D1
-  `davecode-accounts` (tables created, worker deployed on workers.dev). Pending owner actions:
-  the `auth.davecode.app` custom domain and Email Sending for `davecode.app` (both DNS
-  changes), then GitHub and Google OAuth apps whose secrets go into the worker.
-- The bird logo is final: masters in `assets/brand/`, mirrored in `packages/core/src/brand.ts`
-  and `packages/ui/src/lib/brand.ts`.
-- Antigravity replaces Gemini CLI in first-run setup (adapter verified live with agy 1.4.8).
-- The site is still served by ChatGPT Sites through a Cloudflare custom hostname; moving it to
-  a Worker in the owner's account means replacing the apex A records (a DNS change).
-- The Windows installer builds and passes its packaged acceptance check in Actions; publishing
-  `desktop-v0.4.0` waits for the logo.
+- Optional code-signing certificates for the Windows and macOS desktop installers.
+- Multi-pane agent workspace with orchestrator view in the desktop app.
 
 ## Done
 
@@ -50,7 +22,7 @@ installed in an isolated temp directory and its CLI help was verified.
   Linux/macOS/Windows, shared contracts, config schema, OSS docs.
 - **Phase 1** (#9): layered config loader, SQLite (WAL) storage, AES-256-GCM keyring,
   per-account sandboxes, Chromium profiles.
-- **Phase 2** (#7, #10): seven provider adapters, sliding-window quota engine, hot-failover
+- **Phase 2** (#7, #10): provider adapters, sliding-window quota engine, hot-failover
   router with circuit breaker, OpenAI-compatible gateway with dashboard API and SSE.
 - **Phase 3** (#6): task graph DAG resolver, project and global brains, task context builder.
 - **Phase 4** (#13): autonomous runner with builtin and claude-cli executors, validator,
@@ -59,15 +31,14 @@ installed in an isolated temp directory and its CLI help was verified.
 - **Contract hardening** (#12): SSE ids with `Last-Event-ID` resume, `Account.hasSecret`.
 - **v0.2.0** (#16–#18): standalone package, task/route editing, targeted runs, and fixes found by
   running against real local models (cancellations, empty finishes, double-escaped edits).
-- **Goal mode** (unreleased): planner/reviewer roles with zod JSON contracts, artifact tasks
-  through the router, code tasks through the runner, shared workspace lock, outbound-action
-  guard, `davecode goal|goals`, `/api/goals`, dashboard Goals view.
-- **Plans and budget** (unreleased): `Account.subscription`, provider-reported limits (headers
-  and "resets at" errors) with routing around exhausted accounts, `BudgetSnapshot`,
-  `davecode budget`, `davecode accounts plan`, budget context in agent prompts, dashboard panel.
-- **Connect subscription** (unreleased): `gemini-cli` provider, `ConnectionChecker`, official
-  login specs, `davecode accounts connect`, `/api/accounts/:id/connection|connect`, loopback-only
-  terminal launcher, dashboard connection panel.
+- **v0.3.0 / Workspace Preview**: goal mode, per-account subscription plans and budget,
+  `ConnectionChecker` and official vendor CLI login flows, conversational workspace UI, and
+  first npm publication (`@dmrlzz/davecode`).
+- **v0.4.0** (#35–#46): bird logo and monochrome design system across terminal, web and desktop;
+  Antigravity (`antigravity-cli` via `agy`) adapter and first-run onboarding; DaveCode accounts
+  on Cloudflare Workers + D1 (`packages/auth-worker`); `/connect`, `/model` and `/status` pickers
+  in the chat TUI; Windows, macOS and Linux desktop installers in GitHub Releases; npm Trusted
+  Publishing; and `davecode.app` hosted on Cloudflare Workers (`site/`).
 
 ## Blockers
 
@@ -76,23 +47,15 @@ None.
 ## Known limitations
 
 - npm installation uses `npm install -g @dmrlzz/davecode`; the unscoped name is unavailable.
-- Small local models were unreliable in earlier execution tests. Onboarding now recommends
-  hosted providers; use a capable model for code execution.
-- Codex CLI 0.163.0 and Claude Code 2.1.309 passed live adapter completion checks on Windows.
-- Gemini CLI 0.65.0 was installed in a temporary directory and completed official Google
-  OAuth in an isolated home. Code Assist rejected the client with `UNSUPPORTED_CLIENT`;
-  successful live completion and stream parsing remain unverified. See
-  `docs/PROVIDER-VERIFICATION.md` for evidence and the offline regression test.
-- Claude Code on Windows (and likely Linux) reports the global `~/.claude` login even with an
-  empty `CLAUDE_CONFIG_DIR`, so per-account isolation is not effective there; the connection
-  check says so.
-- Google now documents an official Antigravity CLI. Local `agy` 1.4.5 version/help and
-  its user PATH entry are verified; authentication and a DaveCode adapter remain pending.
-  Use official authentication, never IDE token reuse.
+- Desktop installers are unsigned preview builds (Windows SmartScreen / macOS Gatekeeper require
+  confirming first launch).
+- Codex CLI, Claude Code and Antigravity (`agy`) passed live adapter completion checks on Windows.
+- Gemini CLI 0.65.0 completed official Google OAuth in an isolated home, but Code Assist rejected
+  the client with `UNSUPPORTED_CLIENT`. Use `antigravity-cli` (`agy`) or a Gemini API key instead.
+- Claude Code on Windows and Linux can fall back to the global `~/.claude` login even with
+  `CLAUDE_CONFIG_DIR` set; the connection check reports that case.
 - The dashboard's Connect button can only open a terminal when the gateway is bound to loopback;
   remote gateways get the command to run instead.
-- The TUIs are covered by `ink-testing-library` tests; they still need manual passes in
-  Windows Terminal, iTerm2 and common Linux terminals.
 
 ## Decisions log
 
@@ -118,3 +81,5 @@ None.
   `feat/goal-mode-subscriptions` (not merged).
 - 2026-10-22: workspace preview published from main; landing active at `davecode.app`,
   preview tarball installation verified, and release CI passed on Linux, macOS and Windows.
+- 2026-10-29: v0.4.0 released (`@dmrlzz/davecode@0.4.0` on npm, desktop installers on GitHub
+  Releases, `davecode-auth` and `davecode-site` deployed on Cloudflare Workers).

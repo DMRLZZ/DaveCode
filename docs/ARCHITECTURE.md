@@ -71,12 +71,14 @@ flowchart TB
 
 ## Packages
 
-| Package                                  | Responsibility                                                                                                                                                                 |
-| :--------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@davecode/core`](../packages/core)     | Domain contracts, config, SQLite storage, keyring, sandboxes, connection checks, quota engine, budget, providers, router, dual brain, task graph, autonomous runner, goal mode |
-| [`@davecode/server`](../packages/server) | Fastify gateway: `/v1` proxy, `/api` REST, SSE event stream, serves the built dashboard                                                                                        |
-| [`davecode`](../packages/cli)            | The published CLI (`davecode start`, `status`, `add-account`, `run`) and the Ink-based TUI                                                                                     |
-| [`@davecode/ui`](../packages/ui)         | Vite + React + Tailwind dashboard (dark by default)                                                                                                                            |
+| Package                                            | Responsibility                                                                                                                                                                 |
+| :------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@davecode/core`](../packages/core)               | Domain contracts, config, SQLite storage, keyring, sandboxes, connection checks, quota engine, budget, providers, router, dual brain, task graph, autonomous runner, goal mode |
+| [`@davecode/server`](../packages/server)           | Fastify gateway: `/v1` proxy, `/api` REST, SSE event stream, serves the built dashboard                                                                                        |
+| [`@dmrlzz/davecode`](../packages/cli)              | The published CLI (`davecode`, `/connect`, `/model`, `start`, `status`, `run`) and the Ink-based TUI                                                                           |
+| [`@davecode/ui`](../packages/ui)                   | Vite + React + Tailwind workspace and dashboard (dark by default)                                                                                                              |
+| [`@davecode/desktop`](../packages/desktop)         | Electron desktop app and installers (Windows, macOS, Linux) with a bundled Node runtime                                                                                        |
+| [`@davecode/auth-worker`](../packages/auth-worker) | Cloudflare Worker + D1 backing DaveCode accounts at `auth.davecode.app`                                                                                                        |
 
 Dependency direction is strictly `cli → server → core` and `ui → (HTTP) → server`. `core`
 never imports from the other packages.
@@ -309,9 +311,7 @@ opt-in in `config.json`:
 
 API-key providers and cross-provider failover are unaffected by these flags.
 
-Deliberately not implemented: **Google Antigravity**. It has no public API or CLI, and reusing
-its OAuth tokens from another program (what community plugins do) violates Google's terms, so
-it cannot be offered even behind a flag. Google AI subscriptions are supported through the
-official Gemini CLI (`gemini-cli`). Likewise, Anthropic, OpenAI and Google offer no OAuth flow
-that lets a third-party app use a consumer subscription, which is why "Connect subscription"
-runs the vendor CLI's own login instead of a web consent screen.
+Google Antigravity is supported through its official `agy` CLI (`antigravity-cli`); reusing IDE
+OAuth tokens from another program violates Google's terms and is never used. Likewise, Anthropic,
+OpenAI and Google offer no OAuth flow that lets a third-party app use a consumer subscription,
+which is why `/connect` runs the vendor CLI's own login instead of a web consent screen.
