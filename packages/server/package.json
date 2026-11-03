@@ -24,7 +24,7 @@
     "@davecode/core": "workspace:*",
     "@fastify/cors": "^11.3.1",
     "@fastify/static": "^10.1.7",
-    "fastify": "^5.12.5",
+    "fastify": "^5.12.7",
     "zod": "^4.6.7"
   }
 }
