@@ -118,7 +118,11 @@ describe('/api/goals', () => {
     const goalId = (created.json().goal as Goal).id;
     await service.wait(goalId);
 
-    const exec = await app.inject({ method: 'POST', url: `/api/goals/${goalId}/execute` });
+    const exec = await app.inject({
+      method: 'POST',
+      url: `/api/goals/${goalId}/execute`,
+      headers: { 'content-type': 'application/json' },
+    });
     expect(exec.statusCode).toBe(202);
     expect((exec.json().goal as Goal).status).toBe('running');
 
@@ -158,7 +162,11 @@ describe('/api/goals', () => {
 
     const missing = await app.inject({ method: 'GET', url: '/api/goals/goal_000000' });
     expect(missing.statusCode).toBe(404);
-    const cancel = await app.inject({ method: 'POST', url: '/api/goals/goal_000000/cancel' });
+    const cancel = await app.inject({
+      method: 'POST',
+      url: '/api/goals/goal_000000/cancel',
+      headers: { 'content-type': 'application/json' },
+    });
     expect(cancel.statusCode).toBe(404);
     expect(cancel.json().error.code).toBe('not_found');
   });

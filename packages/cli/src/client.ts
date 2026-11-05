@@ -113,10 +113,10 @@ export class GatewayClient {
     options: RequestOptions = {},
   ): Promise<T> {
     const init: RequestInit = { method };
-    if (body !== undefined) {
-      init.body = JSON.stringify(body);
+    // State-changing requests always declare JSON, even without a body (the gateway requires it).
+    if (body !== undefined) init.body = JSON.stringify(body);
+    if (body !== undefined || method !== 'GET')
       init.headers = { 'content-type': 'application/json' };
-    }
     const res = await this.fetch(path, init, { timeoutMs: 10_000, ...options });
     if (!res.ok) throw await errorFrom(res);
     if (res.status === 204) return undefined as T;

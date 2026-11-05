@@ -6,6 +6,7 @@ import {
   createEngine,
   type DaveConfig,
   type Engine,
+  endpointRebindIssue,
   type ProviderKind,
   type QuotaLimits,
   type SubscriptionInfo,
@@ -97,6 +98,13 @@ export class LocalAccounts implements AccountsBackend {
     const existing = this.engine.accounts.get(id);
     if (!existing) throw notFound(id);
     const { secret, ...fields } = parsed.data;
+    // The machine's owner may set any config key, but a stored secret still never follows an
+    // account to a different endpoint without being supplied again.
+    const rebind = endpointRebindIssue(existing, fields.config, secret !== undefined);
+    if (rebind)
+      throw new CliError(rebind, {
+        hint: 'Pass the key again with --secret-env or --secret-stdin.',
+      });
     const update: AccountUpdateInput = { ...fields };
     const enabled = fields.enabled ?? existing.enabled;
     if (!enabled) {

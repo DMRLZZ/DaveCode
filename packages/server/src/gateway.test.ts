@@ -76,7 +76,7 @@ describe('bearer auth', () => {
   });
 
   it('lets CORS preflights through without a token', async () => {
-    const { app } = await setup({ server: { authToken: TOKEN } });
+    const { app } = await setup({ server: { authToken: TOKEN } }, { dev: true });
     const res = await app.inject({
       method: 'OPTIONS',
       url: '/api/accounts',
@@ -103,7 +103,7 @@ describe('bearer auth', () => {
 
 describe('CORS', () => {
   it('allows the Vite dev server and exposes routing headers', async () => {
-    const { app } = await setup();
+    const { app } = await setup(undefined, { dev: true });
     const res = await app.inject({
       method: 'GET',
       url: '/api/health',
@@ -218,7 +218,7 @@ async function listen(config?: Parameters<typeof makeTestEngine>[0], options: Ga
 
 describe('GET /api/events', () => {
   it('replays the buffer, streams live events, sends heartbeats and cleans up', async () => {
-    const { t, base } = await listen(undefined, { heartbeatMs: 50 });
+    const { t, base } = await listen(undefined, { heartbeatMs: 50, dev: true });
     let active = 0;
     const subscribe = t.engine.events.subscribe.bind(t.engine.events);
     t.engine.events.subscribe = (handler) => {

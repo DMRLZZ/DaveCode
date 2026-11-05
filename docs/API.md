@@ -19,6 +19,21 @@ If `server.authToken` is configured, every `/v1` and `/api` request must send
 also accepts `?token=<token>`. With no token configured the gateway only binds to loopback
 by default.
 
+### Browser safety checks
+
+These apply with or without a token:
+
+- On a gateway bound to loopback, the `Host` header must be `127.0.0.1`, `localhost` or `[::1]`
+  with the port the gateway listens on (or the host of a configured origin); anything else is
+  `403 invalid_host`. A gateway bound to a network address accepts the name it was configured with.
+- A state-changing `/api` request (`POST`, `PUT`, `PATCH`, `DELETE`) that carries an `Origin`
+  header must come from the gateway's own origin or an origin set in `corsOrigins`
+  (and the Vite dev server in dev mode only); otherwise `403 invalid_origin`. Requests with no
+  `Origin` (CLI, scripts, SDKs) are unaffected.
+- Every `POST /api/*` request must send `Content-Type: application/json`, even with an empty
+  body (for example `POST /api/runner/start`); otherwise `415 json_required`. The
+  `/api/auth/*` sign-in routes are exempt.
+
 ## Errors
 
 - `/v1/*` uses the OpenAI error envelope:
@@ -149,6 +164,19 @@ Secrets are write-only: no endpoint ever returns them. `Account.hasSecret` tells
 fields and credential-like `config` keys (`apiKey`, `token`, `password`, `cookie`…) are rejected
 with `400 invalid_body`; send credentials in `secret`. `AccountCreate` also accepts
 `enabled?: boolean`.
+
+`config` is an allow-list per provider, not free-form. Through the API you can set `baseUrl`
+(`anthropic`, `openai`, `gemini`, `openai-compatible`; an `http(s)` URL without embedded
+credentials), `models` (list of ids), `defaultModel`, and `includeUsage` (`openai`,
+`openai-compatible`); `gemini-web` takes `models` only. Any other key, notably `binaryPath` and
+`binaryArgs`, is rejected with `400 invalid_body`: executable settings come only from the local
+`davecode accounts add --binary-path` (which writes to the local database) or from editing the
+database as the machine's owner. A `PATCH` that sends `config` replaces the API-writable keys and
+keeps the others; echoing back an unchanged stored value is accepted.
+
+A stored secret is bound to the endpoint it was saved with. A `PATCH` that changes or removes
+`config.baseUrl` on an account where `hasSecret` is `true` is rejected with
+`400 secret_required` unless the same request carries a new `secret`.
 
 `PATCH` with `enabled: false` sets `status: "disabled"`. `enabled: true` or a new `secret`
 resets an enabled account to `active` and clears `cooldownUntil` and `lastError`.
@@ -485,7 +513,7 @@ Runner configuration (`runner.*`, all optional):
 | `idlePollMs`                                                   | `30000`                                                                           | Sleep between polls when no task is ready                                                         |
 | `maxIterations`                                                | `40`                                                                              | Model round-trips per implementation or repair pass                                               |
 | `maxTaskTokens`                                                | `1500000`                                                                         | Token budget per task across passes                                                               |
-| `allowedCommands`                                              | `pnpm npm npx node git tsc biome vitest`                                          | Executables `run_command` may start                                                               |
+| `allowedCommands`                                              | `pnpm npm npx node git tsc biome vitest`                                          | Executables `run_command` may start (user config only, see CONFIG.md)                             |
 | `claudeCli.accountId` / `model` / `allowedTools` / `timeoutMs` | first enabled account / CLI default / file tools + common `Bash(...)` / `1800000` | `claude-cli` executor settings                                                                    |
 | `validate.lint` / `typecheck` / `test`                         | unset                                                                             | Quality-gate commands (split into argv, run without a shell)                                      |
 | `judge.kind`                                                   | `none`                                                                            | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |

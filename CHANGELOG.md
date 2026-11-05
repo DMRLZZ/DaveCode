@@ -20,6 +20,28 @@ All notable changes to this project are documented here. The format follows
   failing refresh keeps you signed in.
 - Unfinished gateway sign-ins can no longer fill the pending list and block the owner from
   signing in.
+- The gateway now decides whether a request needs the token from the route that matched, so
+  every spelling of a path (encoded characters, doubled slashes, other letter case, trailing
+  slashes) is treated the same. Only the sign-in routes and the dashboard's files are public.
+- The gateway checks the `Host` header on loopback and rejects `/api` writes that come from an
+  unexpected `Origin`. All `POST /api` requests must now send `Content-Type: application/json`
+  (the dashboard and CLI already do).
+- The Vite dev server origin is trusted only in dev mode instead of by default.
+
+### Security
+
+- A repository's `.davecode/config.json` can no longer set the server address, port or auth
+  token, `experimental.*` opt-ins, the judge endpoint, or the runner's allowed commands and Claude
+  Code tools. These keys are now ignored with a warning (behaviour change: a project config that
+  set them no longer has any effect; put them in `~/.davecode/config.json` or use `DAVECODE_*`
+  variables). See docs/CONFIG.md.
+- The HTTP API only accepts a short list of account `config` keys per provider (`baseUrl`,
+  `models`, `defaultModel`, `includeUsage`). `binaryPath` and `binaryArgs` can no longer be set
+  through the API (behaviour change: the dashboard no longer has a CLI binary field; use
+  `davecode accounts add --binary-path`, which writes to the local database).
+- Changing or removing the `baseUrl` of an account that already stores a secret now requires
+  sending the secret again in the same request, so a saved key is never sent to a different
+  address.
 
 ### Deploy notes
 

@@ -65,7 +65,6 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
   const [secret, setSecret] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
   const [models, setModels] = useState('');
-  const [binary, setBinary] = useState('');
   const [priority, setPriority] = useState('100');
   const [weight, setWeight] = useState('1');
   const [limits, setLimits] = useState<LimitsDraft>(limitsToDraft());
@@ -104,7 +103,6 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
       const list = parseModels(models);
       if (list.length) config.models = list;
     }
-    if (meta.auth === 'cli' && binary.trim()) config.binaryPath = binary.trim();
 
     const body: AccountCreate = {
       provider,
@@ -292,20 +290,12 @@ function AddAccountForm({ onDone }: { onDone: () => void }) {
 
           {meta.auth === 'cli' ? (
             <div className="flex flex-col gap-2">
-              <Field label="CLI binary" hint="Optional path; defaults to the binary on your PATH.">
-                {({ id, describedBy }) => (
-                  <Input
-                    id={id}
-                    value={binary}
-                    placeholder={CLI_HOME[provider]?.binary ?? 'claude'}
-                    onChange={(e) => setBinary(e.target.value)}
-                    aria-describedby={describedBy}
-                    className="font-mono"
-                  />
-                )}
-              </Field>
               <p className="text-[12px] text-muted">
-                No secret is needed here. After adding, open the account and press{' '}
+                DaveCode runs the{' '}
+                <span className="font-mono text-fg">{CLI_HOME[provider]?.binary}</span> found on
+                your PATH. To use another binary, add the account from a terminal with{' '}
+                <span className="font-mono text-fg">--binary-path</span>. No secret is needed here.
+                After adding, open the account and press{' '}
                 <span className="text-fg-2">Connect subscription</span>: it runs the vendor’s
                 official sign-in inside the account’s own sandbox ({CLI_HOME[provider]?.env}).
                 DaveCode never sees your password. From a terminal:

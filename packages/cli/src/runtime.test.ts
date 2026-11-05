@@ -122,7 +122,10 @@ describe('startRuntime', () => {
       };
       expect(tasks.project).toEqual({ root: repo, name: 'repo' });
       // The fake .git directory is not a real repository: the runner refuses to start.
-      const runner = await fetch(`${runtime.url}/api/runner/start`, { method: 'POST' });
+      const runner = await fetch(`${runtime.url}/api/runner/start`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+      });
       expect(runner.status).toBe(409);
     } finally {
       await runtime.close();

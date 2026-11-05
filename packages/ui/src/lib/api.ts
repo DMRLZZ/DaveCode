@@ -128,7 +128,8 @@ export function createHttpClient({ baseUrl, token }: HttpClientOptions): DaveCli
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    // State-changing requests always declare JSON, even without a body (the gateway requires it).
+    if (body !== undefined || method !== 'GET') headers['Content-Type'] = 'application/json';
 
     let res: Response;
     try {
