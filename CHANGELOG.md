@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The gateway now decides whether a request needs the token from the route that matched, so
+  every spelling of a path (encoded characters, doubled slashes, other letter case, trailing
+  slashes) is treated the same. Only the sign-in routes and the dashboard's files are public.
+- The gateway checks the `Host` header on loopback and rejects `/api` writes that come from an
+  unexpected `Origin`. All `POST /api` requests must now send `Content-Type: application/json`
+  (the dashboard and CLI already do).
+- The Vite dev server origin is trusted only in dev mode instead of by default.
+
 ## [0.5.0] - 2026-11-04
 
 ### Added

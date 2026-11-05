@@ -19,6 +19,21 @@ If `server.authToken` is configured, every `/v1` and `/api` request must send
 also accepts `?token=<token>`. With no token configured the gateway only binds to loopback
 by default.
 
+### Browser safety checks
+
+These apply with or without a token:
+
+- On a gateway bound to loopback, the `Host` header must be `127.0.0.1`, `localhost` or `[::1]`
+  with the port the gateway listens on (or the host of a configured origin); anything else is
+  `403 invalid_host`. A gateway bound to a network address accepts the name it was configured with.
+- A state-changing `/api` request (`POST`, `PUT`, `PATCH`, `DELETE`) that carries an `Origin`
+  header must come from the gateway's own origin or an origin set in `corsOrigins`
+  (and the Vite dev server in dev mode only); otherwise `403 invalid_origin`. Requests with no
+  `Origin` (CLI, scripts, SDKs) are unaffected.
+- Every `POST /api/*` request must send `Content-Type: application/json`, even with an empty
+  body (for example `POST /api/runner/start`); otherwise `415 json_required`. The
+  `/api/auth/*` sign-in routes are exempt.
+
 ## Errors
 
 - `/v1/*` uses the OpenAI error envelope:
