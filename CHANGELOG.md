@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Signing up again with an email you have not confirmed yet no longer swaps its password: each
+  confirmation link carries the password chosen with it, and only the newest link works.
+- Signing in with Google or GitHub to an email that was registered but never confirmed now
+  removes that unconfirmed password, so only the provider can sign in. Confirmed email accounts
+  keep their password.
+- The hosted email sign-in and sign-up form works in Chrome again, including the final redirect
+  back to the terminal.
+- Two `davecode` processes refreshing the account session at the same time no longer sign you
+  out. A short lock and a 30-second grace period handle the overlap, and a rate-limited or
+  failing refresh keeps you signed in.
+- Unfinished gateway sign-ins can no longer fill the pending list and block the owner from
+  signing in.
+
+### Deploy notes
+
+- Run `packages/auth-worker/migrations/0001_verification_password.sql` on the accounts database
+  before deploying the auth worker.
+
 ## [0.5.0] - 2026-11-04
 
 ### Added
