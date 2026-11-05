@@ -44,7 +44,11 @@ The first run shows the logo, lets you pick a dark or light look, signs you in t
 account in the browser (Google, GitHub or email) and connects your first agent with its official
 login.
 
-![The DaveCode desktop workspace](docs/assets/desktop.png)
+The desktop app opens on real terminals: add Shell, Claude Code, Codex or Antigravity panes side
+by side in your project, using the logins those CLIs already have, and send one message to every
+agent from the bar at the bottom.
+
+![The DaveCode desktop terminal](docs/assets/desktop.png)
 
 ## In the terminal
 

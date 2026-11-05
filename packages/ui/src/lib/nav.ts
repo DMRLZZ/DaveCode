@@ -8,11 +8,13 @@ import {
   Route,
   Settings,
   Target,
+  Terminal,
   Users,
   Workflow,
 } from 'lucide-react';
 
 export type PageId =
+  | 'terminal'
   | 'library'
   | 'workspace'
   | 'overview'
@@ -36,6 +38,15 @@ export interface NavItem {
 }
 
 export const NAV: NavItem[] = [
+  {
+    id: 'terminal',
+    path: '/terminal',
+    label: 'Terminal',
+    icon: Terminal,
+    key: 'x',
+    group: 'Engine',
+    description: 'Shells and coding agents side by side in this project',
+  },
   {
     id: 'library',
     path: '/library',

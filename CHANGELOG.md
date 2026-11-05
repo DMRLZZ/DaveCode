@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-04
+
+### Added
+
+- Desktop terminal panes: real terminals running a shell, Claude Code, Codex, Antigravity or
+  DaveCode in the project, side by side, using the logins those CLIs already have. One bar sends
+  a message to every agent. The panes keep running on other pages.
+
+### Changed
+
+- The desktop app opens on its terminals and reopens the last project on launch.
+- The desktop acceptance test types a command and requires its output on screen.
+
 ## [0.4.0] - 2026-10-29
 
 ### Added
