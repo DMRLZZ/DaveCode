@@ -249,10 +249,10 @@ async function emailSignUp(
     return { id: crypto.randomUUID(), email };
   }
   const passwordHash = await hashPassword(password);
+  // A repeat sign-up leaves the stored password alone: the new password rides on the newest
+  // confirmation link and is applied only when that link is opened.
   const user = existing ?? (await store.createUser({ email, verified: false, passwordHash }));
-  // An unconfirmed account can be claimed again: only whoever reads the inbox finishes it.
-  if (existing) await store.setPassword(existing.id, passwordHash);
-  const token = await store.saveVerification(user.id, redirectTo, challenge);
+  const token = await store.saveVerification(user.id, redirectTo, challenge, passwordHash);
   try {
     await sendVerification(env, email, `${env.PUBLIC_URL}/auth/v1/verify?token=${token}`);
   } catch {
@@ -436,6 +436,7 @@ export async function handle(request: Request, env: Env, deps: Deps = {}): Promi
     if (!pending) {
       return page('Link expired', 'Sign up again from your terminal with davecode login.');
     }
+    if (pending.password_hash) await store.setPassword(pending.user_id, pending.password_hash);
     await store.markVerified(pending.user_id);
     const code = await store.issueCode(pending.user_id, pending.challenge, 'email');
     const target = withParams(pending.redirect_to, { code });

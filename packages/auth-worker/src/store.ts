@@ -138,27 +138,69 @@ export class Store {
     return row && row.expires_at > this.now() ? row : null;
   }
 
-  async saveVerification(userId: string, redirectTo: string, challenge: string): Promise<string> {
+  /**
+   * Remember a sign-up link. Only the newest link for an account works: earlier ones are removed,
+   * and the password chosen with this sign-up is applied only when this link is confirmed.
+   */
+  async saveVerification(
+    userId: string,
+    redirectTo: string,
+    challenge: string,
+    passwordHash: string,
+  ): Promise<string> {
     const token = randomToken();
+    await this.clearVerifications(userId);
     await this.db
       .prepare(
-        'INSERT INTO email_verifications (token_hash, user_id, redirect_to, challenge, expires_at) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO email_verifications (token_hash, user_id, redirect_to, challenge, expires_at, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
       )
-      .bind(await sha256(token), userId, redirectTo, challenge, this.now() + VERIFY_TTL)
+      .bind(
+        await sha256(token),
+        userId,
+        redirectTo,
+        challenge,
+        this.now() + VERIFY_TTL,
+        passwordHash,
+      )
       .run();
     return token;
   }
 
-  async takeVerification(
-    token: string,
-  ): Promise<{ user_id: string; redirect_to: string; challenge: string } | null> {
+  async clearVerifications(userId: string): Promise<void> {
+    await this.db.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(userId).run();
+  }
+
+  /** An account that was never confirmed gets no usable password and no pending links. */
+  async resetUnconfirmed(userId: string): Promise<void> {
+    await this.db
+      .prepare('UPDATE users SET password_hash = NULL WHERE id = ? AND email_verified = 0')
+      .bind(userId)
+      .run();
+    await this.clearVerifications(userId);
+  }
+
+  async takeVerification(token: string): Promise<{
+    user_id: string;
+    redirect_to: string;
+    challenge: string;
+    /** Null for links created before the password moved onto the link. */
+    password_hash: string | null;
+  } | null> {
     const hash = await sha256(token);
     const row = await this.db
       .prepare('SELECT * FROM email_verifications WHERE token_hash = ?')
       .bind(hash)
-      .first<{ user_id: string; redirect_to: string; challenge: string; expires_at: number }>();
+      .first<{
+        user_id: string;
+        redirect_to: string;
+        challenge: string;
+        expires_at: number;
+        password_hash?: string | null;
+      }>();
     await this.db.prepare('DELETE FROM email_verifications WHERE token_hash = ?').bind(hash).run();
-    return row && row.expires_at > this.now() ? row : null;
+    return row && row.expires_at > this.now()
+      ? { ...row, password_hash: row.password_hash ?? null }
+      : null;
   }
 
   async issueRefresh(userId: string, provider: string, sessionId: string): Promise<string> {

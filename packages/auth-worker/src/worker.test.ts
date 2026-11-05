@@ -1,7 +1,7 @@
 import { AccountClient, pkcePair, startAccountLogin } from '@davecode/core';
 import Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { hashPassword, signJwt, verifyJwt, verifyPassword } from './crypto';
+import { hashPassword, sha256, signJwt, verifyJwt, verifyPassword } from './crypto';
 import { type Env, handle, migrate, type SendEmail } from './index';
 import type { D1Like, D1Statement } from './store';
 
@@ -304,5 +304,66 @@ describe('auth worker with the real CLI client', () => {
     const late = await call(`/auth/v1/callback/github?code=c&state=${state}`);
     expect(await late.text()).toContain('Sign-in expired');
     await login.close();
+  });
+});
+
+const REDIRECT = 'http://127.0.0.1:5555/s/x/callback';
+
+async function signUp(email: string, password: string): Promise<string> {
+  const { challenge } = pkcePair();
+  await client().signUp(email, password, REDIRECT, challenge);
+  const link = new URL(mail.at(-1)?.text.match(/https:\S+/)?.[0] ?? '');
+  return link.pathname + link.search;
+}
+
+const wrongPassword = { message: 'Invalid email or password.' };
+
+describe('sign-up links', () => {
+  it('applies the password of the link that is opened, and only the latest link works', async () => {
+    const first = await signUp('dev@example.com', 'first-password-1');
+    const second = await signUp('dev@example.com', 'second-password-2');
+    // The second sign-up did not replace the stored password, and nothing signs in unconfirmed.
+    await expect(
+      client().signInWithPassword('dev@example.com', 'second-password-2'),
+    ).rejects.toMatchObject(wrongPassword);
+
+    expect(await (await call(first)).text()).toContain('Link expired');
+    // The older link confirmed nothing.
+    await expect(
+      client().signInWithPassword('dev@example.com', 'first-password-1'),
+    ).rejects.toMatchObject({ message: 'Confirm your email first, using the link we sent you.' });
+
+    expect(await (await call(second)).text()).toContain('Email confirmed');
+    const ok = await client().signInWithPassword('dev@example.com', 'second-password-2');
+    expect(ok.user.email).toBe('dev@example.com');
+    await expect(
+      client().signInWithPassword('dev@example.com', 'first-password-1'),
+    ).rejects.toMatchObject(wrongPassword);
+  });
+
+  it('confirms a single sign-up with its own password', async () => {
+    const link = await signUp('solo@example.com', 'only-password-1');
+    expect(await (await call(link)).text()).toContain('Email confirmed');
+    const session = await client().signInWithPassword('solo@example.com', 'only-password-1');
+    expect(session.user.email).toBe('solo@example.com');
+  });
+
+  it('still confirms a link created before the password moved onto the link', async () => {
+    await env.DB.prepare(
+      'INSERT INTO users (id, email, email_verified, password_hash, created_at) VALUES (?, ?, 0, ?, 0)',
+    )
+      .bind('old', 'legacy@example.com', await hashPassword('legacy-password-1'))
+      .run();
+    const { challenge } = pkcePair();
+    await env.DB.prepare(
+      'INSERT INTO email_verifications (token_hash, user_id, redirect_to, challenge, expires_at) VALUES (?, ?, ?, ?, ?)',
+    )
+      .bind(await sha256('legacy-token'), 'old', REDIRECT, challenge, clock + 60_000)
+      .run();
+    expect(await (await call('/auth/v1/verify?token=legacy-token')).text()).toContain(
+      'Email confirmed',
+    );
+    const session = await client().signInWithPassword('legacy@example.com', 'legacy-password-1');
+    expect(session.user.email).toBe('legacy@example.com');
   });
 });
