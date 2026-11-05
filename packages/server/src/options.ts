@@ -103,7 +103,11 @@ export interface GatewayOptions {
   loginLauncher?: LoginLauncher;
   /** SSE heartbeat interval for `/api/events` (default 15 000 ms). */
   heartbeatMs?: number;
-  /** Extra CORS origins on top of the Vite dev server (`http://localhost:5173`). */
+  /** Bind address, used to decide which Host headers are expected (set by `startGateway`). */
+  host?: string;
+  /** Dev mode: also trust the Vite dev server origins (`http://localhost:5173`). Off by default. */
+  dev?: boolean;
+  /** Extra origins allowed to call the gateway from a browser, with CORS and on state changes. */
   corsOrigins?: string[];
 }
 
