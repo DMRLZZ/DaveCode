@@ -120,6 +120,55 @@ describe('LoginService', () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  describe('unfinished sign-ins', () => {
+    const stateOf = (flow: { url: string }) => new URL(flow.url).searchParams.get('state')!;
+
+    it('does not let anonymous starts lock the owner out when the table is full', async () => {
+      const { service } = setup();
+      // Many different peers fill all 1000 slots.
+      const first = service.begin('google', 'peer-0');
+      for (let i = 1; i < 1000; i++) service.begin('google', `peer-${i}`);
+      const owner = service.begin('github', '203.0.113.9');
+      // The oldest entry made room; the owner's own sign-in is intact.
+      await expect(service.finish('google', stateOf(first), 'code', first.binding)).rejects.toThrow(
+        LoginError,
+      );
+      expect(stateOf(owner)).toBeTruthy();
+    });
+
+    it('lets the owner finish after one peer floods the table', async () => {
+      const { service } = setup({ id: 42, login: 'dave', name: null });
+      const owner = service.begin('github', '198.51.100.1');
+      for (let i = 0; i < 5000; i++) service.begin('google', '203.0.113.50');
+      const session = await service.finish('github', stateOf(owner), 'code', owner.binding);
+      expect(service.status(session).user?.id).toBe('42');
+    });
+
+    it('keeps only a few per peer, evicting that peer’s oldest', async () => {
+      const { service } = setup();
+      const flows = Array.from({ length: 21 }, () => service.begin('google', 'same-peer'));
+      await expect(
+        service.finish('google', stateOf(flows[0]!), 'code', flows[0]!.binding),
+      ).rejects.toThrow(LoginError);
+      // The newest is still pending (the call below fails on the binding, not on the state).
+      await expect(service.finish('google', stateOf(flows[20]!), 'code', 'wrong')).rejects.toThrow(
+        LoginError,
+      );
+    });
+
+    it('purges expired entries before counting', async () => {
+      const { service, advance } = setup({ id: 42, login: 'dave', name: null });
+      const stale = Array.from({ length: 20 }, () => service.begin('github', 'peer'));
+      advance(10 * 60_000 + 1);
+      const fresh = service.begin('github', 'peer');
+      await expect(
+        service.finish('github', stateOf(stale[19]!), 'code', stale[19]!.binding),
+      ).rejects.toThrow(LoginError);
+      const session = await service.finish('github', stateOf(fresh), 'code', fresh.binding);
+      expect(service.status(session).user?.provider).toBe('github');
+    });
+  });
+
   it('requires explicit configuration and an allowlist; rejects insecure origins', () => {
     expect(loginFromEnv({})).toBeUndefined();
     expect(() => loginFromEnv({ DAVECODE_LOGIN_ENABLED: '1' })).toThrow(

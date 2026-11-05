@@ -47,6 +47,8 @@ const ENDPOINTS = {
 } as const;
 
 const PENDING_MS = 10 * 60_000;
+const PENDING_MAX = 1000;
+const PENDING_PER_PEER = 20;
 const SESSION_MS = 8 * 60 * 60_000;
 const random = () => randomBytes(32).toString('base64url');
 const digest = (value: string) => createHash('sha256').update(value).digest('base64url');
@@ -67,7 +69,7 @@ export class LoginService {
   readonly options: LoginOptions;
   private readonly pending = new Map<
     string,
-    { provider: LoginProvider; binding: string; verifier: string; expires: number }
+    { provider: LoginProvider; binding: string; verifier: string; peer: string; expires: number }
   >();
   private readonly sessions = new Map<string, { user: LoginUser; expires: number }>();
 
@@ -103,10 +105,30 @@ export class LoginService {
     if (session) this.sessions.delete(digest(session));
   }
 
-  begin(provider: LoginProvider): { url: string; binding: string } {
+  /**
+   * Start a sign-in. `peer` is the connection's address as the HTTP server sees it (never a
+   * forwarded header unless the server was configured to trust its proxy). Unfinished sign-ins
+   * never block a new one: each peer keeps a few, and when the table is full the oldest goes.
+   */
+  begin(provider: LoginProvider, peer = 'unknown'): { url: string; binding: string } {
     this.prune();
     const client = this.options.providers[provider];
-    if (!client || this.pending.size >= 1000) throw new LoginError();
+    if (!client) throw new LoginError();
+    // Map order is insertion order, so the first entries are the oldest.
+    let mine = 0;
+    for (const value of this.pending.values()) if (value.peer === peer) mine++;
+    for (const [key, value] of this.pending) {
+      if (mine < PENDING_PER_PEER) break;
+      if (value.peer === peer) {
+        this.pending.delete(key);
+        mine--;
+      }
+    }
+    while (this.pending.size >= PENDING_MAX) {
+      const oldest = this.pending.keys().next().value;
+      if (oldest === undefined) break;
+      this.pending.delete(oldest);
+    }
     const state = random();
     const binding = random();
     const verifier = random();
@@ -114,6 +136,7 @@ export class LoginService {
       provider,
       binding: digest(binding),
       verifier,
+      peer,
       expires: this.now() + PENDING_MS,
     });
     const url = new URL(ENDPOINTS[provider].authorize);
