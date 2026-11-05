@@ -318,6 +318,48 @@ async function signUp(email: string, password: string): Promise<string> {
 
 const wrongPassword = { message: 'Invalid email or password.' };
 
+/** Complete a Google or GitHub sign-in at the worker and return the CLI's session. */
+async function oauthSession(provider: 'google' | 'github') {
+  const { challenge, verifier } = pkcePair();
+  const authorize = await call(
+    `/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}`,
+  );
+  const state = new URL(authorize.headers.get('location') ?? '').searchParams.get('state');
+  const back = await call(`/auth/v1/callback/${provider}?code=c&state=${state}`);
+  const code = new URL(back.headers.get('location') ?? '').searchParams.get('code') ?? '';
+  return client().exchangeCode(code, verifier);
+}
+
+describe('OAuth sign-in with an existing email account', () => {
+  it('signs in with Google and with GitHub for a new address', async () => {
+    const google = await oauthSession('google');
+    expect(google.user).toMatchObject({ email: 'octo@example.com', provider: 'google' });
+    const github = await oauthSession('github');
+    expect(github.user.id).toBe(google.user.id);
+  });
+
+  it('drops the password and pending links of an account that was never confirmed', async () => {
+    const link = await signUp('octo@example.com', 'someone-elses-pw-1');
+    const session = await oauthSession('google');
+    expect(session.user.email).toBe('octo@example.com');
+    // Only the provider identity signs in now.
+    await expect(
+      client().signInWithPassword('octo@example.com', 'someone-elses-pw-1'),
+    ).rejects.toMatchObject(wrongPassword);
+    expect(await (await call(link)).text()).toContain('Link expired');
+    expect((await oauthSession('github')).user.id).toBe(session.user.id);
+  });
+
+  it('keeps the password of a confirmed account that links a provider', async () => {
+    expect(
+      await (await call(await signUp('octo@example.com', 'my-own-password-1'))).text(),
+    ).toContain('Email confirmed');
+    const session = await oauthSession('github');
+    const withPassword = await client().signInWithPassword('octo@example.com', 'my-own-password-1');
+    expect(withPassword.user.id).toBe(session.user.id);
+  });
+});
+
 describe('sign-up links', () => {
   it('applies the password of the link that is opened, and only the latest link works', async () => {
     const first = await signUp('dev@example.com', 'first-password-1');

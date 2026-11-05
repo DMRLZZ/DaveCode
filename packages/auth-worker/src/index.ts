@@ -418,8 +418,11 @@ export async function handle(request: Request, env: Env, deps: Deps = {}): Promi
         });
       }
       user = await store.userByEmail(profile.email);
-      if (user) await store.markVerified(user.id, profile.name);
-      else {
+      if (user) {
+        // An address that was never confirmed signs in only through this provider identity.
+        if (!user.email_verified) await store.resetUnconfirmed(user.id);
+        await store.markVerified(user.id, profile.name);
+      } else {
         user = await store.createUser({
           email: profile.email,
           verified: true,
