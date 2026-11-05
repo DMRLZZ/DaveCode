@@ -113,8 +113,10 @@ export {
   ConfigError,
   deepMerge,
   envLayer,
+  filterProjectLayer,
   type LoadConfigOptions,
   loadConfig,
+  PROJECT_SETTABLE_KEYS,
 } from './config/loader';
 export { type CreateEngineOptions, createEngine, type Engine } from './engine';
 export {
