@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-05
+
+Upgrade from 0.5.0 as soon as you can: this release contains security fixes.
+
 ### Fixed
 
 - Signing up again with an email you have not confirmed yet no longer swaps its password: each

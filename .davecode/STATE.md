@@ -4,11 +4,11 @@ _Last updated: 2026-10-31_
 
 ## Current focus
 
-**v0.5.0 on `main`**: real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
+**v0.5.1 on `main`**: real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
 setup, DaveCode accounts on Cloudflare (`davecode-auth` + D1 at `auth.davecode.app`),
 official vendor sign-in for Claude Code, Codex and Antigravity (`agy`), desktop installers
 for Windows, macOS and Linux, and the public site at `davecode.app` served from the
-`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.5.0`
+`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.5.1`
 (installed command `davecode`).
 
 ## In progress
@@ -88,3 +88,5 @@ None.
   preview tarball installation verified, and release CI passed on Linux, macOS and Windows.
 - 2026-10-29: v0.4.0 released (`@dmrlzz/davecode@0.4.0` on npm, desktop installers on GitHub
   Releases, `davecode-auth` and `davecode-site` deployed on Cloudflare Workers).
+- 2026-11-05: v0.5.1 prepared with the security fixes from #53–#56; the `davecode-auth` migration
+  and worker went live first.
