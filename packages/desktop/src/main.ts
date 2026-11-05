@@ -1,16 +1,28 @@
 import { type ChildProcess, fork, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  type IpcMainInvokeEvent,
+  ipcMain,
+  Menu,
+  shell,
+} from 'electron';
+import { openSchema, resizeSchema, writeSchema } from './panes';
 import { externalUrl, readySchema, sameOrigin } from './policy';
 import { verifyWindow } from './smoke';
+import { Terminals } from './terminals';
 
 let window: BrowserWindow | undefined;
 let backend: ChildProcess | undefined;
 let gateway: string | undefined;
+let project: string | undefined;
 let switching = false;
 let quitting = false;
 const token = randomBytes(32).toString('hex');
@@ -20,6 +32,22 @@ const nodeBinary = join(bundle, 'node', process.platform === 'win32' ? 'node.exe
 const home = process.env.DAVECODE_HOME ?? join(homedir(), '.davecode');
 const welcome = pathToFileURL(join(__dirname, 'welcome.html')).href;
 const smokeOutput = process.env.DAVECODE_DESKTOP_SMOKE_DIR;
+const terminals = new Terminals(runtimeDir, {
+  data: (id, data) => window?.webContents.send('terminal:data', id, data),
+  exit: (id, code) => window?.webContents.send('terminal:exit', id, code),
+});
+const lastProjectFile = () => join(app.getPath('userData'), 'last-project.json');
+
+/** The folder to reopen on launch, if it still exists. */
+function lastProject(): string | undefined {
+  try {
+    const saved: unknown = JSON.parse(readFileSync(lastProjectFile(), 'utf8'));
+    return typeof saved === 'string' && existsSync(saved) ? saved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function checkpoint(stage: string) {
   if (!smokeOutput) return;
   mkdirSync(smokeOutput, { recursive: true });
@@ -39,7 +67,9 @@ if (process.env.DAVECODE_DESKTOP_SMOKE_DIR) {
 }
 
 async function stopBackend(): Promise<void> {
+  terminals.closeAll();
   gateway = undefined;
+  project = undefined;
   const child = backend;
   backend = undefined;
   if (!child || child.exitCode !== null) return;
@@ -59,11 +89,11 @@ async function stopBackend(): Promise<void> {
   });
 }
 
-async function openProject(project: string): Promise<void> {
+async function openProject(folder: string): Promise<void> {
   if (switching || !window) return;
   switching = true;
   try {
-    if (!existsSync(join(project, '.davecode', 'STATE.md'))) {
+    if (!existsSync(join(folder, '.davecode', 'STATE.md'))) {
       const result = await dialog.showMessageBox(window, {
         type: 'question',
         buttons: ['Set up project', 'Cancel'],
@@ -82,7 +112,7 @@ async function openProject(project: string): Promise<void> {
     const child = fork(join(runtimeDir, 'backend.mjs'), [], {
       execPath: nodeBinary,
       execArgv: [],
-      cwd: project,
+      cwd: folder,
       env: {
         ...process.env,
         DAVECODE_HOME: home,
@@ -111,7 +141,7 @@ async function openProject(project: string): Promise<void> {
       });
       child.send({
         type: 'start',
-        project,
+        project: folder,
         home,
         token,
         cli: join(runtimeDir, 'cli', 'bin', 'davecode.js'),
@@ -120,8 +150,10 @@ async function openProject(project: string): Promise<void> {
     });
     if (quitting || !window) return;
     gateway = new URL(url).origin;
+    project = folder;
+    if (!smokeOutput) writeFileSync(lastProjectFile(), JSON.stringify(folder));
     checkpoint('backend-ready');
-    await window.loadURL(`${url}/#/`);
+    await window.loadURL(`${url}/#/terminal`);
     checkpoint('workspace-loaded');
     child.once('exit', () => {
       if (backend !== child || quitting) return;
@@ -157,8 +189,8 @@ async function chooseProject(): Promise<void> {
     title: 'Open a project',
     properties: ['openDirectory', 'createDirectory'],
   });
-  const project = selection.filePaths[0];
-  if (!selection.canceled && project) await openProject(project);
+  const folder = selection.filePaths[0];
+  if (!selection.canceled && folder) await openProject(folder);
 }
 
 if (!app.requestSingleInstanceLock()) app.quit();
@@ -230,19 +262,49 @@ else {
       if (externalUrl(url)) void shell.openExternal(url);
       return { action: 'deny' };
     });
-    ipcMain.handle('desktop:choose-project', async (event) => {
+    const fromMainFrame = (event: IpcMainInvokeEvent) => {
       const current = window;
+      return (
+        Boolean(current) &&
+        event.sender === current?.webContents &&
+        event.senderFrame === current.webContents.mainFrame
+      );
+    };
+    const fromGateway = (event: IpcMainInvokeEvent) =>
+      fromMainFrame(event) && sameOrigin(event.senderFrame?.url ?? '', gateway);
+    ipcMain.handle('desktop:choose-project', async (event) => {
       const url = event.senderFrame?.url;
-      if (
-        !current ||
-        event.sender !== current.webContents ||
-        event.senderFrame !== current.webContents.mainFrame ||
-        !url ||
-        (url !== welcome && !sameOrigin(url, gateway))
-      )
-        return;
+      if (!fromMainFrame(event) || !url || (url !== welcome && !sameOrigin(url, gateway))) return;
       await chooseProject();
     });
+    ipcMain.handle('terminal:open', (event, request: unknown) => {
+      if (!fromGateway(event) || !project) throw new Error('no_project');
+      const { kind, cols, rows } = openSchema.parse(request);
+      try {
+        return terminals.open(kind, project, cols, rows);
+      } catch (error) {
+        console.error('Terminal failed to start:', error instanceof Error ? error.message : error);
+        throw new Error('terminal_failed');
+      }
+    });
+    ipcMain.handle('terminal:write', (event, request: unknown) => {
+      if (!fromGateway(event)) return;
+      const { id, data } = writeSchema.parse(request);
+      terminals.write(id, data);
+    });
+    ipcMain.handle('terminal:resize', (event, request: unknown) => {
+      if (!fromGateway(event)) return;
+      const { id, cols, rows } = resizeSchema.parse(request);
+      terminals.resize(id, cols, rows);
+    });
+    ipcMain.handle('terminal:close', (event, id: unknown) => {
+      if (fromGateway(event) && typeof id === 'string') terminals.close(id);
+    });
+    ipcMain.handle('terminal:copy', (event, text: unknown) => {
+      if (fromGateway(event) && typeof text === 'string') clipboard.writeText(text);
+    });
+    // A reload or a project switch replaces the page that owned the panes.
+    window.webContents.on('did-navigate', () => terminals.closeAll());
     Menu.setApplicationMenu(
       Menu.buildFromTemplate([
         {
@@ -286,10 +348,11 @@ else {
     window.once('ready-to-show', () => window?.show());
     await window.loadURL(welcome);
     checkpoint('welcome-loaded');
-    const project = process.argv
+    const requested = process.argv
       .find((value) => value.startsWith('--project='))
       ?.slice('--project='.length);
-    if (project) await openProject(resolve(project));
+    const initial = requested ? resolve(requested) : smokeOutput ? undefined : lastProject();
+    if (initial) await openProject(initial);
     const smoke = process.env.DAVECODE_DESKTOP_SMOKE_DIR;
     if (smoke) {
       try {

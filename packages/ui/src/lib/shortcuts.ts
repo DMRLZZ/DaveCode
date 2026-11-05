@@ -51,6 +51,8 @@ export function useGlobalShortcuts(): void {
     let pendingG = 0;
 
     const onKey = (e: KeyboardEvent) => {
+      // Inside a terminal every key belongs to the shell, including Ctrl+K.
+      if (e.target instanceof HTMLElement && e.target.closest('.xterm')) return;
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         ui.togglePalette();

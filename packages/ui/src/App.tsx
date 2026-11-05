@@ -8,19 +8,21 @@ import { Toaster } from './components/shell/Toaster';
 import { TopBar } from './components/shell/TopBar';
 import { WorkspaceShell } from './components/shell/WorkspaceShell';
 import { Skeleton } from './components/ui/Skeleton';
+import { terminalBridge } from './lib/desktop';
 import { useMediaQuery } from './lib/hooks';
 import type { PageId } from './lib/nav';
 import { pageForPath } from './lib/nav';
 import { useHealth } from './lib/queries';
-import { useLocation } from './lib/router';
+import { navigate, useLocation } from './lib/router';
 import { applyTheme, updateSettings, useSettings } from './lib/settings';
 import { useGlobalShortcuts } from './lib/shortcuts';
 import { NARROW_QUERY, toggleSidebar, ui, useUi } from './lib/ui-state';
 import { NotFound } from './routes/NotFound';
 import { Overview } from './routes/Overview';
+import { TerminalWorkspace } from './routes/terminal/TerminalWorkspace';
 
 // The overview ships in the main chunk; other screens load on first visit.
-const PAGES: Record<PageId, ComponentType> = {
+const PAGES: Record<Exclude<PageId, 'terminal'>, ComponentType> = {
   library: lazy(() => import('./routes/Library').then((m) => ({ default: m.Library }))),
   workspace: lazy(() =>
     import('./routes/workspace/Workspace').then((m) => ({ default: m.Workspace })),
@@ -59,6 +61,12 @@ export function App() {
 
   useEffect(() => applyTheme(settings.theme), [settings.theme]);
 
+  // The desktop app opens on its terminals, also right after signing in.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: decided once, on startup
+  useEffect(() => {
+    if (terminalBridge() && path === '/') navigate('/terminal', { replace: true });
+  }, []);
+
   // Move focus to the main region on navigation so screen readers announce the new page.
   // biome-ignore lint/correctness/useExhaustiveDependencies: runs on route change only
   useEffect(() => {
@@ -68,9 +76,23 @@ export function App() {
     document.title = page ? `${page.label} · DaveCode` : 'DaveCode';
   }, [path]);
 
+  // Stays mounted across routes: leaving the page must not kill running agents.
+  const terminal = <TerminalWorkspace active={page?.id === 'terminal'} />;
+  if (page?.id === 'terminal') {
+    return (
+      <>
+        {terminal}
+        <CommandPalette />
+        <ShortcutsDialog />
+        <Toaster />
+      </>
+    );
+  }
+
   if (page?.id === 'workspace' || page?.id === 'library') {
     return (
       <>
+        {terminal}
         <WorkspaceShell mainRef={mainRef}>
           <Page id={page.id} />
         </WorkspaceShell>
@@ -83,6 +105,7 @@ export function App() {
 
   return (
     <div className="flex min-h-dvh">
+      {terminal}
       {/* A button rather than an anchor: `#main` would be read as a route by the hash router. */}
       <button
         type="button"
@@ -136,7 +159,7 @@ export function App() {
   );
 }
 
-function Page({ id }: { id: PageId }) {
+function Page({ id }: { id: Exclude<PageId, 'terminal'> }) {
   const Component = PAGES[id];
   return (
     <Suspense fallback={<PageFallback />}>

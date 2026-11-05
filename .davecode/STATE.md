@@ -14,7 +14,7 @@ for Windows, macOS and Linux, and the public site at `davecode.app` served from 
 ## In progress
 
 - Optional code-signing certificates for the Windows and macOS desktop installers.
-- Multi-pane agent workspace with orchestrator view in the desktop app.
+- Orchestrator on top of the desktop panes (today: one message broadcast to every agent pane).
 
 ## Done
 
@@ -39,6 +39,9 @@ for Windows, macOS and Linux, and the public site at `davecode.app` served from 
   on Cloudflare Workers + D1 (`packages/auth-worker`); `/connect`, `/model` and `/status` pickers
   in the chat TUI; Windows, macOS and Linux desktop installers in GitHub Releases; npm Trusted
   Publishing; and `davecode.app` hosted on Cloudflare Workers (`site/`).
+
+- **Desktop terminals**: real PTY panes (`@lydell/node-pty` + xterm.js) for a shell, Claude Code,
+  Codex, Antigravity and DaveCode; the desktop opens on them and reopens the last project.
 
 ## Blockers
 

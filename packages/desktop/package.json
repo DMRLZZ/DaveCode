@@ -16,6 +16,7 @@
   "dependencies": {
     "@davecode/core": "workspace:*",
     "@dmrlzz/davecode": "workspace:*",
+    "@lydell/node-pty": "1.1.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

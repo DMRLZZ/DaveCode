@@ -55,7 +55,11 @@ export async function prepare() {
     mkdir(nodeDir, { recursive: true }),
     mkdir(app, { recursive: true }),
   ]);
-  const deps = dependencies();
+  // The panes' native PTY ships prebuilt N-API binaries, so Electron can load it directly.
+  const deps = {
+    ...dependencies(),
+    '@lydell/node-pty': desktop.dependencies['@lydell/node-pty'],
+  };
   const fingerprint = createHash('sha256')
     .update(
       JSON.stringify({

@@ -21,12 +21,18 @@ export async function verifyWindow(
     rendered = await window.webContents.executeJavaScript(`(() => {
       const button = [...document.querySelectorAll('button')].find(node => node.textContent === 'Continue on this device');
       if (button) button.click();
-      return Boolean(document.querySelector('#workspace-composer'));
+      return Boolean(document.querySelector('[data-pane-live="true"] .xterm-rows'));
     })()`);
     if (rendered) break;
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  if (!rendered) throw new Error('workspace_not_rendered');
+  if (!rendered) {
+    const page = await window.webContents.executeJavaScript(
+      'location.hash + " | " + document.body.innerText.slice(0, 400)',
+    );
+    console.error('Desktop page at failure:', page);
+    throw new Error('terminal_not_rendered');
+  }
   await mkdir(output, { recursive: true });
   // The screenshot is evidence, not the check: headless Linux CI has no GPU to capture with.
   const image = await window.webContents.capturePage().catch(() => undefined);
@@ -37,7 +43,7 @@ export async function verifyWindow(
       status: 'passed',
       version: '0.4.0',
       url: gateway,
-      workspace: true,
+      terminal: true,
       authenticated: true,
     }),
   );
