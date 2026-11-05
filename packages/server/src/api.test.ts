@@ -34,6 +34,7 @@ afterEach(async () => {
   t?.cleanup();
 });
 
+const JSON_HEADERS = { 'content-type': 'application/json' };
 const SECRET = 'sk-super-secret-value';
 
 describe('GET /api/health', () => {
@@ -470,7 +471,11 @@ describe('brain and runner', () => {
       status: { state: 'idle' },
     });
     for (const action of ['start', 'pause', 'stop']) {
-      const res = await app.inject({ method: 'POST', url: `/api/runner/${action}` });
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/runner/${action}`,
+        headers: JSON_HEADERS,
+      });
       expect(res.statusCode).toBe(501);
       expect(res.json().error.code).toBe('runner_unavailable');
     }
@@ -488,7 +493,11 @@ describe('brain and runner', () => {
       stop: () => {},
     };
     await setup(undefined, { runner });
-    const res = await app.inject({ method: 'POST', url: '/api/runner/start' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/runner/start',
+      headers: JSON_HEADERS,
+    });
     expect(res.statusCode).toBe(409);
     expect(res.json()).toEqual({
       error: { code: 'dirty_worktree', message: 'Working tree has uncommitted changes' },
@@ -510,7 +519,10 @@ describe('brain and runner', () => {
     it('stays backward compatible: no body, empty JSON body and {} all start the loop', async () => {
       const runner = makeRunner();
       await setup(undefined, { runner });
-      expect((await app.inject({ method: 'POST', url: '/api/runner/start' })).statusCode).toBe(200);
+      expect(
+        (await app.inject({ method: 'POST', url: '/api/runner/start', headers: JSON_HEADERS }))
+          .statusCode,
+      ).toBe(200);
       const emptyJson = await app.inject({
         method: 'POST',
         url: '/api/runner/start',
@@ -615,15 +627,21 @@ describe('brain and runner', () => {
       state: '# State',
       architecture: '# Arch',
     });
-    const started = await app.inject({ method: 'POST', url: '/api/runner/start' });
+    const started = await app.inject({
+      method: 'POST',
+      url: '/api/runner/start',
+      headers: JSON_HEADERS,
+    });
     expect(started.json()).toEqual({
       status: { state: 'selecting', startedAt: '2026-01-01T00:00:00.000Z' },
     });
     expect(
-      (await app.inject({ method: 'POST', url: '/api/runner/pause' })).json().status.state,
+      (await app.inject({ method: 'POST', url: '/api/runner/pause', headers: JSON_HEADERS })).json()
+        .status.state,
     ).toBe('paused');
     expect(
-      (await app.inject({ method: 'POST', url: '/api/runner/stop' })).json().status.state,
+      (await app.inject({ method: 'POST', url: '/api/runner/stop', headers: JSON_HEADERS })).json()
+        .status.state,
     ).toBe('stopped');
     expect(runner.start).toHaveBeenCalledOnce();
     expect((await app.inject({ method: 'GET', url: '/api/runner' })).json().status.state).toBe(
@@ -647,12 +665,20 @@ describe('brain and runner', () => {
       );
 
       // Not a git repository: the runner refuses to start and the API reports why.
-      const start = await app.inject({ method: 'POST', url: '/api/runner/start' });
+      const start = await app.inject({
+        method: 'POST',
+        url: '/api/runner/start',
+        headers: JSON_HEADERS,
+      });
       expect(start.statusCode).toBe(409);
       expect(start.json().error.message).toMatch(/not inside a git repository/);
       const status = (await app.inject({ method: 'GET', url: '/api/runner' })).json().status;
       expect(status.state).toBe('error');
-      const stop = await app.inject({ method: 'POST', url: '/api/runner/stop' });
+      const stop = await app.inject({
+        method: 'POST',
+        url: '/api/runner/stop',
+        headers: JSON_HEADERS,
+      });
       expect(stop.json().status.state).toBe('stopped');
     } finally {
       rmSync(root, { recursive: true, force: true });

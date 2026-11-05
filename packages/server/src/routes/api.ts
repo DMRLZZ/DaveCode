@@ -162,11 +162,7 @@ export function registerApiRoutes(
   });
 
   app.post<{ Params: { id: string } }>('/api/accounts/:id/connect', async (request, reply) => {
-    // A JSON content type cannot be sent cross-site without a CORS preflight, so other web
-    // pages cannot make the gateway open a login window.
-    if (!request.headers['content-type']?.toLowerCase().startsWith('application/json')) {
-      return sendApiError(reply, 415, 'json_required', 'Send Content-Type: application/json');
-    }
+    // The gateway's request guard already requires a JSON content type on state changes.
     const account = accounts.get(request.params.id);
     if (!account) return sendApiError(reply, 404, 'not_found', 'Account not found');
     if (connectionMethod(account.provider) !== 'cli-login') {

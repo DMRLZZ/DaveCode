@@ -36,6 +36,7 @@ if (project && (await project.isInitialised())) {
 }
 
 const app = await startGateway(engine, {
+  dev: true,
   logger: { level: engine.config.logLevel },
   dashboardDir: fileURLToPath(new URL('../../ui/dist', import.meta.url)),
   ...(brain ? { brain } : {}),
