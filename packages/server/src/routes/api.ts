@@ -1,11 +1,14 @@
 import {
   type Account,
   type AccountUpdateInput,
+  apiConfigIssues,
   ConfigError,
   type ConnectResult,
   connectionMethod,
   type Engine,
+  endpointRebindIssue,
   loginCommandFor,
+  mergeApiConfig,
   type RunnerStatus,
   type TaskGraph,
   VERSION,
@@ -58,6 +61,11 @@ export function registerApiRoutes(
     const parsed = accountCreateSchema.safeParse(request.body);
     if (!parsed.success) return invalid(reply, parsed.error);
     const { secret, ...input } = parsed.data;
+    // Only an allow-list of config keys is writable here; executable settings are local-only.
+    const configIssues = input.config ? apiConfigIssues(input.provider, input.config) : [];
+    if (configIssues.length > 0) {
+      return sendApiError(reply, 400, 'invalid_body', configIssues.join('; '));
+    }
     if (input.provider === 'gemini-web' && !engine.config.experimental.geminiWeb) {
       return sendApiError(
         reply,
@@ -90,6 +98,16 @@ export function registerApiRoutes(
 
     const { secret, ...fields } = parsed.data;
     const patch: AccountUpdateInput = { ...fields };
+    if (fields.config) {
+      const configIssues = apiConfigIssues(existing.provider, fields.config, existing.config);
+      if (configIssues.length > 0) {
+        return sendApiError(reply, 400, 'invalid_body', configIssues.join('; '));
+      }
+      // Keys the API cannot write (e.g. a locally configured binary) survive a config update.
+      patch.config = mergeApiConfig(existing.provider, existing.config, fields.config);
+      const rebind = endpointRebindIssue(existing, patch.config, secret !== undefined);
+      if (rebind) return sendApiError(reply, 400, 'secret_required', rebind);
+    }
     const enabled = fields.enabled ?? existing.enabled;
     if (!enabled) {
       patch.status = 'disabled';
