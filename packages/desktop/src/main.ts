@@ -66,6 +66,15 @@ if (process.env.DAVECODE_DESKTOP_SMOKE_DIR) {
   app.setPath('userData', profile);
 }
 
+/** A convenience for the next launch; failing to save it must not stop this one. */
+function rememberProject(folder: string): void {
+  try {
+    writeFileSync(lastProjectFile(), JSON.stringify(folder));
+  } catch {
+    /* The welcome screen still opens next time. */
+  }
+}
+
 async function stopBackend(): Promise<void> {
   terminals.closeAll();
   gateway = undefined;
@@ -151,7 +160,7 @@ async function openProject(folder: string): Promise<void> {
     if (quitting || !window) return;
     gateway = new URL(url).origin;
     project = folder;
-    if (!smokeOutput) writeFileSync(lastProjectFile(), JSON.stringify(folder));
+    if (!smokeOutput) rememberProject(folder);
     checkpoint('backend-ready');
     await window.loadURL(`${url}/#/terminal`);
     checkpoint('workspace-loaded');

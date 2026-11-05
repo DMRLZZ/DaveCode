@@ -88,10 +88,11 @@ function Pane({
 
     let id: string | undefined;
     let disposed = false;
+    let starting = true;
     // Output can arrive before `open` resolves, so nothing is matched to this pane yet.
     const early: [string, string][] = [];
     const offData = bridge.onData((from, data) => {
-      if (id === undefined) early.push([from, data]);
+      if (starting) early.push([from, data]);
       else if (from === id) term.write(data);
     });
     const offExit = bridge.onExit((from, code) => {
@@ -122,13 +123,18 @@ function Pane({
           return;
         }
         id = opened;
+        starting = false;
         for (const [from, data] of early) if (from === opened) term.write(data);
         early.length = 0;
         setLive(true);
         onWriter(pane.key, (data) => void bridge.write({ id: opened, data }));
         term.focus();
       })
-      .catch(() => term.write('\x1b[31mCould not start this terminal.\x1b[0m\r\n'));
+      .catch(() => {
+        starting = false;
+        early.length = 0;
+        term.write('\x1b[31mCould not start this terminal.\x1b[0m\r\n');
+      });
 
     return () => {
       disposed = true;
@@ -189,7 +195,10 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
     setFocused(key);
   };
   const close = (key: number) => {
-    setPanes((current) => current.filter((pane) => pane.key !== key));
+    const remaining = panes.filter((pane) => pane.key !== key);
+    setPanes(remaining);
+    const last = remaining.at(-1);
+    if (key === focused && last) setFocused(last.key);
   };
   const onWriter = useCallback((key: number, writer: ((data: string) => void) | undefined) => {
     if (writer) writers.current.set(key, writer);
