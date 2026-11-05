@@ -238,7 +238,7 @@ describe('repairDoubleEscaped', () => {
     const code = String.raw`console.log("a\nb");`;
     expect(repairDoubleEscaped(code)).toBe(code);
     expect(repairDoubleEscaped(String.raw`const s = 'x\n';\nlog(s);`)).toBe(
-      String.raw`const s = 'x\n';` + '\nlog(s);',
+      `${String.raw`const s = 'x\n';`}\nlog(s);`,
     );
   });
 

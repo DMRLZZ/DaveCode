@@ -163,7 +163,8 @@ export async function buildGateway(
   // that state-changing /api requests declare a JSON body (a cross-site page cannot send that
   // without a preflight).
   app.addHook('onRequest', async (request, reply) => {
-    const surface = surfaceOf(request.url);
+    // The matched route decides; the URL only picks an error format for unmatched requests.
+    const surface = surfaceOf(request.routeOptions.url ?? request.url);
     const reject = (status: number, code: string, message: string) =>
       surface === 'v1'
         ? sendOpenAIError(reply, status, { message, type: 'invalid_request_error', code })

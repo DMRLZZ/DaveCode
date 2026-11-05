@@ -165,6 +165,19 @@ fields and credential-like `config` keys (`apiKey`, `token`, `password`, `cookie
 with `400 invalid_body`; send credentials in `secret`. `AccountCreate` also accepts
 `enabled?: boolean`.
 
+`config` is an allow-list per provider, not free-form. Through the API you can set `baseUrl`
+(`anthropic`, `openai`, `gemini`, `openai-compatible`; an `http(s)` URL without embedded
+credentials), `models` (list of ids), `defaultModel`, and `includeUsage` (`openai`,
+`openai-compatible`); `gemini-web` takes `models` only. Any other key, notably `binaryPath` and
+`binaryArgs`, is rejected with `400 invalid_body`: executable settings come only from the local
+`davecode accounts add --binary-path` (which writes to the local database) or from editing the
+database as the machine's owner. A `PATCH` that sends `config` replaces the API-writable keys and
+keeps the others; echoing back an unchanged stored value is accepted.
+
+A stored secret is bound to the endpoint it was saved with. A `PATCH` that changes or removes
+`config.baseUrl` on an account where `hasSecret` is `true` is rejected with
+`400 secret_required` unless the same request carries a new `secret`.
+
 `PATCH` with `enabled: false` sets `status: "disabled"`. `enabled: true` or a new `secret`
 resets an enabled account to `active` and clears `cooldownUntil` and `lastError`.
 
@@ -500,7 +513,7 @@ Runner configuration (`runner.*`, all optional):
 | `idlePollMs`                                                   | `30000`                                                                           | Sleep between polls when no task is ready                                                         |
 | `maxIterations`                                                | `40`                                                                              | Model round-trips per implementation or repair pass                                               |
 | `maxTaskTokens`                                                | `1500000`                                                                         | Token budget per task across passes                                                               |
-| `allowedCommands`                                              | `pnpm npm npx node git tsc biome vitest`                                          | Executables `run_command` may start                                                               |
+| `allowedCommands`                                              | `pnpm npm npx node git tsc biome vitest`                                          | Executables `run_command` may start (user config only, see CONFIG.md)                             |
 | `claudeCli.accountId` / `model` / `allowedTools` / `timeoutMs` | first enabled account / CLI default / file tools + common `Bash(...)` / `1800000` | `claude-cli` executor settings                                                                    |
 | `validate.lint` / `typecheck` / `test`                         | unset                                                                             | Quality-gate commands (split into argv, run without a shell)                                      |
 | `judge.kind`                                                   | `none`                                                                            | `none`, `jev` (OpenRouter Decisions API, key from `OPENROUTER_API_KEY` or `JEV_API_KEY`) or `llm` |

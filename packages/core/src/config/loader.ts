@@ -24,9 +24,76 @@ export interface LoadConfigOptions {
   env?: NodeJS.ProcessEnv;
   /** Programmatic overrides applied last (e.g. CLI flags). */
   overrides?: DaveConfigInput;
+  /**
+   * Receives a message for every project-config key that was ignored because project files are
+   * untrusted. Defaults to a one-time process warning on stderr per distinct message.
+   */
+  onWarning?: (message: string) => void;
 }
 
 type PlainObject = Record<string, unknown>;
+
+/**
+ * Keys a repository's `.davecode/config.json` may set. A cloned repository is untrusted input,
+ * so everything not listed here is ignored (with a warning): the bind address and port, the auth
+ * token, `experimental.*` opt-ins, judge endpoints and the runner's command and tool allow-lists.
+ * `true` allows the whole subtree; an object allows only the keys it names.
+ */
+export const PROJECT_SETTABLE_KEYS = {
+  logLevel: true,
+  routing: true,
+  goal: true,
+  runner: {
+    maxRepairCycles: true,
+    branchPrefix: true,
+    baseBranch: true,
+    route: true,
+    executor: true,
+    pullRequests: true,
+    commitBrain: true,
+    commandTimeoutMs: true,
+    idlePollMs: true,
+    maxIterations: true,
+    maxTaskTokens: true,
+    validate: true,
+    claudeCli: { accountId: true, model: true, timeoutMs: true },
+    judge: { kind: true, model: true, threshold: true },
+  },
+} as const;
+
+type SettableTree = { readonly [key: string]: true | SettableTree };
+
+/** Split a project layer into the keys it may set and the dotted paths that were dropped. */
+export function filterProjectLayer(layer: PlainObject): {
+  allowed: PlainObject;
+  dropped: string[];
+} {
+  const dropped: string[] = [];
+  const walk = (value: PlainObject, tree: SettableTree, prefix: string): PlainObject => {
+    const out: PlainObject = {};
+    for (const [key, v] of Object.entries(value)) {
+      const rule = Object.hasOwn(tree, key) ? tree[key] : undefined;
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (rule === true) {
+        out[key] = v;
+      } else if (rule && isPlainObject(v)) {
+        const inner = walk(v, rule, path);
+        if (Object.keys(inner).length > 0) out[key] = inner;
+      } else {
+        dropped.push(path);
+      }
+    }
+    return out;
+  };
+  return { allowed: walk(layer, PROJECT_SETTABLE_KEYS as SettableTree, ''), dropped };
+}
+
+const warned = new Set<string>();
+function defaultWarn(message: string): void {
+  if (warned.has(message)) return;
+  warned.add(message);
+  process.emitWarning(message, 'DaveCodeConfigWarning');
+}
 
 function isPlainObject(value: unknown): value is PlainObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -43,7 +110,7 @@ export function deepMerge(base: PlainObject, override: PlainObject): PlainObject
   return out;
 }
 
-function readLayer(path: string): PlainObject | undefined {
+function readLayer(path: string, project?: (dropped: string[]) => void): PlainObject | undefined {
   let raw: string;
   try {
     raw = readFileSync(path, 'utf8');
@@ -58,10 +125,16 @@ function readLayer(path: string): PlainObject | undefined {
     throw new ConfigError(path, `malformed JSON: ${(err as Error).message}`, { cause: err });
   }
   if (!isPlainObject(parsed)) throw new ConfigError(path, 'expected a JSON object');
+  let layer: PlainObject = parsed;
+  if (project) {
+    const { allowed, dropped } = filterProjectLayer(parsed);
+    if (dropped.length > 0) project(dropped);
+    layer = allowed;
+  }
   // Validate each layer on its own so errors point at the file that caused them.
-  const result = configSchema.safeParse(parsed);
+  const result = configSchema.safeParse(layer);
   if (!result.success) throw new ConfigError(path, z.prettifyError(result.error));
-  return parsed;
+  return layer;
 }
 
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
@@ -125,7 +198,8 @@ export function envLayer(env: NodeJS.ProcessEnv): PlainObject {
  * Resolve the effective configuration. Later layers win:
  * built-in defaults ← `~/.davecode/config.json` ← `<project>/.davecode/config.json`
  * ← `DAVECODE_*` env vars ← `overrides`. Objects deep-merge, arrays replace.
- * Missing files are skipped; invalid ones throw a {@link ConfigError} naming the file.
+ * Project files can only set the keys in {@link PROJECT_SETTABLE_KEYS}; others are ignored with a
+ * warning. Missing files are skipped; invalid ones throw a {@link ConfigError} naming the file.
  */
 export function loadConfig(options: LoadConfigOptions = {}): DaveConfig {
   const env = options.env ?? process.env;
@@ -135,7 +209,14 @@ export function loadConfig(options: LoadConfigOptions = {}): DaveConfig {
   const globalLayer = readLayer(globalPaths(home).config);
   if (globalLayer) merged = deepMerge(merged, globalLayer);
   if (options.projectRoot) {
-    const projectLayer = readLayer(projectPaths(options.projectRoot).config);
+    const projectFile = projectPaths(options.projectRoot).config;
+    const warn = options.onWarning ?? defaultWarn;
+    const projectLayer = readLayer(projectFile, (dropped) =>
+      warn(
+        `Ignored ${dropped.join(', ')} in ${projectFile}: project config cannot set these keys. ` +
+          'Set them in your user config (~/.davecode/config.json) or with DAVECODE_* environment variables.',
+      ),
+    );
     if (projectLayer) merged = deepMerge(merged, projectLayer);
   }
   merged = deepMerge(merged, envLayer(env));
