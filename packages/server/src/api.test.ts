@@ -89,7 +89,7 @@ describe('/api/accounts', () => {
         priority: 10,
         weight: 2,
         limits: { tpm: 1000, tokens5h: 50_000 },
-        config: { models: ['claude-x'], maxTokens: 4096 },
+        config: { models: ['claude-x'], defaultModel: 'claude-x' },
         secret: SECRET,
       },
     });
@@ -103,7 +103,7 @@ describe('/api/accounts', () => {
       priority: 10,
       weight: 2,
       limits: { tpm: 1000, tokens5h: 50_000 },
-      config: { models: ['claude-x'], maxTokens: 4096 },
+      config: { models: ['claude-x'], defaultModel: 'claude-x' },
       status: 'active',
       enabled: true,
     });

@@ -103,14 +103,14 @@ describe('loadConfig', () => {
 
   it('reports schema violations with the file path and field', () => {
     const path = join(project, '.davecode', 'config.json');
-    writeJson(path, { server: { port: 'nope' } });
+    writeJson(path, { runner: { maxRepairCycles: 'nope' } });
     try {
       loadConfig({ home, projectRoot: project, env: {} });
       expect.unreachable();
     } catch (err) {
       expect(err).toBeInstanceOf(ConfigError);
       expect((err as ConfigError).source).toBe(path);
-      expect((err as Error).message).toContain('server.port');
+      expect((err as Error).message).toContain('runner.maxRepairCycles');
     }
   });
 

@@ -87,7 +87,6 @@ export {
   type ProjectPaths,
   projectPaths,
 } from './paths';
-// --- providers ---
 export {
   AnthropicProvider,
   ClaudeCliProvider,
@@ -103,6 +102,15 @@ export {
   OpenAIProvider,
   type OpenAIProviderOptions,
 } from './providers';
+// --- providers ---
+export {
+  API_CONFIG_KEYS,
+  apiConfigIssues,
+  ENDPOINT_CONFIG_KEYS,
+  endpointChanged,
+  endpointRebindIssue,
+  mergeApiConfig,
+} from './providers/account-config';
 export * from './types';
 export { VERSION } from './version';
 
@@ -113,8 +121,10 @@ export {
   ConfigError,
   deepMerge,
   envLayer,
+  filterProjectLayer,
   type LoadConfigOptions,
   loadConfig,
+  PROJECT_SETTABLE_KEYS,
 } from './config/loader';
 export { type CreateEngineOptions, createEngine, type Engine } from './engine';
 export {

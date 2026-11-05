@@ -180,7 +180,10 @@ export async function accountsAdd(
   flags: AddCommandFlags,
   deps: AccountsDeps = {},
 ): Promise<number> {
-  return withBackend(ctx, flags, deps, async (backend) => {
+  // A custom binary can only be set by the machine's owner, never through the gateway's HTTP
+  // API, so it is written straight to the local database.
+  const backendFlags = flags.binaryPath ? { ...flags, local: true } : flags;
+  return withBackend(ctx, backendFlags, deps, async (backend) => {
     const existing = await backend.list();
     const interactive = ctx.interactive && !flags.yes && !flags.secretStdin;
     const { theme, errTheme } = ctx;

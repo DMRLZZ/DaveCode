@@ -96,6 +96,18 @@ function AccountEditor({
     if (!Number.isFinite(w) || w <= 0) next.weight = 'Number above 0.';
     if (account.provider === 'openai-compatible' && !isValidUrl(baseUrl.trim()))
       next.baseUrl = 'Enter an http(s) URL.';
+    if (
+      account.provider === 'openai-compatible' &&
+      account.hasSecret &&
+      !secret.trim() &&
+      baseUrl.trim().replace(/\/+$/, '') !==
+        (typeof account.config.baseUrl === 'string' ? account.config.baseUrl : '').replace(
+          /\/+$/,
+          '',
+        )
+    ) {
+      next.secret = 'Enter the API key again to point this account at a different URL.';
+    }
     const parsed = parseLimits(limits);
     const parsedPlan = parseSubscription(plan);
     setErrors(next);
@@ -260,6 +272,7 @@ function AccountEditor({
       {(meta.auth === 'api-key' || meta.auth === 'optional-key') && (
         <Field
           label={`Replace ${(meta.secretLabel ?? 'secret').replace(' (optional)', '')}`}
+          error={errors.secret}
           hint={
             account.hasSecret === false
               ? 'No secret stored yet. Write-only: it is encrypted at rest and never displayed.'
