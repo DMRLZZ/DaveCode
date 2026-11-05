@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { loadMasterKey } from '../identity/keyring';
@@ -9,6 +9,17 @@ import { type AccountClient, AccountError, type AccountSession } from './client'
 const AAD = Buffer.from('davecode-account', 'utf8');
 /** Refresh this long before the access token expires. */
 const REFRESH_MARGIN_MS = 60_000;
+const LOCK_STALE_MS = 60_000;
+const LOCK_WAIT_MS = 30_000;
+const LOCK_POLL_MS = 50;
+/** Errors from the service that mean "this refresh token is dead", not "try again later". */
+const INVALID_TOKEN_CODES = new Set([
+  'invalid_grant',
+  'refresh_token_not_found',
+  'refresh_token_already_used',
+  'session_not_found',
+  'session_expired',
+]);
 
 const fileSchema = z.object({
   v: z.literal(1),
@@ -99,20 +110,74 @@ export class AccountStore {
    * or when the service revoked the session; offline, an unexpired session is still returned.
    */
   async current(client: AccountClient, now = Date.now()): Promise<AccountSession | undefined> {
-    const session = this.load();
-    if (!session) return undefined;
-    if (session.expiresAt - REFRESH_MARGIN_MS > now) return session;
+    const first = this.load();
+    if (!first) return undefined;
+    if (first.expiresAt - REFRESH_MARGIN_MS > now) return first;
+    // One process refreshes at a time: the others wait, then pick up what it saved.
+    const release = await this.lock();
     try {
-      const fresh = await client.refresh(session.refreshToken);
-      this.save(fresh);
-      return fresh;
-    } catch (err) {
-      if (err instanceof AccountError && err.status !== undefined && err.status < 500) {
-        this.clear();
-        return undefined;
+      const session = this.load();
+      if (!session) return undefined;
+      if (session.expiresAt - REFRESH_MARGIN_MS > now) return session;
+      try {
+        const fresh = await client.refresh(session.refreshToken);
+        this.save(fresh);
+        return fresh;
+      } catch (err) {
+        if (isInvalidToken(err)) {
+          // Only the token we used is dead; a newer one saved meanwhile is not ours to clear.
+          if (this.load()?.refreshToken === session.refreshToken) this.clear();
+          return this.load();
+        }
+        // Unreachable, rate limited or failing service: keep the cached identity and try later.
+        return session;
       }
-      // Unreachable service: keep working with the cached identity until it can refresh.
-      return session;
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * A cross-process lock: a file created exclusively next to account.json. A lock older than
+   * LOCK_STALE_MS belongs to a process that died, and is taken over. After LOCK_WAIT_MS the
+   * refresh goes ahead without it (the service tolerates two refreshes racing).
+   */
+  private async lock(): Promise<() => void> {
+    const path = `${this.path}.lock`;
+    const owner = `${process.pid}:${randomBytes(8).toString('hex')}`;
+    mkdirSync(dirname(path), { recursive: true });
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    for (;;) {
+      try {
+        writeFileSync(path, owner, { flag: 'wx', mode: 0o600 });
+        return () => {
+          try {
+            if (readFileSync(path, 'utf8') === owner) rmSync(path, { force: true });
+          } catch {
+            // Already gone or taken over as stale: nothing of ours to remove.
+          }
+        };
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'EEXIST' && !isWindowsBusy(err))
+          return () => undefined;
+      }
+      try {
+        if (Date.now() - statSync(path).mtimeMs > LOCK_STALE_MS) rmSync(path, { force: true });
+      } catch {
+        // Released between the check and the stat: try again straight away.
+      }
+      if (Date.now() >= deadline) return () => undefined;
+      await new Promise((resolve) => setTimeout(resolve, LOCK_POLL_MS));
     }
   }
 }
+
+/** The service said this refresh token is no good (as opposed to being busy or down). */
+function isInvalidToken(err: unknown): boolean {
+  if (!(err instanceof AccountError) || err.status === undefined) return false;
+  if (err.code) return INVALID_TOKEN_CODES.has(err.code);
+  return err.status === 400 || err.status === 401;
+}
+
+const isWindowsBusy = (err: unknown) =>
+  ['EPERM', 'EBUSY'].includes((err as NodeJS.ErrnoException).code ?? '');

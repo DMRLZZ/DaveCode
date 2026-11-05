@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -144,6 +144,78 @@ describe('AccountStore', () => {
     const down = upstream(() => ({ status: 503, body: {} }));
     const kept = await store.current(new AccountClient(service, { fetch: down.fetch }), 1_000);
     expect(kept?.user.email).toBe('dev@example.com');
+  });
+
+  it('keeps the session when the service rate limits or fails the refresh', async () => {
+    for (const status of [429, 408, 500]) {
+      const store = new AccountStore(home, {});
+      store.save({ ...session, expiresAt: 1_000 });
+      const busy = upstream(() => ({ status, body: { error: 'over_request_rate_limit' } }));
+      const kept = await store.current(new AccountClient(service, { fetch: busy.fetch }), 1_000);
+      expect(kept?.refreshToken).toBe('secret-refresh');
+      expect(store.load()?.refreshToken).toBe('secret-refresh');
+    }
+  });
+
+  it('clears the session on a definitive invalid_grant answer', async () => {
+    const store = new AccountStore(home, {});
+    store.save({ ...session, expiresAt: 1_000 });
+    const dead = upstream(() => ({ status: 400, body: { error: 'invalid_grant' } }));
+    expect(
+      await store.current(new AccountClient(service, { fetch: dead.fetch }), 1_000),
+    ).toBeUndefined();
+    expect(store.load()).toBeUndefined();
+  });
+
+  it('refreshes once when two processes need a refresh at the same time', async () => {
+    const a = new AccountStore(home, {});
+    const b = new AccountStore(home, {});
+    a.save({ ...session, expiresAt: 1_000 });
+    let refreshes = 0;
+    const slow = vi.fn(async () => {
+      refreshes++;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return new Response(JSON.stringify(sessionReply()), { status: 200 });
+    });
+    const clientFor = () => new AccountClient(service, { fetch: slow as unknown as typeof fetch });
+    const [first, second] = await Promise.all([
+      a.current(clientFor(), 1_000),
+      b.current(clientFor(), 1_000),
+    ]);
+    // The second process waited, re-read the file and used the fresh session.
+    expect(refreshes).toBe(1);
+    expect(first?.accessToken).toBe('access');
+    expect(second?.accessToken).toBe('access');
+    expect(existsSync(`${accountFile(home)}.lock`)).toBe(false);
+  });
+
+  it('does not clear a session another process already replaced', async () => {
+    const store = new AccountStore(home, {});
+    store.save({ ...session, expiresAt: 1_000 });
+    const dead = vi.fn(async () => {
+      // Meanwhile another process signed in again and saved a new token.
+      new AccountStore(home, {}).save({ ...session, refreshToken: 'newer', expiresAt: 9e12 });
+      return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+    });
+    const result = await store.current(
+      new AccountClient(service, { fetch: dead as unknown as typeof fetch }),
+      1_000,
+    );
+    expect(result?.refreshToken).toBe('newer');
+    expect(store.load()?.refreshToken).toBe('newer');
+  });
+
+  it('takes over a lock left behind by a process that died', async () => {
+    const store = new AccountStore(home, {});
+    store.save({ ...session, expiresAt: 1_000 });
+    const lock = `${accountFile(home)}.lock`;
+    writeFileSync(lock, 'dead-process');
+    const old = new Date(Date.now() - 5 * 60_000);
+    utimesSync(lock, old, old);
+    const ok = upstream(() => ({ body: sessionReply() }));
+    const fresh = await store.current(new AccountClient(service, { fetch: ok.fetch }), 1_000);
+    expect(fresh?.accessToken).toBe('access');
+    expect(existsSync(lock)).toBe(false);
   });
 });
 

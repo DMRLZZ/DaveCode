@@ -23,6 +23,8 @@ export const OAUTH_STATE_TTL = 10 * MINUTE;
 export const AUTH_CODE_TTL = 5 * MINUTE;
 export const VERIFY_TTL = 24 * 60 * MINUTE;
 export const REFRESH_TTL = 60 * 24 * 60 * MINUTE;
+/** A just-rotated refresh token still works this long, for a second process that raced the first. */
+export const REFRESH_GRACE = 30_000;
 
 export class Store {
   constructor(
@@ -215,8 +217,12 @@ export class Store {
   }
 
   /**
-   * Rotate a refresh token: the old one is revoked. Presenting an already revoked token revokes
-   * its whole session, since it means the token was copied.
+   * Rotate a refresh token: the old one is retired. Presenting a retired token revokes its whole
+   * session, since it means the token was copied, except within REFRESH_GRACE of its rotation:
+   * two processes of the same user refreshing at once both succeed.
+   *
+   * `revoked` is 0 for a live token, the rotation time (ms) for a rotated one, and 1 for a token
+   * revoked with its session (also how rows from before the grace window read: long ago).
    */
   async rotateRefresh(
     token: string,
@@ -234,12 +240,15 @@ export class Store {
       }>();
     if (!row) return null;
     if (row.revoked) {
+      if (row.revoked > 1 && this.now() - row.revoked < REFRESH_GRACE) {
+        return row.expires_at > this.now() ? row : null;
+      }
       await this.revokeSession(row.session_id);
       return null;
     }
     await this.db
-      .prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?')
-      .bind(hash)
+      .prepare('UPDATE refresh_tokens SET revoked = ? WHERE token_hash = ?')
+      .bind(this.now(), hash)
       .run();
     return row.expires_at > this.now() ? row : null;
   }

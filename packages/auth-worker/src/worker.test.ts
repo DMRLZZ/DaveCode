@@ -164,7 +164,8 @@ describe('auth worker with the real CLI client', () => {
 
     const refreshed = await client().refresh(session.refreshToken);
     expect(refreshed.user.email).toBe('octo@example.com');
-    // A rotated refresh token cannot be used twice; reusing it ends the session.
+    // A rotated refresh token cannot be used twice for long; late reuse ends the session.
+    clock += 31_000;
     await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({ status: 400 });
     await expect(client().refresh(refreshed.refreshToken)).rejects.toMatchObject({ status: 400 });
     await login.close();
@@ -357,6 +358,43 @@ describe('OAuth sign-in with an existing email account', () => {
     const session = await oauthSession('github');
     const withPassword = await client().signInWithPassword('octo@example.com', 'my-own-password-1');
     expect(withPassword.user.id).toBe(session.user.id);
+  });
+});
+
+describe('refresh token rotation', () => {
+  it('lets a second process use the just-rotated token, then revokes real reuse', async () => {
+    const session = await oauthSession('github');
+    const first = await client().refresh(session.refreshToken);
+    // A concurrent process still holding the old token succeeds within the grace window.
+    clock += 5_000;
+    const second = await client().refresh(session.refreshToken);
+    expect(second.user.id).toBe(session.user.id);
+    expect(second.refreshToken).not.toBe(first.refreshToken);
+    // Both new tokens belong to the live session.
+    await client().refresh(first.refreshToken);
+    await client().refresh(second.refreshToken);
+
+    // After the window, presenting the old token is reuse: the whole session is revoked.
+    clock += 31_000;
+    await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_grant',
+    });
+    await expect(client().refresh(second.refreshToken)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('does not extend the grace window for tokens revoked by logout', async () => {
+    const session = await oauthSession('github');
+    const first = await client().refresh(session.refreshToken);
+    await client().signOut(first.accessToken);
+    await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({ status: 400 });
+    await expect(client().refresh(first.refreshToken)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('treats a token rotated before the grace window existed as plain reuse', async () => {
+    const session = await oauthSession('github');
+    await env.DB.prepare('UPDATE refresh_tokens SET revoked = 1').run();
+    await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({ status: 400 });
   });
 });
 
