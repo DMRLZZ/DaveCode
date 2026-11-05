@@ -15,7 +15,8 @@ Cloudflare Workers with a D1 database. The browser only ever sees pages on
    sign-up emails a link (`/auth/v1/verify`) that does the same once the address is confirmed.
 4. The CLI exchanges the code at `/auth/v1/token?grant_type=pkce`, sends the browser to
    `/login/done` (or `/login/failed`), stores the session encrypted and refreshes it with
-   `grant_type=refresh_token` (rotating; reuse revokes the session).
+   `grant_type=refresh_token` (rotating; reusing a token more than 30 seconds after it was
+   rotated revokes the session, while two processes refreshing together both succeed).
 
 Only loopback redirects are accepted, codes and links are single use and expire, every token is
 stored hashed, passwords use PBKDF2-SHA256, and sign-in and sign-up are rate limited per IP.
@@ -28,7 +29,8 @@ npx wrangler deploy                            # from packages/auth-worker
 ```
 
 The D1 database id is in `wrangler.jsonc`. On a new database, create the tables first (the
-statements in `src/schema.ts`, idempotent). Secrets are never committed:
+statements in `src/schema.ts`, idempotent). On an existing database, run any new file in
+`migrations/` (in order, once) **before** deploying the worker that needs it. Secrets are never committed:
 
 | Secret                                     | Where it comes from                                                                                                              |
 | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |

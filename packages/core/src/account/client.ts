@@ -49,6 +49,8 @@ export class AccountError extends Error {
   constructor(
     message: string,
     readonly status?: number,
+    /** The service's machine-readable error, such as `invalid_grant`. */
+    readonly code?: string,
   ) {
     super(message);
     this.name = 'AccountError';
@@ -233,6 +235,7 @@ export class AccountClient {
       throw new AccountError(
         detail ?? `Sign-in failed (HTTP ${response.status}).`,
         response.status,
+        error.success ? error.data.error : undefined,
       );
     }
     return raw;

@@ -55,31 +55,46 @@ export function escapeHtml(text: string): string {
   );
 }
 
-function shell(title: string, body: string): Response {
+function shell(title: string, body: string, redirectTo?: string): Response {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>${escapeHtml(title)}</title>
+<meta name="referrer" content="same-origin"><title>${escapeHtml(title)}</title>
 <style>${STYLE}</style></head><body><main>
 <span class="mark">${MARK}</span>${body}</main></body></html>`;
   return new Response(html, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'no-store',
-      'Content-Security-Policy': PAGE_POLICY,
-      'Referrer-Policy': 'no-referrer',
+      'Content-Security-Policy': pagePolicy(redirectTo),
+      'Referrer-Policy': REFERRER_POLICY,
       'X-Content-Type-Options': 'nosniff',
     },
   });
 }
 
-/** No scripts or external resources; forms only post back here. */
-const PAGE_POLICY = [
-  "default-src 'none'",
-  "style-src 'unsafe-inline'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "base-uri 'none'",
-].join('; ');
+/**
+ * The page's own form POST must carry a real `Origin` header (the worker checks it), which
+ * browsers withhold under `no-referrer`. `same-origin` sends it, and sends no referrer at all to
+ * other sites, so the query string (the CLI's callback and challenge) never leaves this site.
+ */
+export const REFERRER_POLICY = 'same-origin';
+
+const LOOPBACK_ORIGIN = /^(http:\/\/(?:127\.0\.0\.1|localhost):\d{1,5})\//;
+
+/**
+ * No scripts or external resources. Forms post back here, and the sign-in form's 303 may
+ * continue to the CLI's own loopback listener (that exact host and port, nothing else).
+ */
+export function pagePolicy(redirectTo?: string): string {
+  const loopback = redirectTo ? LOOPBACK_ORIGIN.exec(redirectTo)?.[1] : undefined;
+  return [
+    "default-src 'none'",
+    "style-src 'unsafe-inline'",
+    `form-action 'self'${loopback ? ` ${loopback}` : ''}`,
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+  ].join('; ');
+}
 
 export interface LoginForm {
   /** The CLI's loopback callback and PKCE challenge, carried through every step. */
@@ -125,7 +140,7 @@ export function loginPage(form: LoginForm): Response {
 ${buttons ? `<div class="stack">${buttons}</div>${email ? '<p class="or">or</p>' : ''}` : ''}${email}
 ${form.error ? `<p class="status error" role="alert">${escapeHtml(form.error)}</p>` : ''}
 <p class="foot">You will return to your terminal when you are signed in.</p>`;
-  return shell(up ? 'Create account · DaveCode' : 'Sign in · DaveCode', body);
+  return shell(up ? 'Create account · DaveCode' : 'Sign in · DaveCode', body, form.redirectTo);
 }
 
 export function messagePage(title: string, message: string): Response {

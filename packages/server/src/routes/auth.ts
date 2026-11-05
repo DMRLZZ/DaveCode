@@ -43,7 +43,7 @@ export function registerAuthRoutes(app: FastifyInstance, login?: LoginService): 
       .send();
   });
   for (const provider of ['google', 'github'] as const satisfies readonly LoginProvider[]) {
-    app.get(`/api/auth/${provider}/start`, async (_request, reply) => {
+    app.get(`/api/auth/${provider}/start`, async (request, reply) => {
       if (!login?.options.providers[provider])
         return sendApiError(
           reply,
@@ -52,7 +52,7 @@ export function registerAuthRoutes(app: FastifyInstance, login?: LoginService): 
           'This sign-in provider is not configured.',
         );
       try {
-        const flow = login.begin(provider);
+        const flow = login.begin(provider, request.ip);
         return reply
           .header('Cache-Control', 'no-store')
           .header('Referrer-Policy', 'no-referrer')

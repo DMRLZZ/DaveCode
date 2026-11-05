@@ -23,6 +23,8 @@ export const OAUTH_STATE_TTL = 10 * MINUTE;
 export const AUTH_CODE_TTL = 5 * MINUTE;
 export const VERIFY_TTL = 24 * 60 * MINUTE;
 export const REFRESH_TTL = 60 * 24 * 60 * MINUTE;
+/** A just-rotated refresh token still works this long, for a second process that raced the first. */
+export const REFRESH_GRACE = 30_000;
 
 export class Store {
   constructor(
@@ -138,27 +140,69 @@ export class Store {
     return row && row.expires_at > this.now() ? row : null;
   }
 
-  async saveVerification(userId: string, redirectTo: string, challenge: string): Promise<string> {
+  /**
+   * Remember a sign-up link. Only the newest link for an account works: earlier ones are removed,
+   * and the password chosen with this sign-up is applied only when this link is confirmed.
+   */
+  async saveVerification(
+    userId: string,
+    redirectTo: string,
+    challenge: string,
+    passwordHash: string,
+  ): Promise<string> {
     const token = randomToken();
+    await this.clearVerifications(userId);
     await this.db
       .prepare(
-        'INSERT INTO email_verifications (token_hash, user_id, redirect_to, challenge, expires_at) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO email_verifications (token_hash, user_id, redirect_to, challenge, expires_at, password_hash) VALUES (?, ?, ?, ?, ?, ?)',
       )
-      .bind(await sha256(token), userId, redirectTo, challenge, this.now() + VERIFY_TTL)
+      .bind(
+        await sha256(token),
+        userId,
+        redirectTo,
+        challenge,
+        this.now() + VERIFY_TTL,
+        passwordHash,
+      )
       .run();
     return token;
   }
 
-  async takeVerification(
-    token: string,
-  ): Promise<{ user_id: string; redirect_to: string; challenge: string } | null> {
+  async clearVerifications(userId: string): Promise<void> {
+    await this.db.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(userId).run();
+  }
+
+  /** An account that was never confirmed gets no usable password and no pending links. */
+  async resetUnconfirmed(userId: string): Promise<void> {
+    await this.db
+      .prepare('UPDATE users SET password_hash = NULL WHERE id = ? AND email_verified = 0')
+      .bind(userId)
+      .run();
+    await this.clearVerifications(userId);
+  }
+
+  async takeVerification(token: string): Promise<{
+    user_id: string;
+    redirect_to: string;
+    challenge: string;
+    /** Null for links created before the password moved onto the link. */
+    password_hash: string | null;
+  } | null> {
     const hash = await sha256(token);
     const row = await this.db
       .prepare('SELECT * FROM email_verifications WHERE token_hash = ?')
       .bind(hash)
-      .first<{ user_id: string; redirect_to: string; challenge: string; expires_at: number }>();
+      .first<{
+        user_id: string;
+        redirect_to: string;
+        challenge: string;
+        expires_at: number;
+        password_hash?: string | null;
+      }>();
     await this.db.prepare('DELETE FROM email_verifications WHERE token_hash = ?').bind(hash).run();
-    return row && row.expires_at > this.now() ? row : null;
+    return row && row.expires_at > this.now()
+      ? { ...row, password_hash: row.password_hash ?? null }
+      : null;
   }
 
   async issueRefresh(userId: string, provider: string, sessionId: string): Promise<string> {
@@ -173,8 +217,12 @@ export class Store {
   }
 
   /**
-   * Rotate a refresh token: the old one is revoked. Presenting an already revoked token revokes
-   * its whole session, since it means the token was copied.
+   * Rotate a refresh token: the old one is retired. Presenting a retired token revokes its whole
+   * session, since it means the token was copied, except within REFRESH_GRACE of its rotation:
+   * two processes of the same user refreshing at once both succeed.
+   *
+   * `revoked` is 0 for a live token, the rotation time (ms) for a rotated one, and 1 for a token
+   * revoked with its session (also how rows from before the grace window read: long ago).
    */
   async rotateRefresh(
     token: string,
@@ -192,12 +240,15 @@ export class Store {
       }>();
     if (!row) return null;
     if (row.revoked) {
+      if (row.revoked > 1 && this.now() - row.revoked < REFRESH_GRACE) {
+        return row.expires_at > this.now() ? row : null;
+      }
       await this.revokeSession(row.session_id);
       return null;
     }
     await this.db
-      .prepare('UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?')
-      .bind(hash)
+      .prepare('UPDATE refresh_tokens SET revoked = ? WHERE token_hash = ?')
+      .bind(this.now(), hash)
       .run();
     return row.expires_at > this.now() ? row : null;
   }

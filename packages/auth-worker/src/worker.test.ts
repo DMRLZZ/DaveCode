@@ -1,7 +1,7 @@
 import { AccountClient, pkcePair, startAccountLogin } from '@davecode/core';
 import Database from 'better-sqlite3';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { hashPassword, signJwt, verifyJwt, verifyPassword } from './crypto';
+import { hashPassword, sha256, signJwt, verifyJwt, verifyPassword } from './crypto';
 import { type Env, handle, migrate, type SendEmail } from './index';
 import type { D1Like, D1Statement } from './store';
 
@@ -164,7 +164,8 @@ describe('auth worker with the real CLI client', () => {
 
     const refreshed = await client().refresh(session.refreshToken);
     expect(refreshed.user.email).toBe('octo@example.com');
-    // A rotated refresh token cannot be used twice; reusing it ends the session.
+    // A rotated refresh token cannot be used twice for long; late reuse ends the session.
+    clock += 31_000;
     await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({ status: 400 });
     await expect(client().refresh(refreshed.refreshToken)).rejects.toMatchObject({ status: 400 });
     await login.close();
@@ -304,5 +305,207 @@ describe('auth worker with the real CLI client', () => {
     const late = await call(`/auth/v1/callback/github?code=c&state=${state}`);
     expect(await late.text()).toContain('Sign-in expired');
     await login.close();
+  });
+});
+
+const REDIRECT = 'http://127.0.0.1:5555/s/x/callback';
+
+async function signUp(email: string, password: string): Promise<string> {
+  const { challenge } = pkcePair();
+  await client().signUp(email, password, REDIRECT, challenge);
+  const link = new URL(mail.at(-1)?.text.match(/https:\S+/)?.[0] ?? '');
+  return link.pathname + link.search;
+}
+
+const wrongPassword = { message: 'Invalid email or password.' };
+
+/** Complete a Google or GitHub sign-in at the worker and return the CLI's session. */
+async function oauthSession(provider: 'google' | 'github') {
+  const { challenge, verifier } = pkcePair();
+  const authorize = await call(
+    `/auth/v1/authorize?provider=${provider}&redirect_to=${encodeURIComponent(REDIRECT)}&code_challenge=${challenge}`,
+  );
+  const state = new URL(authorize.headers.get('location') ?? '').searchParams.get('state');
+  const back = await call(`/auth/v1/callback/${provider}?code=c&state=${state}`);
+  const code = new URL(back.headers.get('location') ?? '').searchParams.get('code') ?? '';
+  return client().exchangeCode(code, verifier);
+}
+
+describe('OAuth sign-in with an existing email account', () => {
+  it('signs in with Google and with GitHub for a new address', async () => {
+    const google = await oauthSession('google');
+    expect(google.user).toMatchObject({ email: 'octo@example.com', provider: 'google' });
+    const github = await oauthSession('github');
+    expect(github.user.id).toBe(google.user.id);
+  });
+
+  it('drops the password and pending links of an account that was never confirmed', async () => {
+    const link = await signUp('octo@example.com', 'someone-elses-pw-1');
+    const session = await oauthSession('google');
+    expect(session.user.email).toBe('octo@example.com');
+    // Only the provider identity signs in now.
+    await expect(
+      client().signInWithPassword('octo@example.com', 'someone-elses-pw-1'),
+    ).rejects.toMatchObject(wrongPassword);
+    expect(await (await call(link)).text()).toContain('Link expired');
+    expect((await oauthSession('github')).user.id).toBe(session.user.id);
+  });
+
+  it('keeps the password of a confirmed account that links a provider', async () => {
+    expect(
+      await (await call(await signUp('octo@example.com', 'my-own-password-1'))).text(),
+    ).toContain('Email confirmed');
+    const session = await oauthSession('github');
+    const withPassword = await client().signInWithPassword('octo@example.com', 'my-own-password-1');
+    expect(withPassword.user.id).toBe(session.user.id);
+  });
+});
+
+describe('refresh token rotation', () => {
+  it('lets a second process use the just-rotated token, then revokes real reuse', async () => {
+    const session = await oauthSession('github');
+    const first = await client().refresh(session.refreshToken);
+    // A concurrent process still holding the old token succeeds within the grace window.
+    clock += 5_000;
+    const second = await client().refresh(session.refreshToken);
+    expect(second.user.id).toBe(session.user.id);
+    expect(second.refreshToken).not.toBe(first.refreshToken);
+    // Both new tokens belong to the live session.
+    await client().refresh(first.refreshToken);
+    await client().refresh(second.refreshToken);
+
+    // After the window, presenting the old token is reuse: the whole session is revoked.
+    clock += 31_000;
+    await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_grant',
+    });
+    await expect(client().refresh(second.refreshToken)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('does not extend the grace window for tokens revoked by logout', async () => {
+    const session = await oauthSession('github');
+    const first = await client().refresh(session.refreshToken);
+    await client().signOut(first.accessToken);
+    await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({ status: 400 });
+    await expect(client().refresh(first.refreshToken)).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('treats a token rotated before the grace window existed as plain reuse', async () => {
+    const session = await oauthSession('github');
+    await env.DB.prepare('UPDATE refresh_tokens SET revoked = 1').run();
+    await expect(client().refresh(session.refreshToken)).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe('hosted sign-in page headers', () => {
+  it('keeps a same-origin Origin on the form post and does not leak the query string', async () => {
+    const login = await startAccountLogin({ client: client() });
+    const response = await call(pathOf(login.url));
+    // `no-referrer` makes Chrome send `Origin: null` on the form post, which is rejected.
+    expect(response.headers.get('Referrer-Policy')).toBe('same-origin');
+    expect(await response.text()).toContain('<meta name="referrer" content="same-origin">');
+    await login.close();
+  });
+
+  it('lets the form continue only to the loopback listener of this sign-in', async () => {
+    const login = await startAccountLogin({ client: client() });
+    const redirect = new URL(new URL(login.url).searchParams.get('redirect_to') ?? '');
+    const policy = (await call(pathOf(login.url))).headers.get('Content-Security-Policy') ?? '';
+    const directive = (name: string) =>
+      policy
+        .split('; ')
+        .find((d) => d.startsWith(`${name} `))
+        ?.split(' ')
+        .slice(1);
+    expect(directive('form-action')).toEqual(["'self'", `http://127.0.0.1:${redirect.port}`]);
+    expect(directive('default-src')).toEqual(["'none'"]);
+    expect(policy).not.toMatch(/\*|https?:\/\/(?!127\.0\.0\.1)/);
+    // Pages that have no form to a listener keep the strict policy.
+    const done = await call('/login/done');
+    expect(done.headers.get('Content-Security-Policy')).toContain("form-action 'self';");
+    expect(done.headers.get('Referrer-Policy')).toBe('same-origin');
+    await login.close();
+  });
+
+  it('accepts the Origin a browser sends and rejects a missing, null or foreign one', async () => {
+    const login = await startAccountLogin({ client: client() });
+    expect((await submit(login.url, { mode: 'signup' })).status).toBe(200);
+    expect(mail).toHaveLength(1);
+    for (const origin of ['null', 'https://evil.test', 'https://auth.davecode.test.evil.test']) {
+      expect(await (await submit(login.url, { mode: 'signup' }, origin)).text()).toContain(
+        'Sign-in link not valid',
+      );
+    }
+    expect(mail).toHaveLength(1);
+    await login.close();
+  });
+
+  it('refuses a redirect target that is not the CLI loopback', async () => {
+    const { challenge } = pkcePair();
+    for (const target of [
+      'https://evil.test/cb',
+      'http://127.0.0.1.evil.test:5555/cb',
+      'http://127.0.0.1:5555@evil.test/cb',
+      'http://evil.test:5555/cb',
+    ]) {
+      const loginUrl = `${ORIGIN}/login?redirect_to=${encodeURIComponent(target)}&code_challenge=${challenge}`;
+      const page = await call(pathOf(loginUrl));
+      expect(await page.text()).toContain('Sign-in link not valid');
+      expect(page.headers.get('Content-Security-Policy')).not.toContain('evil');
+      expect(await (await submit(loginUrl, { mode: 'signin' })).text()).toContain(
+        'Sign-in link not valid',
+      );
+    }
+  });
+});
+
+describe('sign-up links', () => {
+  it('applies the password of the link that is opened, and only the latest link works', async () => {
+    const first = await signUp('dev@example.com', 'first-password-1');
+    const second = await signUp('dev@example.com', 'second-password-2');
+    // The second sign-up did not replace the stored password, and nothing signs in unconfirmed.
+    await expect(
+      client().signInWithPassword('dev@example.com', 'second-password-2'),
+    ).rejects.toMatchObject(wrongPassword);
+
+    expect(await (await call(first)).text()).toContain('Link expired');
+    // The older link confirmed nothing.
+    await expect(
+      client().signInWithPassword('dev@example.com', 'first-password-1'),
+    ).rejects.toMatchObject({ message: 'Confirm your email first, using the link we sent you.' });
+
+    expect(await (await call(second)).text()).toContain('Email confirmed');
+    const ok = await client().signInWithPassword('dev@example.com', 'second-password-2');
+    expect(ok.user.email).toBe('dev@example.com');
+    await expect(
+      client().signInWithPassword('dev@example.com', 'first-password-1'),
+    ).rejects.toMatchObject(wrongPassword);
+  });
+
+  it('confirms a single sign-up with its own password', async () => {
+    const link = await signUp('solo@example.com', 'only-password-1');
+    expect(await (await call(link)).text()).toContain('Email confirmed');
+    const session = await client().signInWithPassword('solo@example.com', 'only-password-1');
+    expect(session.user.email).toBe('solo@example.com');
+  });
+
+  it('still confirms a link created before the password moved onto the link', async () => {
+    await env.DB.prepare(
+      'INSERT INTO users (id, email, email_verified, password_hash, created_at) VALUES (?, ?, 0, ?, 0)',
+    )
+      .bind('old', 'legacy@example.com', await hashPassword('legacy-password-1'))
+      .run();
+    const { challenge } = pkcePair();
+    await env.DB.prepare(
+      'INSERT INTO email_verifications (token_hash, user_id, redirect_to, challenge, expires_at) VALUES (?, ?, ?, ?, ?)',
+    )
+      .bind(await sha256('legacy-token'), 'old', REDIRECT, challenge, clock + 60_000)
+      .run();
+    expect(await (await call('/auth/v1/verify?token=legacy-token')).text()).toContain(
+      'Email confirmed',
+    );
+    const session = await client().signInWithPassword('legacy@example.com', 'legacy-password-1');
+    expect(session.user.email).toBe('legacy@example.com');
   });
 });
