@@ -360,6 +360,68 @@ describe('OAuth sign-in with an existing email account', () => {
   });
 });
 
+describe('hosted sign-in page headers', () => {
+  it('keeps a same-origin Origin on the form post and does not leak the query string', async () => {
+    const login = await startAccountLogin({ client: client() });
+    const response = await call(pathOf(login.url));
+    // `no-referrer` makes Chrome send `Origin: null` on the form post, which is rejected.
+    expect(response.headers.get('Referrer-Policy')).toBe('same-origin');
+    expect(await response.text()).toContain('<meta name="referrer" content="same-origin">');
+    await login.close();
+  });
+
+  it('lets the form continue only to the loopback listener of this sign-in', async () => {
+    const login = await startAccountLogin({ client: client() });
+    const redirect = new URL(new URL(login.url).searchParams.get('redirect_to') ?? '');
+    const policy = (await call(pathOf(login.url))).headers.get('Content-Security-Policy') ?? '';
+    const directive = (name: string) =>
+      policy
+        .split('; ')
+        .find((d) => d.startsWith(`${name} `))
+        ?.split(' ')
+        .slice(1);
+    expect(directive('form-action')).toEqual(["'self'", `http://127.0.0.1:${redirect.port}`]);
+    expect(directive('default-src')).toEqual(["'none'"]);
+    expect(policy).not.toMatch(/\*|https?:\/\/(?!127\.0\.0\.1)/);
+    // Pages that have no form to a listener keep the strict policy.
+    const done = await call('/login/done');
+    expect(done.headers.get('Content-Security-Policy')).toContain("form-action 'self';");
+    expect(done.headers.get('Referrer-Policy')).toBe('same-origin');
+    await login.close();
+  });
+
+  it('accepts the Origin a browser sends and rejects a missing, null or foreign one', async () => {
+    const login = await startAccountLogin({ client: client() });
+    expect((await submit(login.url, { mode: 'signup' })).status).toBe(200);
+    expect(mail).toHaveLength(1);
+    for (const origin of ['null', 'https://evil.test', 'https://auth.davecode.test.evil.test']) {
+      expect(await (await submit(login.url, { mode: 'signup' }, origin)).text()).toContain(
+        'Sign-in link not valid',
+      );
+    }
+    expect(mail).toHaveLength(1);
+    await login.close();
+  });
+
+  it('refuses a redirect target that is not the CLI loopback', async () => {
+    const { challenge } = pkcePair();
+    for (const target of [
+      'https://evil.test/cb',
+      'http://127.0.0.1.evil.test:5555/cb',
+      'http://127.0.0.1:5555@evil.test/cb',
+      'http://evil.test:5555/cb',
+    ]) {
+      const loginUrl = `${ORIGIN}/login?redirect_to=${encodeURIComponent(target)}&code_challenge=${challenge}`;
+      const page = await call(pathOf(loginUrl));
+      expect(await page.text()).toContain('Sign-in link not valid');
+      expect(page.headers.get('Content-Security-Policy')).not.toContain('evil');
+      expect(await (await submit(loginUrl, { mode: 'signin' })).text()).toContain(
+        'Sign-in link not valid',
+      );
+    }
+  });
+});
+
 describe('sign-up links', () => {
   it('applies the password of the link that is opened, and only the latest link works', async () => {
     const first = await signUp('dev@example.com', 'first-password-1');
