@@ -82,7 +82,7 @@ export async function verifyWindow(
     join(output, 'result.json'),
     JSON.stringify({
       status: 'passed',
-      version: '0.5.1',
+      version: '0.5.2',
       url: gateway,
       terminal: true,
       authenticated: true,
