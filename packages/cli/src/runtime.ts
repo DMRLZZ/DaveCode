@@ -6,7 +6,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   type Account,
+  type AccountControl,
   type AutonomousRunner,
+  createAccountControl,
   createEngine,
   createGoalService,
   createRunner,
@@ -19,6 +21,7 @@ import {
 } from '@davecode/core';
 import { type GatewayOptions, type ProjectInfo, startGateway } from '@davecode/server';
 import { connectHost } from './client';
+import { openBrowser } from './lib/browser';
 import { launchLoginTerminal } from './lib/terminal';
 
 export { launchLoginTerminal } from './lib/terminal';
@@ -211,6 +214,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       ...(projectRoot ? { projectRoot } : {}),
       ...(options.config ? { config: options.config } : {}),
     });
+  let account: AccountControl | undefined;
 
   try {
     const project = projectRoot
@@ -229,8 +233,18 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
         }
       : undefined;
 
+    // Same rule for the DaveCode account: the browser must open where the user is sitting.
+    account = LOOPBACK_HOSTS.has(bindHost)
+      ? createAccountControl({
+          home: options.home,
+          env: options.env,
+          open: (url) => openBrowser(url),
+        })
+      : undefined;
+
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
+      ...(account ? { account } : {}),
       ...((options.loginLauncher ?? loginLauncher)
         ? { loginLauncher: options.loginLauncher ?? loginLauncher }
         : {}),
@@ -264,6 +278,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
           const active = goals?.activeGoalId;
           if (active) await goals?.cancel(active);
           await runner?.stop();
+          await account?.close();
           await app.close();
         } finally {
           engine.close();
@@ -271,6 +286,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       },
     };
   } catch (err) {
+    await account?.close();
     engine.close();
     throw err;
   }
