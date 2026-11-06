@@ -40,6 +40,8 @@ for Windows, macOS and Linux, and the public site at `davecode.app` served from 
   in the chat TUI; Windows, macOS and Linux desktop installers in GitHub Releases; npm Trusted
   Publishing; and `davecode.app` hosted on Cloudflare Workers (`site/`).
 
+- **Desktop sign-in**: the app uses the DaveCode account from `davecode login` through
+  `/api/account`, and the packaged smoke test requires the sign-in screen to be on offer.
 - **Desktop terminals**: real PTY panes (`@lydell/node-pty` + xterm.js) for a shell, Claude Code,
   Codex, Antigravity and DaveCode; the desktop opens on them and reopens the last project.
 

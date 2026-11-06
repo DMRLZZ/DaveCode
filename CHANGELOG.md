@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Signing in works in the desktop app, `davecode app` and the local dashboard. Google, GitHub and
+  email now use your DaveCode account in the browser, the same one as `davecode login`. Before,
+  those buttons could only reply that sign-in was not enabled.
+- If you are already signed in with `davecode login`, the desktop app opens straight on your
+  terminals instead of asking again on every launch.
+
+### Added
+
+- `/api/account` routes on loopback gateways, plus a sign-out button for the account.
+
 ## [0.5.1] - 2026-11-05
 
 Upgrade from 0.5.0 as soon as you can: this release contains security fixes.
