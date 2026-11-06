@@ -1,6 +1,6 @@
 {
   "name": "@davecode/core",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": true,
   "description": "DaveCode engine: identity sandboxing, quota tracking, routing, dual-brain context and autonomous runner.",
   "license": "MIT",

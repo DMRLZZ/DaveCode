@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-06
+
+This release makes signing in work in the desktop app.
+
 ### Fixed
 
 - Signing in works in the desktop app, `davecode app` and the local dashboard. Google, GitHub and
