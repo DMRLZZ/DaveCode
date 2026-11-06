@@ -7,6 +7,7 @@ import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import { sendApiError, sendOpenAIError } from './errors';
 import type { GatewayOptions, StartGatewayOptions } from './options';
+import { registerAccountRoutes } from './routes/account';
 import { registerApiRoutes } from './routes/api';
 import { authCookie, registerAuthRoutes } from './routes/auth';
 import { registerEventRoutes } from './routes/events';
@@ -296,6 +297,7 @@ export async function buildGateway(
 
   registerV1Routes(app, engine);
   registerAuthRoutes(app, login);
+  registerAccountRoutes(app, options.account);
   registerApiRoutes(app, engine, options);
   registerEventRoutes(app, engine, options.heartbeatMs ?? 15_000);
 

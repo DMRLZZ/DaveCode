@@ -636,6 +636,21 @@ heartbeat.
 `GET /api/logs?limit=200` returns `{ "events": DaveEvent[] }` from the same buffer, for clients
 that prefer polling.
 
+## DaveCode account
+
+The account `davecode login` signs in to, as seen by the app running on the same machine.
+Present only on a gateway bound to loopback; elsewhere these routes answer 404 and the dashboard
+offers local mode. They need the gateway token like any other `/api` route. Tokens stay in the
+encrypted store: `AccountState` carries `signedIn`, `user | null` (`id`, `email`, `name`,
+`provider`), `pending` and a displayable `error | null`.
+
+| Endpoint                   | Behavior                                                                                                                                                                   |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/account`         | No-store `AccountState`.                                                                                                                                                   |
+| `POST /api/account/login`  | Body `{ provider?: "google" \| "github" }`. Opens the browser and answers `202 { url, opened }` without waiting. Without `provider`, opens the page offering every method. |
+| `POST /api/account/cancel` | Stops waiting for a pending sign-in. `204`.                                                                                                                                |
+| `POST /api/account/logout` | Signs out on this machine, the CLI included. `204`.                                                                                                                        |
+
 ## App sign-in
 
 App identity is separate from model-provider accounts. `LoginProvider` is `google | github`;
