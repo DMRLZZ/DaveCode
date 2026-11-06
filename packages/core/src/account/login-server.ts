@@ -1,10 +1,18 @@
 import { randomBytes } from 'node:crypto';
 import { createServer, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { type AccountClient, AccountError, type AccountSession, pkcePair } from './client';
+import {
+  type AccountClient,
+  AccountError,
+  type AccountSession,
+  type OAuthProvider,
+  pkcePair,
+} from './client';
 
 export interface AccountLoginOptions {
   client: AccountClient;
+  /** Go straight to this provider instead of the hosted page that offers every method. */
+  provider?: OAuthProvider;
   /** Give up after this long (default 10 minutes). */
   timeoutMs?: number;
 }
@@ -98,8 +106,11 @@ export async function startAccountLogin(options: AccountLoginOptions): Promise<A
     () => setTimeout(() => void close(), 1_000).unref(),
   );
 
+  const redirectTo = `http://127.0.0.1:${port}${callbackPath}`;
   return {
-    url: client.loginUrl(`http://127.0.0.1:${port}${callbackPath}`, pkce.challenge),
+    url: options.provider
+      ? client.authorizeUrl(options.provider, redirectTo, pkce.challenge)
+      : client.loginUrl(redirectTo, pkce.challenge),
     session,
     close: async () => {
       clearTimeout(timeout);

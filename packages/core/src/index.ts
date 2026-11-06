@@ -344,6 +344,13 @@ export {
   type SignUpResult,
 } from './account/client';
 export {
+  type AccountControl,
+  type AccountControlOptions,
+  type AccountLoginStart,
+  type AccountState,
+  createAccountControl,
+} from './account/control';
+export {
   type AccountLogin,
   type AccountLoginOptions,
   startAccountLogin,
