@@ -1,16 +1,27 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, ArrowUpRight, Check, LogOut } from 'lucide-react';
-import { createContext, type ReactNode, useContext, useState } from 'react';
+import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 import { z } from 'zod';
+import {
+  accountName,
+  cancelAccountSignIn,
+  fetchAccount,
+  signOutAccount,
+  startAccountSignIn,
+} from '../../lib/account';
 import { navigate, parseLocation } from '../../lib/router';
 import { updateSettings, useSettings } from '../../lib/settings';
-import type { LoginStatus } from '../../lib/types';
+import type { LoginProvider, LoginStatus } from '../../lib/types';
 import { BrandMark } from '../shell/Sidebar';
 import { Button } from '../ui/Button';
 
-const AuthContext = createContext<{ user: LoginStatus['user']; logout: () => void; busy: boolean }>(
-  { user: null, logout: () => {}, busy: false },
-);
+const AuthContext = createContext<{
+  user: { name: string } | null;
+  logout: () => void;
+  busy: boolean;
+}>({ user: null, logout: () => {}, busy: false });
+
+const PROVIDERS = ['google', 'github'] as const satisfies readonly LoginProvider[];
 
 const loginStatusSchema = z.object({
   required: z.boolean(),
@@ -47,6 +58,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [local, setLocal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [signInUrl, setSignInUrl] = useState<string>();
+  const [inside, setInside] = useState(false);
   const session = useQuery({
     queryKey: ['auth', base],
     queryFn: async (): Promise<LoginStatus> => {
@@ -66,6 +79,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
   });
   const status = session.data;
   const allowedLocal = status?.required === false;
+  // A local gateway has no sign-in of its own: the account is the one `davecode login` uses.
+  const account = useQuery({
+    queryKey: ['account', base, settings.token],
+    queryFn: () => fetchAccount(base, settings.token),
+    enabled: allowedLocal,
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.pending ? 1_500 : 60_000),
+    // The browser covers this window while the user signs in, so it must keep checking.
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+  });
+  const machine = allowedLocal ? (account.data ?? null) : null;
+  const signedIn = machine?.signedIn === true;
+  const pending = machine?.pending === true;
+  // Only signing out closes the workspace: an expired session must not kill running terminals.
+  useEffect(() => {
+    if (signedIn) setInside(true);
+  }, [signedIn]);
   const callbackError =
     parseLocation(window.location.hash.slice(1)).params.get('error') === 'signin_failed';
 
@@ -73,15 +104,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
     setBusy(true);
     setError(undefined);
     try {
-      const response = await fetch(`${base}/api/auth/logout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Could not sign out. Please try again.');
+      if (inside) await signOutAccount(base, settings.token);
+      else {
+        const response = await fetch(`${base}/api/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!response.ok) throw new Error('Could not sign out. Please try again.');
+      }
       qc.clear();
       setLocal(false);
-      navigate('/login', { replace: true });
-      await session.refetch();
+      navigate(inside ? '/' : '/login', { replace: true });
+      await Promise.all([session.refetch(), inside ? account.refetch() : undefined]);
+      setInside(false);
     } catch {
       setError('Could not sign out. Please try again.');
     } finally {
@@ -89,10 +124,37 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }
 
-  if (status?.user || (local && (allowedLocal || settings.dataMode === 'mock'))) {
+  async function signIn(provider?: LoginProvider) {
+    setError(undefined);
+    setSignInUrl(undefined);
+    setBusy(true);
+    try {
+      const started = await startAccountSignIn(base, settings.token, provider);
+      if (!started.opened) setSignInUrl(started.url);
+      await account.refetch();
+    } catch {
+      setError('Could not start the sign-in. Check your connection and try again.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelSignIn() {
+    setSignInUrl(undefined);
+    await cancelAccountSignIn(base, settings.token).catch(() => undefined);
+    await account.refetch();
+  }
+
+  const accountUser = machine?.user ? { name: accountName(machine.user) } : null;
+  if (
+    status?.user ||
+    signedIn ||
+    inside ||
+    (local && (allowedLocal || settings.dataMode === 'mock'))
+  ) {
     return (
       <AuthContext.Provider
-        value={{ user: status?.user ?? null, logout: () => void logout(), busy }}
+        value={{ user: status?.user ?? accountUser, logout: () => void logout(), busy }}
       >
         {error && (
           <p role="alert" className="bg-err-soft p-3 text-center text-[13px] text-err">
@@ -107,6 +169,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
   function enterLocal() {
     setLocal(true);
     navigate('/', { replace: true });
+  }
+
+  // Decide before painting: someone already signed in must never see the sign-in screen.
+  if (session.isPending || (allowedLocal && account.isPending)) {
+    return <div role="status" aria-label="Opening DaveCode" className="min-h-dvh bg-bg" />;
   }
 
   return (
@@ -165,52 +232,98 @@ export function AuthGate({ children }: { children: ReactNode }) {
             Make room for your ideas.
           </h2>
           <p className="mt-3 text-center text-[14px] leading-6 text-muted">
-            Sign in to your DaveCode workspace.
+            Sign in to your DaveCode account.
           </p>
-          <div className="mt-9 flex flex-col gap-3">
-            {(['google', 'github'] as const).map((provider) => {
-              const configured = status?.providers.includes(provider) ?? false;
-              return (
-                <button
-                  key={provider}
-                  type="button"
-                  disabled={session.isPending || busy}
-                  aria-disabled={!configured}
-                  onClick={() => {
-                    if (!configured) {
-                      setError(
-                        `${provider === 'google' ? 'Google' : 'GitHub'} sign-in is not enabled on this workspace yet. The workspace owner can enable it using the authentication setup guide.`,
-                      );
-                      return;
-                    }
-                    setError(undefined);
-                    setBusy(true);
-                    window.location.assign(`${base}/api/auth/${provider}/start`);
-                  }}
-                  className="relative flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-line-strong bg-panel px-5 text-[14px] font-medium transition-colors hover:bg-hover active:bg-active disabled:opacity-50"
+          {pending ? (
+            <div className="mt-9 flex flex-col gap-3 text-center">
+              <p role="status" className="text-[14px] font-medium">
+                Finish signing in in your browser.
+              </p>
+              <p className="text-[13px] leading-6 text-muted">
+                This window opens your workspace as soon as you are done.
+              </p>
+              {signInUrl && (
+                <a
+                  href={signInUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[13px] underline"
                 >
-                  {provider === 'google' ? (
-                    <GoogleMark />
-                  ) : (
-                    <img
-                      src={`${import.meta.env.BASE_URL}github.svg`}
-                      alt=""
-                      aria-hidden
-                      className="size-5"
-                    />
-                  )}
-                  {busy
-                    ? 'Redirecting…'
-                    : `Continue with ${provider === 'google' ? 'Google' : 'GitHub'}`}
-                </button>
-              );
-            })}
-          </div>
+                  Open the sign-in page
+                </a>
+              )}
+              <Button
+                className="h-11 w-full rounded-xl"
+                variant="ghost"
+                onClick={() => void cancelSignIn()}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            (machine || !allowedLocal) && (
+              <>
+                <div className="mt-9 flex flex-col gap-3">
+                  {PROVIDERS.map((provider) => {
+                    const configured = status?.providers.includes(provider) ?? false;
+                    return (
+                      <button
+                        key={provider}
+                        type="button"
+                        disabled={session.isPending || busy}
+                        aria-disabled={!machine && !configured}
+                        onClick={() => {
+                          if (machine) {
+                            void signIn(provider);
+                            return;
+                          }
+                          if (!configured) {
+                            setError(
+                              `${provider === 'google' ? 'Google' : 'GitHub'} sign-in is not enabled on this workspace yet. The workspace owner can enable it using the authentication setup guide.`,
+                            );
+                            return;
+                          }
+                          setError(undefined);
+                          setBusy(true);
+                          window.location.assign(`${base}/api/auth/${provider}/start`);
+                        }}
+                        className="relative flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-line-strong bg-panel px-5 text-[14px] font-medium transition-colors hover:bg-hover active:bg-active disabled:opacity-50"
+                      >
+                        {provider === 'google' ? (
+                          <GoogleMark />
+                        ) : (
+                          <img
+                            src={`${import.meta.env.BASE_URL}github.svg`}
+                            alt=""
+                            aria-hidden
+                            className="size-5"
+                          />
+                        )}
+                        {busy
+                          ? 'Redirecting…'
+                          : `Continue with ${provider === 'google' ? 'Google' : 'GitHub'}`}
+                      </button>
+                    );
+                  })}
+                </div>
+                {machine && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void signIn()}
+                    className="mt-3 w-full text-center text-[13px] text-muted underline hover:text-fg"
+                  >
+                    Use email instead
+                  </button>
+                )}
+              </>
+            )
+          )}
           <div aria-live="polite" className="mt-4 text-center text-[12px] leading-5 text-muted">
-            {session.isPending ? <p role="status">Checking your workspace…</p> : null}
-            {(error || callbackError) && (
+            {(error || machine?.error || callbackError) && (
               <p role="alert" className="rounded-lg bg-err-soft p-3 text-err">
                 {error ??
+                  machine?.error ??
                   'Sign-in was cancelled or could not be verified. Try again, or ask the workspace owner to check your access.'}
               </p>
             )}
@@ -250,7 +363,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
               : 'Access is managed by the workspace owner.'}{' '}
             Connecting your AI providers comes next.
           </p>
-          {(error || allowedLocal) && (
+          {!machine && (error || allowedLocal) && (
             <a
               className="mt-4 block text-center text-[12px] text-muted underline hover:text-fg"
               href="https://github.com/DMRLZZ/DaveCode/blob/main/docs/AUTH.md"

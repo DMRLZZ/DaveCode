@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountControl,
   ClearableTaskField,
   Goal,
   GoalArtifact,
@@ -101,6 +102,8 @@ export interface GatewayOptions {
   goals?: GoalControl;
   /** "Connect subscription" launcher for CLI-login accounts. */
   loginLauncher?: LoginLauncher;
+  /** The machine's DaveCode account. Inject it only when the gateway and the user share one. */
+  account?: AccountControl;
   /** SSE heartbeat interval for `/api/events` (default 15 000 ms). */
   heartbeatMs?: number;
   /** Bind address, used to decide which Host headers are expected (set by `startGateway`). */

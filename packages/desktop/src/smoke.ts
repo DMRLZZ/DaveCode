@@ -17,6 +17,21 @@ export async function verifyWindow(
   if (health.status !== 200) throw new Error('health_failed');
   if ((await fetch(`${gateway}/api/health`)).status !== 401)
     throw new Error('unauthenticated_gateway');
+  // Signing in is checked before "Continue on this device" skips past it below: this home has
+  // no account, so the real sign-in screen has to be on offer.
+  const account = await fetch(`${gateway}/api/account`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (account.status !== 200) throw new Error('account_unavailable');
+  const signInDeadline = Date.now() + 20_000;
+  let offered = false;
+  while (Date.now() < signInDeadline && !offered) {
+    offered = await window.webContents.executeJavaScript(
+      `[...document.querySelectorAll('button')].some(node => node.textContent === 'Use email instead')`,
+    );
+    if (!offered) await sleep(200);
+  }
+  if (!offered) throw new Error('sign_in_not_offered');
   const deadline = Date.now() + 20_000;
   let rendered = false;
   while (Date.now() < deadline) {
