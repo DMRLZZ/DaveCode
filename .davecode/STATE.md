@@ -1,20 +1,21 @@
 # DaveCode: project state
 
-_Last updated: 2026-11-06_
+_Last updated: 2026-11-07_
 
 ## Current focus
 
-**v0.5.3 on `main`**: real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
+**v0.6.0 on `main`**: the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
 setup, DaveCode accounts on Cloudflare (`davecode-auth` + D1 at `auth.davecode.app`),
 official vendor sign-in for Claude Code, Codex and Antigravity (`agy`), desktop installers
 for Windows, macOS and Linux, and the public site at `davecode.app` served from the
-`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.5.3`
+`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.6.0`
 (installed command `davecode`).
 
 ## In progress
 
 - Optional code-signing certificates for the Windows and macOS desktop installers.
-- Orchestrator on top of the desktop panes (today: one message broadcast to every agent pane).
+- Orchestrator follow-ups: API-model leads through the router, letting Claude run tests in
+  worktrees (headless `acceptEdits` denies Bash), and reusing the visible panes for tasks.
 
 ## Done
 
@@ -42,6 +43,9 @@ for Windows, macOS and Linux, and the public site at `davecode.app` served from 
 
 - **Desktop sign-in**: the app uses the DaveCode account from `davecode login` through
   `/api/account`, and the packaged smoke test requires the sign-in screen to be on offer.
+- **Orchestrator** (v0.6.0): `packages/core/src/orchestrator/` (planner, scheduler, headless
+  runners, git worktree workspace), `/api/orchestrator/*`, `davecode orchestrate` and the
+  workspace panel. Verified live with Claude Code and Codex in the packaged app.
 - **Desktop terminals**: real PTY panes (`@lydell/node-pty` + xterm.js) for a shell, Claude Code,
   Codex, Antigravity and DaveCode; the desktop opens on them and reopens the last project.
 
@@ -96,3 +100,5 @@ None.
   did not change.
 - 2026-11-06: v0.5.3 prepared: the desktop app explains startup failures, retries once and keeps
   a log. The cause of one failed launch on 0.5.2 is still unknown.
+- 2026-11-07: v0.6.0 prepared: orchestrator, a runtime bundled into 335 files (#61), and `main`
+  protected (pull requests and the four CI checks required, also for admins).
