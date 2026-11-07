@@ -1,6 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import type { RunnerAction } from './api';
 import { qk, upsertGoal, useData } from './data';
+import {
+  applyOrchestratorRun,
+  cancelOrchestratorRun,
+  fetchOrchestratorAgents,
+  getOrchestratorRun,
+  listOrchestratorRuns,
+  startOrchestratorRun,
+} from './orchestrator';
+import { useSettings } from './settings';
 import type {
   Account,
   AccountCreate,
@@ -9,6 +19,7 @@ import type {
   GoalStart,
   RoutesUpdate,
   RunnerStatus,
+  StartRunInput,
   TaskCreate,
   TaskNode,
   TaskPatch,
@@ -344,5 +355,83 @@ export function useRunTask() {
   return useMutation({
     mutationFn: (taskId: string) => client.runnerAction('start', { taskId }),
     onSuccess: (status: RunnerStatus) => qc.setQueryData(qk(sourceKey, 'runner'), status),
+  });
+}
+
+// --- Pane orchestrator ---------------------------------------------------------------------
+
+function useGateway() {
+  const settings = useSettings();
+  return { base: settings.gatewayUrl.replace(/\/+$/, ''), token: settings.token };
+}
+
+/** Installed agents, or null when this gateway has no orchestrator (the bar then broadcasts). */
+export function useOrchestratorAgents() {
+  const { sourceKey, connection } = useData();
+  const { base, token } = useGateway();
+  return useQuery({
+    queryKey: qk(sourceKey, 'orchestrator', 'agents'),
+    queryFn: () => fetchOrchestratorAgents(base, token),
+    enabled: connection.mode === 'live',
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    retry: false,
+  });
+}
+
+/**
+ * Hydrates the orchestrator store from `GET /runs` on mount and whenever the event stream
+ * (re)opens, since snapshots sent while it was down are not replayed.
+ */
+export function useOrchestratorRuns(enabled: boolean) {
+  const { sourceKey, connection, orchestrator } = useData();
+  const { base, token } = useGateway();
+  const runs = useQuery({
+    queryKey: qk(sourceKey, 'orchestrator', 'runs'),
+    queryFn: () => listOrchestratorRuns(base, token),
+    enabled: enabled && connection.mode === 'live',
+    retry: false,
+  });
+  useEffect(() => {
+    if (runs.data) orchestrator.hydrate(runs.data);
+  }, [runs.data, orchestrator]);
+  const open = connection.stream.state === 'open';
+  const { refetch } = runs;
+  useEffect(() => {
+    if (open && enabled) void refetch();
+  }, [open, enabled, refetch]);
+  return runs;
+}
+
+export function useStartOrchestratorRun() {
+  const { orchestrator } = useData();
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: (input: StartRunInput) => startOrchestratorRun(base, token, input),
+    onSuccess: (run) => orchestrator.upsert(run),
+  });
+}
+
+export function useCancelOrchestratorRun() {
+  const { orchestrator } = useData();
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await cancelOrchestratorRun(base, token, id);
+      // The snapshot also arrives as an event; this covers a stream that is down.
+      return getOrchestratorRun(base, token, id).catch(() => undefined);
+    },
+    onSuccess: (run) => {
+      if (run) orchestrator.upsert(run);
+    },
+  });
+}
+
+export function useApplyOrchestratorRun() {
+  const { orchestrator } = useData();
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: (id: string) => applyOrchestratorRun(base, token, id),
+    onSuccess: (run) => orchestrator.upsert(run),
   });
 }
