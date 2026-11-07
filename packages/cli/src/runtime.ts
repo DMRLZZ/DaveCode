@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import { createRequire } from 'node:module';
@@ -9,12 +10,17 @@ import {
   type AccountControl,
   type AutonomousRunner,
   createAccountControl,
+  createCliAgentRunner,
   createEngine,
+  createGitWorkspace,
   createGoalService,
+  createOrchestratorService,
   createRunner,
   type DaveConfigInput,
   type Engine,
+  type EventBus,
   type GoalService,
+  type OrchestratorService,
   ProjectBrain,
   ProjectBrainSource,
   WorkspaceLock,
@@ -112,6 +118,42 @@ export function wireProject(
 }
 
 // ---------------------------------------------------------------------------
+// Pane orchestrator
+// ---------------------------------------------------------------------------
+
+/**
+ * Where the orchestrator keeps the task worktrees of `projectDir`: under the DaveCode home,
+ * outside the repository, one folder per project (first 16 hex digits of its path's SHA-256).
+ */
+export function orchestratorWorktreesDir(home: string, projectDir: string): string {
+  const key = createHash('sha256').update(resolve(projectDir)).digest('hex').slice(0, 16);
+  return join(home, 'worktrees', key);
+}
+
+/**
+ * The pane orchestrator for `projectDir`: headless vendor CLIs (with the user's own sign-in,
+ * from `env`) working in git worktrees, reporting on `events`. Throws if it cannot be built.
+ */
+export function createProjectOrchestrator(options: {
+  projectDir: string;
+  home: string;
+  env: NodeJS.ProcessEnv;
+  events: EventBus;
+}): OrchestratorService {
+  const projectDir = resolve(options.projectDir);
+  return createOrchestratorService({
+    projectDir,
+    home: options.home,
+    events: options.events,
+    runner: createCliAgentRunner({ env: options.env }),
+    workspace: createGitWorkspace({
+      projectDir,
+      worktreesDir: orchestratorWorktreesDir(options.home, projectDir),
+    }),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard
 // ---------------------------------------------------------------------------
 
@@ -175,6 +217,13 @@ export interface RuntimeOptions {
   config?: DaveConfigInput;
   /** Inject a pre-built engine (tests). It is closed with the runtime. */
   engine?: Engine;
+  /**
+   * Pane orchestrator to serve (closed with the runtime), or false for none. By default one is
+   * built for the project when the gateway binds to loopback.
+   */
+  orchestrator?: OrchestratorService | false;
+  /** Non-fatal startup problems (default: only a `log` event on the engine's bus). */
+  onWarning?: (message: string) => void;
 }
 
 export interface Runtime {
@@ -183,6 +232,8 @@ export interface Runtime {
   project: ProjectInfo | undefined;
   runner: AutonomousRunner | undefined;
   goals: GoalService | undefined;
+  /** The pane orchestrator, when this runtime serves one. */
+  orchestrator: OrchestratorService | undefined;
   /** Address to connect to, e.g. `http://127.0.0.1:4040`. */
   url: string;
   host: string;
@@ -215,6 +266,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       ...(options.config ? { config: options.config } : {}),
     });
   let account: AccountControl | undefined;
+  let orchestrator: OrchestratorService | undefined;
 
   try {
     const project = projectRoot
@@ -242,9 +294,30 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
         })
       : undefined;
 
+    // Same rule again: the orchestrator drives the CLIs signed in on this machine. A failure to
+    // build it never takes the gateway down; the routes are simply absent.
+    if (options.orchestrator !== undefined) {
+      orchestrator = options.orchestrator || undefined;
+    } else if (projectRoot && LOOPBACK_HOSTS.has(bindHost)) {
+      try {
+        orchestrator = createProjectOrchestrator({
+          projectDir: projectRoot,
+          home: options.home,
+          env: options.env,
+          events: engine.events,
+        });
+      } catch {
+        // The error may carry paths or vendor output: report that it failed, not why.
+        const message = 'The pane orchestrator could not start; continuing without it.';
+        engine.events.emit({ type: 'log', level: 'warn', scope: 'orchestrator', message });
+        options.onWarning?.(message);
+      }
+    }
+
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
       ...(account ? { account } : {}),
+      ...(orchestrator ? { orchestrator } : {}),
       ...((options.loginLauncher ?? loginLauncher)
         ? { loginLauncher: options.loginLauncher ?? loginLauncher }
         : {}),
@@ -267,6 +340,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       project: project?.source.project(),
       runner,
       goals,
+      orchestrator,
       url: `http://${connectHost(host)}:${port}`,
       host,
       port,
@@ -278,6 +352,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
           const active = goals?.activeGoalId;
           if (active) await goals?.cancel(active);
           await runner?.stop();
+          await orchestrator?.close().catch(() => undefined);
           await account?.close();
           await app.close();
         } finally {
@@ -286,6 +361,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       },
     };
   } catch (err) {
+    await orchestrator?.close().catch(() => undefined);
     await account?.close();
     engine.close();
     throw err;

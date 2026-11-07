@@ -58,7 +58,11 @@ async function projectRoot(ctx: CliContext, project?: string): Promise<string> {
   return root;
 }
 
-function interruptSignal(deps: GoalDeps): { promise: Promise<void>; dispose(): void } {
+/** Resolves on the first SIGINT/SIGTERM (or `deps.interrupt`); `dispose` removes the handlers. */
+export function interruptSignal(deps: Pick<GoalDeps, 'interrupt'>): {
+  promise: Promise<void>;
+  dispose(): void;
+} {
   if (deps.interrupt) return { promise: deps.interrupt(), dispose: () => {} };
   let dispose = () => {};
   const promise = new Promise<void>((done) => {

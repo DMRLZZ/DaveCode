@@ -614,6 +614,82 @@ Configuration (`goal.*`, all optional):
 | `codeTasks`       | `true`    | Hand `code` tasks to the autonomous runner; off → artifacts only                        |
 | `roles`           | `{}`      | Extra or overridden roles: `{ "<id>": { description?, route?, instructions?, kind? } }` |
 
+### Pane orchestrator
+
+One objective is split by a planner agent into subtasks, and each subtask runs headlessly in a
+vendor CLI the user is already signed in to (`claude` for Claude Code, `codex` for Codex, `agy`
+for Antigravity), inside its own git worktree. Successful tasks are merged into an integration
+branch that the user can apply. The contract lives in `packages/core/src/orchestrator/contract.ts`.
+
+The routes exist only when the gateway was given an `OrchestratorService`. The runtime behind
+`davecode start`, `davecode app`, `davecode chat` and the desktop app does that for its project
+when it binds to loopback; if the service cannot be built it logs a `warn` event (scope
+`orchestrator`) and starts without it. Without a service every route below answers
+`404 not_found`. They need the gateway token like any other `/api` route, and `GET` responses
+are sent with `Cache-Control: no-store`.
+
+| Method | Path                                | Body            | Response                                       |
+| :----- | :---------------------------------- | :-------------- | :--------------------------------------------- |
+| `GET`  | `/api/orchestrator/agents`          | —               | `{ "agents": AgentAvailability[] }`            |
+| `GET`  | `/api/orchestrator/runs`            | —               | `{ "runs": OrchestratorRun[] }` (newest first) |
+| `POST` | `/api/orchestrator/runs`            | `StartRunInput` | `202 OrchestratorRun` (in `planning`)          |
+| `GET`  | `/api/orchestrator/runs/:id`        | —               | `OrchestratorRun`                              |
+| `POST` | `/api/orchestrator/runs/:id/cancel` | —               | `204`                                          |
+| `POST` | `/api/orchestrator/runs/:id/apply`  | —               | `OrchestratorRun` (with `appliedAt`)           |
+
+Runs are returned bare, not wrapped in `{ "run": … }`.
+
+```ts
+interface StartRunInput {
+  objective: string; // 1–4000 chars, trimmed
+  agents?: ('claude' | 'codex' | 'agy')[]; // 1–3; default: every available agent
+  maxTasks?: number; // 1–8, default 5
+}
+interface AgentAvailability {
+  agent: 'claude' | 'codex' | 'agy';
+  available: boolean; // its CLI is on PATH (sign-in is not checked)
+}
+```
+
+Errors use the `/api` envelope with these codes:
+
+| Status | Code               | When                                                                            |
+| :----- | :----------------- | :------------------------------------------------------------------------------ |
+| 400    | `invalid_body`     | The start body failed validation (the zod message is included)                  |
+| 404    | `not_found`        | Unknown run id                                                                  |
+| 409    | `no_agents`        | None of the requested agents is available                                       |
+| 409    | `not_a_repository` | The project is not a git repository with at least one commit                    |
+| 409    | `busy`             | Another run is active in this project (one at a time)                           |
+| 409    | `not_appliable`    | Apply refused: the run is not `done`, was already applied, or the tree is dirty |
+| 409    | `not_active`       | Cancel refused: the run is already over                                         |
+
+Run status (`OrchestratorRunStatus`): `planning` (the planner is splitting the objective), then
+`running` (tasks run or wait for their dependencies, at most 3 at a time), then `done` (every
+task finished and the results are on the integration branch), `failed` (planning failed or no
+task succeeded) or `cancelled`. Task status (`OrchestratorTaskStatus`): `pending`, `running`,
+`done` (committed and merged into the integration branch), `failed`, `conflict` (finished, but
+its branch conflicts with the integration branch, so it stays unmerged), `cancelled` and
+`skipped` (a dependency did not finish). `error` fields are short and redacted, never a secret.
+
+Git: a run starts from the current branch and commit (`baseBranch`, `baseCommit`). It creates the
+integration branch `davecode/run-<id>` and one `davecode/run-<id>-<taskId>` branch per task, each
+checked out in a worktree under `<DAVECODE_HOME>/worktrees/<project key>/<id>/<taskId>`, outside
+the repository (the key is the first 16 hex digits of the SHA-256 of the project path). The
+orchestrator never touches the user's working tree until `apply`, which merges the integration
+branch into `baseBranch` and only when the tree is clean. It never pushes. Cleaning up a run
+removes its worktrees but keeps the branches, so nothing an agent did is lost.
+
+Progress is streamed on `/api/events` as:
+
+- `orchestrator.run` (`{ run: OrchestratorRun }`): a full snapshot after every change.
+- `orchestrator.output` (`{ runId, taskId, output: { kind, text } }`, `kind` one of `text`,
+  `tool`, `status`, `error`): live activity of one task, or of the planner with `taskId`
+  `"plan"`, already reduced to plain text.
+
+From the terminal: `davecode orchestrate "<objective>" [--agents claude,codex,agy]
+[--max-tasks <n>] [--apply]`, `davecode orchestrate --list` and
+`davecode orchestrate --apply-run <id>` run the same service in-process.
+
 ### Live events
 
 `GET /api/events` returns `text/event-stream`. Every event carries a strictly increasing
