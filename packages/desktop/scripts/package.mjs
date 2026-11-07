@@ -23,6 +23,8 @@ await build({
     appId: 'app.davecode.desktop',
     productName: 'DaveCode',
     electronVersion: '45.0.0',
+    // The interface is English only; every other Chromium locale was 54 unused files.
+    electronLanguages: ['en-US'],
     directories: { app: join(stage, 'app'), output: join(root, 'release') },
     files: ['dist/**', 'package.json', 'LICENSE'],
     extraResources: [
