@@ -644,6 +644,7 @@ interface StartRunInput {
   objective: string; // 1–4000 chars, trimmed
   agents?: ('claude' | 'codex' | 'agy')[]; // 1–3; default: every available agent
   maxTasks?: number; // 1–8, default 5
+  planner?: 'claude' | 'codex' | 'agy'; // must be installed; default: first allowed of claude, codex, agy
 }
 interface AgentAvailability {
   agent: 'claude' | 'codex' | 'agy';
