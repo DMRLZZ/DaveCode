@@ -371,17 +371,18 @@ describe('AutonomousRunner', { timeout: 60_000 }, () => {
     );
     await runner.start();
     expect(runner.running).toBe(true);
+    // Two tasks run real git several times each; on a loaded Windows machine that takes > 10 s.
     await waitFor(async () => {
       const g = await graphOf(brain);
       return g.a?.status === 'SUCCESS' && g.b?.status === 'SUCCESS';
-    });
-    await waitFor(() => states().filter((s) => s === 'idle').length >= 2);
+    }, 40_000);
+    await waitFor(() => states().filter((s) => s === 'idle').length >= 2, 10_000);
     await runner.start(); // no-op while running
     await runner.stop();
     expect(runner.status().state).toBe('stopped');
     expect(runner.running).toBe(false);
     expect(states().at(-1)).toBe('stopped');
-  });
+  }, 60_000);
 
   it('stop aborts the in-flight executor call and puts the task back to PENDING', async () => {
     let seenSignal: AbortSignal | undefined;
