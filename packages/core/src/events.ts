@@ -1,3 +1,4 @@
+import type { AgentOutput, OrchestratorRun } from './orchestrator/contract';
 import type {
   Account,
   AccountUsage,
@@ -64,6 +65,16 @@ export type DaveEvent =
       message: string;
       role?: string;
       taskId?: string;
+      ts: number;
+    }
+  /** Full snapshot of a pane-orchestrator run, sent on every change. */
+  | { type: 'orchestrator.run'; run: OrchestratorRun; ts: number }
+  /** Live activity of one orchestrator task (or of the planner, with `taskId` "plan"). */
+  | {
+      type: 'orchestrator.output';
+      runId: string;
+      taskId: string;
+      output: AgentOutput;
       ts: number;
     }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };
