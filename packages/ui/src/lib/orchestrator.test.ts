@@ -133,10 +133,8 @@ describe('orchestrator HTTP client', () => {
     await expect(listOrchestratorRuns('', '')).rejects.toBeInstanceOf(ApiError);
   });
 
-  it('starts a run with a JSON body and accepts the run bare or in an envelope', async () => {
-    const fetcher = vi.fn(async () =>
-      Response.json({ run: run({ status: 'planning' }) }, { status: 202 }),
-    );
+  it('starts a run with a JSON body and accepts the run bare (the server) or in an envelope', async () => {
+    const fetcher = vi.fn(async () => Response.json(run({ status: 'planning' }), { status: 202 }));
     vi.stubGlobal('fetch', fetcher);
     const started = await startOrchestratorRun('http://gw', 'tok', {
       objective: 'Ship it',
@@ -156,7 +154,7 @@ describe('orchestrator HTTP client', () => {
 
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => Response.json(run({ id: 'r9' }))),
+      vi.fn(async () => Response.json({ run: run({ id: 'r9' }) })),
     );
     expect((await getOrchestratorRun('', '', 'r9')).id).toBe('r9');
   });
@@ -183,7 +181,7 @@ describe('orchestrator HTTP client', () => {
       'fetch',
       vi.fn(async () =>
         Response.json(
-          { error: { code: 'invalid_request', message: 'objective is required' } },
+          { error: { code: 'invalid_body', message: 'objective is required' } },
           { status: 400 },
         ),
       ),
@@ -205,13 +203,30 @@ describe('orchestrator HTTP client', () => {
   it('cancels with 204 and encodes the run id', async () => {
     const fetcher = vi.fn(async (_url: string) => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetcher);
-    await expect(cancelOrchestratorRun('', '', 'a/b')).resolves.toBeUndefined();
+    await expect(cancelOrchestratorRun('', '', 'a/b')).resolves.toBe(true);
     expect(fetcher.mock.calls[0]?.[0]).toBe('/api/orchestrator/runs/a%2Fb/cancel');
+  });
+
+  it('treats cancelling a run that already ended as done, but not an unknown run', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ error: { code: 'not_active', message: 'over' } }, { status: 409 }),
+      ),
+    );
+    await expect(cancelOrchestratorRun('', '', 'r1')).resolves.toBe(false);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ error: { code: 'not_found', message: 'No such run.' } }, { status: 404 }),
+      ),
+    );
+    await expect(cancelOrchestratorRun('', '', 'r1')).rejects.toThrow('No such run.');
   });
 
   it('applies and returns the updated run', async () => {
     const applied = run({ status: 'done', appliedAt: '2026-11-07T11:00:00.000Z' });
-    const fetcher = vi.fn(async (_url: string) => Response.json({ run: applied }));
+    const fetcher = vi.fn(async (_url: string) => Response.json(applied));
     vi.stubGlobal('fetch', fetcher);
     expect(await applyOrchestratorRun('', '', 'r1')).toEqual(applied);
     expect(fetcher.mock.calls[0]?.[0]).toBe('/api/orchestrator/runs/r1/apply');

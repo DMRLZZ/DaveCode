@@ -161,12 +161,22 @@ export async function startOrchestratorRun(
   return parseRun(await call(base, token, 'POST', '/runs', input));
 }
 
+/**
+ * Stops an active run (204 → true). A run that already ended (409 `not_active`) is not an
+ * error for the user, who only wanted it stopped: resolves false.
+ */
 export async function cancelOrchestratorRun(
   base: string,
   token: string,
   id: string,
-): Promise<void> {
-  await call(base, token, 'POST', `/runs/${encodeURIComponent(id)}/cancel`);
+): Promise<boolean> {
+  try {
+    await call(base, token, 'POST', `/runs/${encodeURIComponent(id)}/cancel`);
+    return true;
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409 && e.code === 'not_active') return false;
+    throw e;
+  }
 }
 
 /** Merges the run's integration branch into its base branch. A 409 explains why it could not. */
@@ -285,14 +295,20 @@ export function hydrateRuns(state: OrchestratorState, runs: OrchestratorRun[]): 
 }
 
 /** Runs newest first. */
-export function sortedRuns(state: OrchestratorState): OrchestratorRun[] {
+export function sortedRuns(state: Pick<OrchestratorState, 'runs'>): OrchestratorRun[] {
   return Object.values(state.runs).sort((a, b) =>
     a.createdAt === b.createdAt ? (a.id < b.id ? 1 : -1) : a.createdAt < b.createdAt ? 1 : -1,
   );
 }
 
-export function outputLines(state: OrchestratorState, runId: string, taskId: string): OutputLine[] {
-  return state.outputs[outputKey(runId, taskId)]?.lines ?? [];
+/** A stream's lines; `empty` is returned as is, so callers can keep a stable reference. */
+export function outputLines(
+  state: OrchestratorState,
+  runId: string,
+  taskId: string,
+  empty: OutputLine[] = [],
+): OutputLine[] {
+  return state.outputs[outputKey(runId, taskId)]?.lines ?? empty;
 }
 
 /**

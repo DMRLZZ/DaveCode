@@ -12,7 +12,13 @@ import { createHttpClient, type DaveClient, isApiError } from './api';
 import type { StreamStatus } from './events';
 import { type LiveState, LiveStore } from './live';
 import { getMockClient } from './mock';
-import { isOrchestratorEvent, type OrchestratorState, OrchestratorStore } from './orchestrator';
+import {
+  isOrchestratorEvent,
+  type OrchestratorState,
+  OrchestratorStore,
+  type OutputLine,
+  outputLines,
+} from './orchestrator';
 import { type DataMode, mockForced, useSettings } from './settings';
 import type { Account, AccountUsage, DaveEvent, Goal, RunnerStatus, TasksResponse } from './types';
 
@@ -186,9 +192,20 @@ export function useLive(): LiveState {
   return useSyncExternalStore(live.subscribe, live.getState, live.getState);
 }
 
-export function useOrchestratorState(): OrchestratorState {
+const NO_LINES: OutputLine[] = [];
+
+/** Live output of one orchestrator task (`plan` for the planner); re-renders only for it. */
+export function useOrchestratorOutput(runId: string, taskId: string): OutputLine[] {
   const { orchestrator } = useData();
-  return useSyncExternalStore(orchestrator.subscribe, orchestrator.getState, orchestrator.getState);
+  const lines = () => outputLines(orchestrator.getState(), runId, taskId, NO_LINES);
+  return useSyncExternalStore(orchestrator.subscribe, lines, lines);
+}
+
+/** Only the runs, so agent output does not re-render the caller. */
+export function useOrchestratorRunMap(): OrchestratorState['runs'] {
+  const { orchestrator } = useData();
+  const runs = () => orchestrator.getState().runs;
+  return useSyncExternalStore(orchestrator.subscribe, runs, runs);
 }
 
 /** Query key helper: every key is scoped to the active data source. */
