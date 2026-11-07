@@ -15,8 +15,17 @@ import {
   shell,
 } from 'electron';
 import { openSchema, resizeSchema, writeSchema } from './panes';
-import { externalUrl, readySchema, sameOrigin } from './policy';
+import { backendErrorSchema, externalUrl, readySchema, sameOrigin } from './policy';
 import { verifyWindow } from './smoke';
+import {
+  appendStartupLog,
+  asStartupError,
+  STARTUP_TIMEOUT_MS,
+  StartupError,
+  safeErrorCode,
+  startupMessage,
+  withRetry,
+} from './startup';
 import { Terminals } from './terminals';
 
 let window: BrowserWindow | undefined;
@@ -46,6 +55,12 @@ function lastProject(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+const startupLogFile = () => join(app.getPath('userData'), 'logs', 'startup.log');
+
+function logStartup(line: string): void {
+  appendStartupLog(startupLogFile(), `${app.getVersion()} ${line}`);
 }
 
 function checkpoint(stage: string) {
@@ -98,6 +113,71 @@ async function stopBackend(): Promise<void> {
   });
 }
 
+/** Forks the local service and waits for its address. */
+function startBackend(folder: string): Promise<{ child: ChildProcess; url: string }> {
+  const child = fork(join(runtimeDir, 'backend.mjs'), [], {
+    execPath: nodeBinary,
+    execArgv: [],
+    cwd: folder,
+    env: {
+      ...process.env,
+      DAVECODE_HOME: home,
+      PATH: `${dirname(nodeBinary)}${delimiter}${process.env.PATH ?? ''}`,
+    },
+    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    windowsHide: true,
+  });
+  backend = child;
+  return new Promise((resolve, reject) => {
+    const fail = (failure: StartupError) => {
+      clearTimeout(timeout);
+      reject(failure);
+    };
+    const timeout = setTimeout(() => fail(new StartupError('timeout')), STARTUP_TIMEOUT_MS);
+    child.once('error', (error) => fail(new StartupError('backend', safeErrorCode(error))));
+    child.once('exit', (code, signal) =>
+      fail(new StartupError('backend', signal ?? `exit-${code}`)),
+    );
+    child.on('message', (message) => {
+      const ready = readySchema.safeParse(message);
+      if (ready.success) {
+        clearTimeout(timeout);
+        resolve({ child, url: ready.data.url });
+        return;
+      }
+      const reported = backendErrorSchema.safeParse(message);
+      fail(new StartupError('backend', reported.success ? reported.data.code : 'bad-message'));
+    });
+    child.send({
+      type: 'start',
+      project: folder,
+      home,
+      token,
+      cli: join(runtimeDir, 'cli', 'bin', 'davecode.js'),
+      dashboard: join(runtimeDir, 'cli', 'dist', 'dashboard'),
+    });
+  });
+}
+
+/** One attempt at opening a project. Undefined when the app is closing. */
+async function startWorkspace(folder: string): Promise<ChildProcess | undefined> {
+  await stopBackend();
+  checkpoint('starting-backend');
+  const { child, url } = await startBackend(folder);
+  if (quitting || !window) return undefined;
+  gateway = new URL(url).origin;
+  project = folder;
+  if (!smokeOutput) rememberProject(folder);
+  checkpoint('backend-ready');
+  try {
+    await window.loadURL(`${url}/#/terminal`);
+  } catch (error) {
+    throw new StartupError('page', safeErrorCode(error));
+  }
+  checkpoint('workspace-loaded');
+  return child;
+}
+
 async function openProject(folder: string): Promise<void> {
   if (switching || !window) return;
   switching = true;
@@ -116,54 +196,11 @@ async function openProject(folder: string): Promise<void> {
         return;
       }
     }
-    await stopBackend();
-    checkpoint('starting-backend');
-    const child = fork(join(runtimeDir, 'backend.mjs'), [], {
-      execPath: nodeBinary,
-      execArgv: [],
-      cwd: folder,
-      env: {
-        ...process.env,
-        DAVECODE_HOME: home,
-        PATH: `${dirname(nodeBinary)}${delimiter}${process.env.PATH ?? ''}`,
-      },
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
-      windowsHide: true,
-    });
-    backend = child;
-    const url = await new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('startup_timeout')), 30_000);
-      const fail = () => {
-        clearTimeout(timeout);
-        reject(new Error('startup_failed'));
-      };
-      child.once('error', fail);
-      child.once('exit', fail);
-      child.on('message', (message) => {
-        const ready = readySchema.safeParse(message);
-        if (!ready.success) {
-          fail();
-          return;
-        }
-        clearTimeout(timeout);
-        resolve(ready.data.url);
-      });
-      child.send({
-        type: 'start',
-        project: folder,
-        home,
-        token,
-        cli: join(runtimeDir, 'cli', 'bin', 'davecode.js'),
-        dashboard: join(runtimeDir, 'cli', 'dist', 'dashboard'),
-      });
-    });
-    if (quitting || !window) return;
-    gateway = new URL(url).origin;
-    project = folder;
-    if (!smokeOutput) rememberProject(folder);
-    checkpoint('backend-ready');
-    await window.loadURL(`${url}/#/terminal`);
-    checkpoint('workspace-loaded');
+    const child = await withRetry(
+      () => startWorkspace(folder),
+      (failure) => logStartup(`retrying after ${failure.message}`),
+    );
+    if (!child) return;
     child.once('exit', () => {
       if (backend !== child || quitting) return;
       backend = undefined;
@@ -174,19 +211,19 @@ async function openProject(folder: string): Promise<void> {
         'The local service stopped. Open your project again to restart it.',
       );
     });
-  } catch {
+  } catch (error) {
+    const failure = asStartupError(error, 'backend');
+    logStartup(`failed: ${failure.message}`);
     checkpoint('project-start-failed');
     await stopBackend();
     if (quitting || !window) return;
     if (smokeOutput) {
+      console.error(`Desktop startup failed: ${failure.message}`);
       app.exit(1);
       return;
     }
     await window.loadURL(welcome);
-    dialog.showErrorBox(
-      'Could not open project',
-      'DaveCode could not start the local workspace. Check that the folder is writable and try again.',
-    );
+    dialog.showErrorBox('Could not open project', startupMessage(failure, startupLogFile()));
   } finally {
     switching = false;
   }

@@ -1,6 +1,6 @@
 {
   "name": "@davecode/auth-worker",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "description": "DaveCode accounts on Cloudflare Workers and D1: Google, GitHub and email sign-in for the CLI.",
   "license": "MIT",

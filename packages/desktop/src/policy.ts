@@ -20,6 +20,15 @@ export const readySchema = z.object({
     }),
 });
 
+/** Why the backend could not start: a short code only, never an error message. */
+export const backendErrorSchema = z.object({
+  type: z.literal('error'),
+  code: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,64}$/)
+    .optional(),
+});
+
 export const startSchema = z.object({
   type: z.literal('start'),
   project: z.string().min(1),
