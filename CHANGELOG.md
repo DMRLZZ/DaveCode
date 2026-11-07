@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-11-06
+
+### Fixed
+
+- When a project cannot open, the desktop app now retries once and then says what failed. The
+  dialog shows the reason and where the log is, instead of always blaming folder permissions.
+- The desktop app waits up to two minutes for the workspace to start, so a slow first launch no
+  longer fails after 30 seconds.
+- A startup failure can no longer lose its reason when the local service exits right after it.
+
 ## [0.5.2] - 2026-11-06
 
 This release makes signing in work in the desktop app.
