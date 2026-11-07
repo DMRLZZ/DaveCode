@@ -1,10 +1,22 @@
 import { ProjectBrain } from '@davecode/core';
 import { launchLoginTerminal, type Runtime, startRuntime } from '@dmrlzz/davecode/runtime';
 import { startSchema } from './policy';
+import { safeErrorCode } from './startup';
 
 let runtime: Runtime | undefined;
 let started = false;
 let stopping = false;
+
+/** Resolves once the message has left, so exiting right after it cannot lose the reason. */
+function report(code: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (!process.send) {
+      resolve();
+      return;
+    }
+    process.send({ type: 'error', code }, undefined, undefined, () => resolve());
+  });
+}
 
 async function stop() {
   if (stopping) return;
@@ -57,9 +69,9 @@ process.on('message', (message) => {
       },
     });
     process.send?.({ type: 'ready', url: runtime.url });
-  })().catch(async () => {
-    // Provider/config failures may contain secrets. Keep IPC and native error dialogs generic.
-    process.send?.({ type: 'error' });
+  })().catch(async (error: unknown) => {
+    // Provider/config failures may contain secrets, so only a short code crosses the IPC.
+    await report(safeErrorCode(error));
     await runtime?.close();
     process.exit(1);
   });
