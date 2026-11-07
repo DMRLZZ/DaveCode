@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-07
+
+This release adds the DaveCode orchestrator.
+
+### Added
+
+- **Orchestrator.** Type one objective in the workspace bar and DaveCode splits it across the
+  agents you already use: Claude Code, Codex and Antigravity. A lead agent you choose plans the
+  work, each task runs in its own copy of the repository (a git worktree) at the same time as the
+  others, and the results are merged into a `davecode/run-<id>` branch. Your files do not change
+  until you press **Apply**. It uses your own subscriptions; DaveCode adds no model of its own.
+- The orchestrator panel shows the plan, each task's live activity, the changed files and the
+  outcome, with Cancel, Apply and a history of runs.
+- `davecode orchestrate "<objective>"` does the same from the terminal, with `--planner`,
+  `--agents`, `--max-tasks`, `--apply`, `--list` and `--apply-run`.
+- `/api/orchestrator/*` routes and `orchestrator.run` / `orchestrator.output` live events.
+
+### Changed
+
+- The desktop installer writes 335 files instead of 9,292, so installing and the first launch are
+  much faster. The local service and the CLI are now bundled.
+
 ## [0.5.3] - 2026-11-06
 
 ### Fixed

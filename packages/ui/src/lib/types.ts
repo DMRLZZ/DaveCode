@@ -11,10 +11,20 @@
 export type {
   AccountLoginStart,
   AccountState,
+  AgentAvailability,
+  AgentOutput,
   LoginProvider,
   LoginStatus,
   LoginUser,
+  OrchestratorAgent,
+  OrchestratorRun,
+  OrchestratorRunStatus,
+  OrchestratorTask,
+  OrchestratorTaskStatus,
+  StartRunInput,
 } from '@davecode/core';
+
+import type { AgentOutput, OrchestratorRun } from '@davecode/core';
 
 // ---------------------------------------------------------------------------
 // Mirrored from packages/core/src/types.ts
@@ -373,6 +383,16 @@ export type DaveEvent =
       message: string;
       role?: string;
       taskId?: string;
+      ts: number;
+    }
+  /** Full snapshot of a pane-orchestrator run, sent on every change. */
+  | { type: 'orchestrator.run'; run: OrchestratorRun; ts: number }
+  /** Live activity of one orchestrator task (or of the planner, with `taskId` "plan"). */
+  | {
+      type: 'orchestrator.output';
+      runId: string;
+      taskId: string;
+      output: AgentOutput;
       ts: number;
     }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };

@@ -87,6 +87,8 @@ describe('event stream helpers', () => {
       'runner.log': true,
       'goal.updated': true,
       'goal.log': true,
+      'orchestrator.run': true,
+      'orchestrator.output': true,
       log: true,
     };
     expect([...EVENT_TYPES].sort()).toEqual(Object.keys(required).sort());

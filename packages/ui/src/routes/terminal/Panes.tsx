@@ -2,19 +2,36 @@ import '@xterm/xterm/css/xterm.css';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 import { Plus, X } from 'lucide-react';
-import { type FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrandMark } from '../../components/shell/Sidebar';
+import { errorMessage } from '../../lib/api';
 import { cn } from '../../lib/cn';
+import { useOrchestratorRunMap } from '../../lib/data';
 import { gridColumns, type PaneKind, type TerminalBridge } from '../../lib/desktop';
+import {
+  availableAgents,
+  isActiveRun,
+  orchestratorOffered,
+  sortedRuns,
+  startRequest,
+  toggleAgent,
+} from '../../lib/orchestrator';
+import {
+  useOrchestratorAgents,
+  useOrchestratorRuns,
+  useStartOrchestratorRun,
+} from '../../lib/queries';
 import { Link } from '../../lib/router';
-
-const KINDS: { kind: PaneKind; label: string; accent: string }[] = [
-  { kind: 'shell', label: 'Shell', accent: '#a1a1aa' },
-  { kind: 'claude', label: 'Claude Code', accent: '#f2a6a6' },
-  { kind: 'codex', label: 'Codex', accent: '#8ab4f8' },
-  { kind: 'agy', label: 'Antigravity', accent: '#8fd6a8' },
-  { kind: 'davecode', label: 'DaveCode', accent: '#ffffff' },
-];
+import type { OrchestratorAgent } from '../../lib/types';
+import { KINDS, kindMeta } from './kinds';
+import {
+  AgentChips,
+  type BarMode,
+  ModeSwitch,
+  OrchestratorPanel,
+  PanelToggle,
+  PlannerPicker,
+} from './Orchestrator';
 
 interface PaneState {
   key: number;
@@ -51,11 +68,7 @@ function Pane({
   const terminal = useRef<Terminal | undefined>(undefined);
   const refit = useRef<() => void>(() => {});
   const [live, setLive] = useState(false);
-  const meta = KINDS.find((k) => k.kind === pane.kind) ?? {
-    kind: pane.kind,
-    label: 'Shell',
-    accent: '#a1a1aa',
-  };
+  const meta = kindMeta(pane.kind);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: one terminal per pane for its lifetime
   useEffect(() => {
@@ -106,10 +119,18 @@ function Pane({
       if (id !== undefined) void bridge.write({ id, data });
     });
 
+    let frame = 0;
     refit.current = () => {
       if (element.clientWidth === 0 || element.clientHeight === 0) return;
       fit.fit();
-      if (id !== undefined) void bridge.resize({ id, cols: term.cols, rows: term.rows });
+      // When a pane narrows (e.g. the orchestrator panel opens), the first fit can measure the
+      // old, wider screen and overflow the pane; fitting again once it has rendered settles it.
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (disposed || element.clientWidth === 0 || element.clientHeight === 0) return;
+        fit.fit();
+        if (id !== undefined) void bridge.resize({ id, cols: term.cols, rows: term.rows });
+      });
     };
     const observer = new ResizeObserver(() => refit.current());
     observer.observe(element);
@@ -138,6 +159,7 @@ function Pane({
 
     return () => {
       disposed = true;
+      cancelAnimationFrame(frame);
       observer.disconnect();
       offData();
       offExit();
@@ -177,7 +199,7 @@ function Pane({
           <X aria-hidden className="size-3" />
         </button>
       </header>
-      <div ref={host} className="min-h-0 flex-1 p-1.5" />
+      <div ref={host} className="min-h-0 flex-1 overflow-hidden p-1.5" />
     </section>
   );
 }
@@ -205,10 +227,49 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
     else writers.current.delete(key);
   }, []);
 
+  // The orchestrator is offered only when the gateway has one and an agent CLI is installed.
+  const agentsQuery = useOrchestratorAgents();
+  const availability = agentsQuery.data ?? null;
+  const offered = orchestratorOffered(availability);
+  useOrchestratorRuns(offered);
+  const runMap = useOrchestratorRunMap();
+  const runs = useMemo(() => sortedRuns({ runs: runMap }), [runMap]);
+  const start = useStartOrchestratorRun();
+  const [chosenMode, setChosenMode] = useState<BarMode>();
+  const mode: BarMode = offered ? (chosenMode ?? 'orchestrate') : 'broadcast';
+  const [chosenAgents, setChosenAgents] = useState<OrchestratorAgent[]>();
+  const selection = chosenAgents ?? availableAgents(availability);
+  const [planner, setPlanner] = useState<OrchestratorAgent>();
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [runId, setRunId] = useState<string>();
+  const [startError, setStartError] = useState<string>();
+  const shownRun = runs.find((r) => r.id === runId) ?? runs[0];
+  const busy = runs.some(isActiveRun);
+  const panel = offered && panelOpen;
+
+  const orchestrate = () => {
+    const lead = planner ?? availableAgents(availability)[0];
+    const input = startRequest(message, selection, availability, lead);
+    if (!input || start.isPending) return;
+    setStartError(undefined);
+    start.mutate(input, {
+      onSuccess: (run) => {
+        setMessage('');
+        setRunId(run.id);
+        setPanelOpen(true);
+      },
+      onError: (error) => setStartError(errorMessage(error)),
+    });
+  };
+
   const agents = panes.filter((pane) => pane.kind !== 'shell');
   const targets = agents.length > 0 ? agents : panes;
   const send = (event: FormEvent) => {
     event.preventDefault();
+    if (mode === 'orchestrate') {
+      orchestrate();
+      return;
+    }
     const text = message.trim();
     if (!text) return;
     for (const pane of targets) {
@@ -248,52 +309,105 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
           </Link>
         </nav>
       </header>
-      {panes.length === 0 ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center font-mono text-sm text-zinc-500">
-          Open a shell or an agent from the bar above.
-        </div>
-      ) : (
-        <main
-          className="grid min-h-0 flex-1 gap-1 p-1"
-          style={{
-            gridTemplateColumns: `repeat(${gridColumns(panes.length)}, minmax(0, 1fr))`,
-            gridAutoRows: 'minmax(0, 1fr)',
-          }}
-        >
-          {panes.map((pane) => (
-            <Pane
-              key={pane.key}
-              pane={pane}
-              bridge={bridge}
-              active={active}
-              focused={pane.key === focused}
-              onFocus={() => setFocused(pane.key)}
-              onClose={() => close(pane.key)}
-              onWriter={onWriter}
-            />
-          ))}
-        </main>
-      )}
+      <div className="flex min-h-0 flex-1">
+        {panes.length === 0 ? (
+          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center font-mono text-sm text-zinc-500">
+            Open a shell or an agent from the bar above.
+          </div>
+        ) : (
+          <main
+            className="grid min-h-0 min-w-0 flex-1 gap-1 p-1"
+            style={{
+              gridTemplateColumns: `repeat(${gridColumns(panes.length)}, minmax(0, 1fr))`,
+              gridAutoRows: 'minmax(0, 1fr)',
+            }}
+          >
+            {panes.map((pane) => (
+              <Pane
+                key={pane.key}
+                pane={pane}
+                bridge={bridge}
+                active={active}
+                focused={pane.key === focused}
+                onFocus={() => setFocused(pane.key)}
+                onClose={() => close(pane.key)}
+                onWriter={onWriter}
+              />
+            ))}
+          </main>
+        )}
+        {panel && (
+          <OrchestratorPanel
+            runs={runs}
+            run={shownRun}
+            onSelectRun={setRunId}
+            onClose={() => setPanelOpen(false)}
+          />
+        )}
+      </div>
       <form
         onSubmit={send}
         className="flex h-10 shrink-0 items-center border-t border-zinc-800 px-3"
       >
+        {offered && <ModeSwitch mode={mode} onChange={setChosenMode} />}
         <span aria-hidden className="mr-2 font-mono text-xs text-zinc-500">
           ›
         </span>
+        {/* One input for both modes, so switching never drops focus or the text typed so far. */}
         <input
-          aria-label="Send a message to every agent"
+          aria-label={
+            mode === 'orchestrate'
+              ? 'Objective for the orchestrator'
+              : 'Send a message to every agent'
+          }
+          aria-describedby={
+            mode === 'orchestrate' && startError ? 'orchestrator-start-error' : undefined
+          }
           value={message}
-          onChange={(event) => setMessage(event.target.value)}
+          onChange={(event) => {
+            setMessage(event.target.value);
+            setStartError(undefined);
+          }}
           placeholder={
-            agents.length > 1
-              ? `Send to all ${agents.length} agents`
-              : agents.length === 1
-                ? 'Send to the agent'
-                : 'Send to every pane'
+            mode === 'orchestrate'
+              ? start.isPending
+                ? 'Starting the run…'
+                : 'Describe an objective; DaveCode plans it and splits it across your agents'
+              : agents.length > 1
+                ? `Send to all ${agents.length} agents`
+                : agents.length === 1
+                  ? 'Send to the agent'
+                  : 'Send to every pane'
           }
           className="min-w-0 flex-1 bg-transparent font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
         />
+        {mode === 'orchestrate' && startError && (
+          <p
+            id="orchestrator-start-error"
+            role="alert"
+            title={startError}
+            className="ml-2 max-w-[40%] truncate font-mono text-[11px] text-red-400"
+          >
+            {startError}
+          </p>
+        )}
+        {mode === 'orchestrate' && availability && (
+          <PlannerPicker
+            installed={availableAgents(availability)}
+            planner={planner}
+            onChange={setPlanner}
+          />
+        )}
+        {mode === 'orchestrate' && availability && (
+          <AgentChips
+            agents={availability}
+            selection={selection}
+            onToggle={(agent) => setChosenAgents(toggleAgent(selection, agent))}
+          />
+        )}
+        {offered && (
+          <PanelToggle open={panelOpen} busy={busy} onToggle={() => setPanelOpen((o) => !o)} />
+        )}
       </form>
     </div>
   );

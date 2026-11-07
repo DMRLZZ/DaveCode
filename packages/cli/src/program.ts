@@ -243,6 +243,51 @@ Ctrl+C stops safely: partial work stays on the task branch and the task goes bac
     );
 
   registerGoals(program, run);
+  registerOrchestrate(program, run);
+}
+
+function registerOrchestrate(program: Command, run: Runner): void {
+  program
+    .command('orchestrate [objective...]')
+    .description(
+      'split an objective across Claude Code, Codex and Antigravity, each in its own git worktree',
+    )
+    .option('--agents <list>', 'agents allowed to work, comma-separated: claude,codex,agy')
+    .option('--planner <agent>', 'agent that splits the objective (default: claude, then codex)')
+    .addOption(
+      new Option('--max-tasks <n>', 'most subtasks in the plan (1-8, default 5)').argParser(
+        (value) => {
+          const n = parseInteger(value);
+          if (n < 1) throw new InvalidArgumentError('expected a positive integer');
+          return n;
+        },
+      ),
+    )
+    .option('--apply', 'merge the results into your branch when the run is done')
+    .option('--list', 'recent runs of this repository')
+    .option('--apply-run <id>', 'merge a finished run into the branch it started from')
+    .option('--project <dir>', 'repository to work on (default: detected)')
+    .addHelpText(
+      'after',
+      `
+Each agent uses the CLI you already signed in to (claude, codex, agy) and works in its own
+git worktree. Results are merged into the branch davecode/run-<id>; your working tree is not
+touched until you apply, and nothing is ever pushed. Ctrl+C cancels the run.
+Exit codes: 0 the run is done (and applied with --apply), 1 otherwise.
+
+Examples:
+  davecode orchestrate "Add a /health endpoint with tests" --agents claude,codex
+  davecode orchestrate --list
+  davecode orchestrate --apply-run <id>`,
+    )
+    .action(
+      run(
+        async (ctx, words: string[], opts: import('./commands/orchestrate').OrchestrateOptions) => {
+          const { orchestrateCommand } = await import('./commands/orchestrate');
+          return orchestrateCommand(ctx, words, opts);
+        },
+      ),
+    );
 }
 
 function registerGoals(program: Command, run: Runner): void {

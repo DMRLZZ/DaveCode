@@ -32,6 +32,8 @@ export const EVENT_TYPES: readonly DaveEventType[] = [
   'runner.log',
   'goal.updated',
   'goal.log',
+  'orchestrator.run',
+  'orchestrator.output',
   'log',
 ];
 

@@ -11,6 +11,7 @@ import { registerAccountRoutes } from './routes/account';
 import { registerApiRoutes } from './routes/api';
 import { authCookie, registerAuthRoutes } from './routes/auth';
 import { registerEventRoutes } from './routes/events';
+import { registerOrchestratorRoutes } from './routes/orchestrator';
 import { registerV1Routes } from './routes/v1';
 
 /** Origins allowed to call the gateway from a browser (the Vite dev server). */
@@ -298,6 +299,7 @@ export async function buildGateway(
   registerV1Routes(app, engine);
   registerAuthRoutes(app, login);
   registerAccountRoutes(app, options.account);
+  registerOrchestratorRoutes(app, engine, options.orchestrator);
   registerApiRoutes(app, engine, options);
   registerEventRoutes(app, engine, options.heartbeatMs ?? 15_000);
 

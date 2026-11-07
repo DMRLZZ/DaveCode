@@ -12,6 +12,13 @@ import { createHttpClient, type DaveClient, isApiError } from './api';
 import type { StreamStatus } from './events';
 import { type LiveState, LiveStore } from './live';
 import { getMockClient } from './mock';
+import {
+  isOrchestratorEvent,
+  type OrchestratorState,
+  OrchestratorStore,
+  type OutputLine,
+  outputLines,
+} from './orchestrator';
 import { type DataMode, mockForced, useSettings } from './settings';
 import type { Account, AccountUsage, DaveEvent, Goal, RunnerStatus, TasksResponse } from './types';
 
@@ -39,6 +46,8 @@ interface DataContextValue {
   /** Changes whenever the data source changes; part of every query key. */
   sourceKey: string;
   live: LiveStore;
+  /** Pane-orchestrator runs and their live output, fed by `orchestrator.*` events. */
+  orchestrator: OrchestratorStore;
   connection: Connection;
   retry: () => void;
 }
@@ -115,6 +124,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   // One live store per data source.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new store per source key
   const live = useMemo(() => new LiveStore(), [sourceKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new store per source key
+  const orchestrator = useMemo(() => new OrchestratorStore(), [sourceKey]);
 
   // Subscribe to the event stream (skipped while probing).
   useEffect(() => {
@@ -122,7 +133,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setStream({ state: source.mode === 'mock' ? 'mock' : 'connecting', attempt: 0 });
     const unsubscribe = client.subscribe({
       onEvent: (event) => {
-        if (live.ingest(event)) patchQueryCache(queryClient, sourceKey, event);
+        // Agent output is high-volume and has its own store; it would flood the activity feed.
+        if (isOrchestratorEvent(event)) orchestrator.ingest(event);
+        else if (live.ingest(event)) patchQueryCache(queryClient, sourceKey, event);
       },
       onStatus: (status) => setStream(status),
     });
@@ -140,14 +153,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => {
       unsubscribe();
       live.dispose();
+      orchestrator.dispose();
     };
-  }, [client, live, queryClient, sourceKey, source.mode]);
+  }, [client, live, orchestrator, queryClient, sourceKey, source.mode]);
 
   const value = useMemo<DataContextValue>(
     () => ({
       client,
       sourceKey,
       live,
+      orchestrator,
       connection: {
         mode: source.mode,
         reason: source.reason,
@@ -160,7 +175,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         queryClient.invalidateQueries();
       },
     }),
-    [client, sourceKey, live, source, stream, probeError, unauthorized, queryClient],
+    [client, sourceKey, live, orchestrator, source, stream, probeError, unauthorized, queryClient],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -175,6 +190,22 @@ export function useData(): DataContextValue {
 export function useLive(): LiveState {
   const { live } = useData();
   return useSyncExternalStore(live.subscribe, live.getState, live.getState);
+}
+
+const NO_LINES: OutputLine[] = [];
+
+/** Live output of one orchestrator task (`plan` for the planner); re-renders only for it. */
+export function useOrchestratorOutput(runId: string, taskId: string): OutputLine[] {
+  const { orchestrator } = useData();
+  const lines = () => outputLines(orchestrator.getState(), runId, taskId, NO_LINES);
+  return useSyncExternalStore(orchestrator.subscribe, lines, lines);
+}
+
+/** Only the runs, so agent output does not re-render the caller. */
+export function useOrchestratorRunMap(): OrchestratorState['runs'] {
+  const { orchestrator } = useData();
+  const runs = () => orchestrator.getState().runs;
+  return useSyncExternalStore(orchestrator.subscribe, runs, runs);
 }
 
 /** Query key helper: every key is scoped to the active data source. */

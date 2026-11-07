@@ -119,7 +119,8 @@ async function setup(
   return { root: repo.root, brain, runner, events, states };
 }
 
-async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 10_000): Promise<void> {
+// Real git on a loaded Windows machine can take several seconds per step.
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 40_000): Promise<void> {
   const start = Date.now();
   while (!(await check())) {
     if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for condition');
@@ -371,17 +372,18 @@ describe('AutonomousRunner', { timeout: 60_000 }, () => {
     );
     await runner.start();
     expect(runner.running).toBe(true);
+    // Two tasks run real git several times each; on a loaded Windows machine that takes > 10 s.
     await waitFor(async () => {
       const g = await graphOf(brain);
       return g.a?.status === 'SUCCESS' && g.b?.status === 'SUCCESS';
-    });
-    await waitFor(() => states().filter((s) => s === 'idle').length >= 2);
+    }, 40_000);
+    await waitFor(() => states().filter((s) => s === 'idle').length >= 2, 10_000);
     await runner.start(); // no-op while running
     await runner.stop();
     expect(runner.status().state).toBe('stopped');
     expect(runner.running).toBe(false);
     expect(states().at(-1)).toBe('stopped');
-  });
+  }, 60_000);
 
   it('stop aborts the in-flight executor call and puts the task back to PENDING', async () => {
     let seenSignal: AbortSignal | undefined;

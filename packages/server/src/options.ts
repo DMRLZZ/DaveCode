@@ -6,6 +6,7 @@ import type {
   GoalArtifact,
   LoginService,
   NewTask,
+  OrchestratorService,
   RunnerStatus,
   TaskGraph,
   TaskNode,
@@ -104,6 +105,11 @@ export interface GatewayOptions {
   loginLauncher?: LoginLauncher;
   /** The machine's DaveCode account. Inject it only when the gateway and the user share one. */
   account?: AccountControl;
+  /**
+   * Pane orchestrator for the served project (`/api/orchestrator/*`). Inject it only when the
+   * gateway and the user share a machine: it drives the vendor CLIs the user is signed in to.
+   */
+  orchestrator?: OrchestratorService;
   /** SSE heartbeat interval for `/api/events` (default 15 000 ms). */
   heartbeatMs?: number;
   /** Bind address, used to decide which Host headers are expected (set by `startGateway`). */
