@@ -9,7 +9,6 @@ import { build } from 'esbuild';
 export const root = fileURLToPath(new URL('..', import.meta.url));
 const stage = join(root, '.stage');
 const cliRoot = fileURLToPath(new URL('../../cli/', import.meta.url));
-const cli = JSON.parse(await readFile(join(cliRoot, 'package.json'), 'utf8'));
 const desktop = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
 
 export function run(command, args, cwd = root) {
