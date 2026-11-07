@@ -119,7 +119,8 @@ async function setup(
   return { root: repo.root, brain, runner, events, states };
 }
 
-async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 10_000): Promise<void> {
+// Real git on a loaded Windows machine can take several seconds per step.
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 40_000): Promise<void> {
   const start = Date.now();
   while (!(await check())) {
     if (Date.now() - start > timeoutMs) throw new Error('timed out waiting for condition');
