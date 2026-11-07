@@ -407,11 +407,14 @@ export function startRequest(
   objective: string,
   selection: readonly OrchestratorAgent[],
   agents: AgentAvailability[] | null | undefined,
+  planner?: OrchestratorAgent,
 ): StartRunInput | null {
   const text = objective.trim();
-  const usable = availableAgents(agents).filter((id) => selection.includes(id));
+  const installed = availableAgents(agents);
+  const usable = installed.filter((id) => selection.includes(id));
   if (!text || usable.length === 0) return null;
-  return { objective: text, agents: usable };
+  const lead = planner && installed.includes(planner) ? planner : undefined;
+  return { objective: text, agents: usable, ...(lead ? { planner: lead } : {}) };
 }
 
 export type PlanStatus = 'running' | 'done' | 'failed' | 'cancelled';

@@ -314,6 +314,17 @@ describe('start', () => {
     expect(call.request.agent).toBe('codex');
   });
 
+  it('uses the chosen planner, even one that takes no tasks, if it is installed', async () => {
+    const service = makeService();
+    runner.available = ['claude', 'codex'];
+    await expectCode(service.start({ objective: 'x', planner: 'agy' }), 'no_agents');
+    const run = await service.start({ objective: 'x', agents: ['claude'], planner: 'codex' });
+    expect(run.agents).toEqual(['claude']);
+    expect(run.planner).toBe('codex');
+    const call = await runner.plan();
+    expect(call.request.agent).toBe('codex');
+  });
+
   it('allows one active run at a time', async () => {
     const service = makeService();
     const [a, b] = await Promise.allSettled([

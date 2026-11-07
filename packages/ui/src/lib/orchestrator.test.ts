@@ -414,6 +414,18 @@ describe('view helpers', () => {
     expect(startRequest('Ship it', ['codex'], agents)).toBeNull();
   });
 
+  it('sends the chosen planner only when it is installed', () => {
+    expect(startRequest('Ship it', ['claude'], agents, 'claude')).toEqual({
+      objective: 'Ship it',
+      agents: ['claude'],
+      planner: 'claude',
+    });
+    expect(startRequest('Ship it', ['claude'], agents, 'codex')).toEqual({
+      objective: 'Ship it',
+      agents: ['claude'],
+    });
+  });
+
   it('only applies finished, unapplied runs with an integration branch', () => {
     expect(canApply(run({ status: 'done' }))).toBe(true);
     expect(canApply(run({ status: 'running' }))).toBe(false);

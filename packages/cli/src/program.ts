@@ -253,6 +253,7 @@ function registerOrchestrate(program: Command, run: Runner): void {
       'split an objective across Claude Code, Codex and Antigravity, each in its own git worktree',
     )
     .option('--agents <list>', 'agents allowed to work, comma-separated: claude,codex,agy')
+    .option('--planner <agent>', 'agent that splits the objective (default: claude, then codex)')
     .addOption(
       new Option('--max-tasks <n>', 'most subtasks in the plan (1-8, default 5)').argParser(
         (value) => {

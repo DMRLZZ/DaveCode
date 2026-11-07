@@ -76,6 +76,12 @@ describe('startInput', () => {
     });
   });
 
+  it('takes exactly one planner', () => {
+    expect(startInput(['x'], { planner: 'Codex' })).toEqual({ objective: 'x', planner: 'codex' });
+    expect(() => startInput(['x'], { planner: 'claude,codex' })).toThrow(/exactly one/);
+    expect(() => startInput(['x'], { planner: 'gpt' })).toThrow(/Unknown agent/);
+  });
+
   it('refuses an empty objective and out-of-range limits', () => {
     expect(() => startInput([' '], {})).toThrow(/Describe the objective/);
     expect(() => startInput(['x'], { maxTasks: 9 })).toThrow(/between 1 and 8/);

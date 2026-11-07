@@ -101,6 +101,39 @@ export function ModeSwitch({ mode, onChange }: { mode: BarMode; onChange: (m: Ba
   );
 }
 
+/** Which installed agent splits the objective into tasks. */
+export function PlannerPicker({
+  installed,
+  planner,
+  onChange,
+}: {
+  installed: readonly OrchestratorAgent[];
+  planner: OrchestratorAgent | undefined;
+  onChange: (agent: OrchestratorAgent) => void;
+}) {
+  if (installed.length === 0) return null;
+  return (
+    <label
+      className="ml-2 flex shrink-0 items-center gap-1 font-mono text-[11px] text-zinc-500"
+      title="The agent that plans the run and hands out the tasks"
+    >
+      lead
+      <select
+        aria-label="Planner"
+        value={planner ?? installed[0]}
+        onChange={(event) => onChange(event.target.value as OrchestratorAgent)}
+        className="h-6 rounded border border-zinc-800 bg-black px-1 font-mono text-[11px] text-zinc-200 outline-none hover:border-zinc-600 focus:border-zinc-500"
+      >
+        {installed.map((agent) => (
+          <option key={agent} value={agent}>
+            {agent}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function AgentChips({
   agents,
   selection,

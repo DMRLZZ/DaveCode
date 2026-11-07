@@ -22,6 +22,8 @@ import { interruptSignal } from './goal';
 export interface OrchestrateOptions {
   /** Comma-separated agent ids. */
   agents?: string;
+  /** Agent that writes the plan. */
+  planner?: string;
   maxTasks?: number;
   apply?: boolean;
   list?: boolean;
@@ -71,6 +73,13 @@ export function parseAgents(value: string): OrchestratorAgent[] {
   return agents;
 }
 
+/** `--planner codex` → `'codex'` (aliases accepted, exactly one agent). */
+export function parsePlanner(value: string): OrchestratorAgent {
+  const agents = parseAgents(value);
+  if (agents.length !== 1) throw new CliError('--planner takes exactly one agent');
+  return agents[0] as OrchestratorAgent;
+}
+
 /** The validated start body for `words` and the flags. */
 export function startInput(words: string[], opts: OrchestrateOptions): StartRunInput {
   const objective = words.join(' ').trim();
@@ -94,6 +103,7 @@ export function startInput(words: string[], opts: OrchestrateOptions): StartRunI
     objective,
     ...(opts.agents !== undefined ? { agents: parseAgents(opts.agents) } : {}),
     ...(opts.maxTasks !== undefined ? { maxTasks: opts.maxTasks } : {}),
+    ...(opts.planner !== undefined ? { planner: parsePlanner(opts.planner) } : {}),
   };
 }
 

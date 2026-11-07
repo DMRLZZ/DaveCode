@@ -175,6 +175,9 @@ export const startRunSchema = z.object({
   /** Defaults to every available agent. */
   agents: z.array(z.enum(ORCHESTRATOR_AGENTS)).min(1).max(3).optional(),
   maxTasks: z.number().int().min(1).max(ORCHESTRATOR_LIMITS.maxTasks).optional(),
+  /** The agent that splits the objective. It must be installed, but need not take tasks.
+   * Defaults to the first allowed agent in the order claude, codex, agy. */
+  planner: z.enum(ORCHESTRATOR_AGENTS).optional(),
 });
 export type StartRunInput = z.infer<typeof startRunSchema>;
 

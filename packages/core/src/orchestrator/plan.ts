@@ -55,6 +55,7 @@ export function buildPlanPrompt(input: PlanPromptInput): string {
     '- Tasks run in parallel, each in its own separate copy of the repository, and their changes are merged afterwards. Give tasks different files to touch wherever possible so the merges do not conflict.',
     '- When a task needs the result of another task, list it in "dependsOn" (1-based positions in the "tasks" array). It then starts only after those tasks finished and were merged.',
     '- Each "prompt" must be self-contained: the agent sees only its own prompt and the repository, not this plan or the other prompts. Say exactly what to build or change, where, and how to know it is done.',
+    '- Write every "title" and "prompt" in the language of the objective.',
     '- Spread the work over the agents according to their strengths.',
     '',
     'Reply with ONLY a JSON object, no prose and no code fence, of this shape:',

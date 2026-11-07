@@ -30,6 +30,7 @@ import {
   ModeSwitch,
   OrchestratorPanel,
   PanelToggle,
+  PlannerPicker,
 } from './Orchestrator';
 
 interface PaneState {
@@ -238,6 +239,7 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
   const mode: BarMode = offered ? (chosenMode ?? 'orchestrate') : 'broadcast';
   const [chosenAgents, setChosenAgents] = useState<OrchestratorAgent[]>();
   const selection = chosenAgents ?? availableAgents(availability);
+  const [planner, setPlanner] = useState<OrchestratorAgent>();
   const [panelOpen, setPanelOpen] = useState(false);
   const [runId, setRunId] = useState<string>();
   const [startError, setStartError] = useState<string>();
@@ -246,7 +248,8 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
   const panel = offered && panelOpen;
 
   const orchestrate = () => {
-    const input = startRequest(message, selection, availability);
+    const lead = planner ?? availableAgents(availability)[0];
+    const input = startRequest(message, selection, availability, lead);
     if (!input || start.isPending) return;
     setStartError(undefined);
     start.mutate(input, {
@@ -387,6 +390,13 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
           >
             {startError}
           </p>
+        )}
+        {mode === 'orchestrate' && availability && (
+          <PlannerPicker
+            installed={availableAgents(availability)}
+            planner={planner}
+            onChange={setPlanner}
+          />
         )}
         {mode === 'orchestrate' && availability && (
           <AgentChips

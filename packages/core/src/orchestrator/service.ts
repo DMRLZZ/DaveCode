@@ -160,6 +160,14 @@ class OrchestratorEngine implements OrchestratorService {
         );
       }
 
+      if (input.planner && !available.has(input.planner)) {
+        throw new OrchestratorError(
+          'no_agents',
+          `The chosen planner (${input.planner}) is not installed.`,
+        );
+      }
+      const planner = input.planner ?? pickPlanner(agents);
+
       const id = this.newId();
       let integrationBranch: string;
       try {
@@ -174,7 +182,7 @@ class OrchestratorEngine implements OrchestratorService {
         objective: input.objective,
         status: 'planning',
         agents,
-        planner: pickPlanner(agents),
+        planner,
         baseBranch: head.branch,
         baseCommit: head.commit,
         integrationBranch,
