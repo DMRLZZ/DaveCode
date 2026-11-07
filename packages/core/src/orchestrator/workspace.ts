@@ -4,7 +4,7 @@
  * a separate integration worktree, so the user's working tree is only touched by `apply`.
  * Nothing is ever pushed, and branches survive `cleanup` so no agent work is lost.
  */
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, realpathSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { assertSafeRef, Git, GitError } from '../autonomous/git';
 import type { OrchestratorWorkspace, TaskWorkspace, WorkspaceResult } from './contract';
@@ -48,14 +48,23 @@ function errMessage(err: unknown): string {
   return text.length <= 300 ? text : `${text.slice(0, 299)}…`;
 }
 
+/** The canonical spelling of an existing path (macOS /private/var, Windows 8.3 names). */
+function realPath(p: string): string {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
 function samePath(a: string, b: string): boolean {
-  const na = path.resolve(a);
-  const nb = path.resolve(b);
+  const na = realPath(a);
+  const nb = realPath(b);
   return process.platform === 'win32' ? na.toLowerCase() === nb.toLowerCase() : na === nb;
 }
 
 function isInside(child: string, parent: string): boolean {
-  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  const rel = path.relative(realPath(parent), realPath(child));
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
@@ -294,14 +303,16 @@ export function createGitWorkspace(options: GitWorkspaceOptions): OrchestratorWo
           // not a repository any more: still remove the directory
         }
         try {
-          await repo.run(['worktree', 'prune']);
-        } catch {
-          // ignore
-        }
-        try {
           rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
         } catch {
           // best effort
+        }
+        // Prune after deleting the folder: a worktree git listed under another spelling of the
+        // path (macOS /private/var, Windows 8.3 names) was not removed above and is stale now.
+        try {
+          await repo.run(['worktree', 'prune']);
+        } catch {
+          // ignore
         }
       });
     },

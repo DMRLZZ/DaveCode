@@ -14,8 +14,9 @@ let ws: OrchestratorWorkspace;
 
 /** git without the machine's global/system config, so identity fallbacks are testable. */
 function isolatedEnv(): NodeJS.ProcessEnv {
-  const globalConfig = path.join(scratch, 'empty gitconfig');
-  writeFileSync(globalConfig, '');
+  const globalConfig = path.join(scratch, 'isolated gitconfig');
+  // useConfigOnly stops git guessing an identity from the host name, as it does on macOS runners.
+  writeFileSync(globalConfig, '[user]\n\tuseConfigOnly = true\n');
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     GIT_CONFIG_GLOBAL: globalConfig,

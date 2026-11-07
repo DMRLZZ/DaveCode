@@ -17,7 +17,7 @@
  *   so plan runs happen in a fresh empty temp directory that is removed afterwards. The prompt
  *   is prefixed with a note that the repository is not visible.
  */
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -136,6 +136,15 @@ export function agentArgs(agent: OrchestratorAgent, mode: AgentRunRequest['mode'
   }
 }
 
+/** The canonical spelling of an existing path, or the path itself. */
+function realPath(p: string): string {
+  try {
+    return realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
 function agentStdin(
   agent: OrchestratorAgent,
   mode: AgentRunRequest['mode'],
@@ -222,8 +231,14 @@ function toolLine(name: string, input: unknown, cwd: string): string {
     }
   }
   if (hint && path.isAbsolute(hint)) {
-    const rel = path.relative(cwd, hint);
-    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) hint = rel.split(path.sep).join('/');
+    // Agents may report the resolved path (macOS /private/var, Windows long names).
+    for (const base of new Set([cwd, realPath(cwd)])) {
+      const rel = path.relative(base, hint);
+      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) {
+        hint = rel.split(path.sep).join('/');
+        break;
+      }
+    }
   }
   return clip(scrubSecrets(hint ? `${name} ${hint}` : name), MAX_TOOL_LINE);
 }

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -178,7 +178,7 @@ describe('createCliAgentRunner: claude', () => {
       'acceptEdits',
     ]);
     expect(edit.stdin).toBe('Do the thing\nwith "quotes" & %PATH% !bang');
-    expect(edit.cwd).toBe(workdir);
+    expect(realpathSync.native(edit.cwd)).toBe(realpathSync.native(workdir));
     expect(edit.claudeConfigDir ?? null).toBe(process.env.CLAUDE_CONFIG_DIR ?? null);
 
     const plan = await echo('claude', 'plan');
@@ -255,7 +255,7 @@ describe('createCliAgentRunner: codex', () => {
       'approval_policy=never',
       '-',
     ]);
-    expect(plan.cwd).toBe(workdir);
+    expect(realpathSync.native(plan.cwd)).toBe(realpathSync.native(workdir));
     const edit = await echo('codex', 'edit');
     expect(edit.args).toContain('workspace-write');
     expect(edit.stdin).toBe('Do the thing\nwith "quotes" & %PATH% !bang');
@@ -294,7 +294,7 @@ describe('createCliAgentRunner: agy', () => {
       '--disable-slash-commands',
       '--print=',
     ]);
-    expect(edit.cwd).toBe(workdir);
+    expect(realpathSync.native(edit.cwd)).toBe(realpathSync.native(workdir));
     expect(JSON.parse(edit.stdin)).toEqual({
       event: 'user',
       message: { content: 'Do the thing\nwith "quotes" & %PATH% !bang' },
@@ -307,7 +307,7 @@ describe('createCliAgentRunner: agy', () => {
     const res = await runner('agy', 'write', scratchParent).run(request('agy', { mode: 'plan' }));
     expect(res.ok).toBe(true);
     const seen = JSON.parse(res.text) as Echo;
-    expect(path.dirname(seen.cwd)).toBe(scratchParent);
+    expect([scratchParent, realpathSync.native(scratchParent)]).toContain(path.dirname(seen.cwd));
     expect(existsSync(seen.cwd)).toBe(false);
     expect(existsSync(path.join(workdir, 'scratch.txt'))).toBe(false);
     const content = (JSON.parse(seen.stdin) as { message: { content: string } }).message.content;
