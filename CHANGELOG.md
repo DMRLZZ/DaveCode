@@ -6,6 +6,15 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-07
+
+### Fixed
+
+- macOS no longer reports the downloaded app as damaged. The app was published without a valid
+  signature; it is now signed ad hoc, so the first launch only asks you to confirm it under
+  **System Settings → Privacy & Security → Open Anyway**. CI checks the signature of the app
+  inside the DMG.
+
 ## [0.6.0] - 2026-11-07
 
 This release adds the DaveCode orchestrator.

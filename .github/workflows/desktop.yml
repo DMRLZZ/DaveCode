@@ -47,6 +47,14 @@ jobs:
         run: pnpm --filter @davecode/desktop smoke --packaged
       - if: runner.os == 'Linux'
         run: xvfb-run --auto-servernum pnpm --filter @davecode/desktop smoke --packaged
+      # A broken signature makes macOS call a downloaded app "damaged"; check the copy in the DMG.
+      - if: runner.os == 'macOS'
+        working-directory: packages/desktop/release
+        run: |
+          codesign --verify --deep --strict --verbose=2 mac-arm64/DaveCode.app
+          hdiutil attach DaveCode-macOS-arm64.dmg -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/dmg/DaveCode.app"
+          hdiutil detach "$RUNNER_TEMP/dmg"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

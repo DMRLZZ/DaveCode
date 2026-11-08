@@ -30,8 +30,9 @@ everything on your machine.
 | :----------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
 | [DaveCode-Setup-x64.exe](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Setup-x64.exe) | [DaveCode-macOS-arm64.dmg](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-macOS-arm64.dmg) | [DaveCode-Linux-x86_64.AppImage](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Linux-x86_64.AppImage) |
 
-The installers are unsigned previews: on Windows choose **More info → Run anyway**; on macOS
-right-click the app and choose **Open** the first time; on Linux `chmod +x` the AppImage.
+The installers are not code-signed by a vendor yet: on Windows choose **More info → Run anyway**;
+on macOS open the app once, then choose **Open Anyway** in **System Settings → Privacy &
+Security**; on Linux `chmod +x` the AppImage.
 
 **Terminal** (Node.js 22.12 or later):
 
