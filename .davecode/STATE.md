@@ -4,11 +4,11 @@ _Last updated: 2026-11-07_
 
 ## Current focus
 
-**v0.6.0 on `main`**: the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
+**v0.6.1 on `main`**: the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
 setup, DaveCode accounts on Cloudflare (`davecode-auth` + D1 at `auth.davecode.app`),
 official vendor sign-in for Claude Code, Codex and Antigravity (`agy`), desktop installers
 for Windows, macOS and Linux, and the public site at `davecode.app` served from the
-`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.6.0`
+`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.6.1`
 (installed command `davecode`).
 
 ## In progress
@@ -58,8 +58,8 @@ None.
 - Desktop panes use the vendor CLIs' global logins, not DaveCode's per-account sandboxes.
 
 - npm installation uses `npm install -g @dmrlzz/davecode`; the unscoped name is unavailable.
-- Desktop installers are unsigned preview builds (Windows SmartScreen / macOS Gatekeeper require
-  confirming first launch).
+- Desktop installers are not vendor-signed (Windows SmartScreen asks to confirm; the macOS app is
+  signed ad hoc, so Gatekeeper asks for Open Anyway in Privacy & Security on first launch).
 - Codex CLI, Claude Code and Antigravity (`agy`) passed live adapter completion checks on Windows.
 - Gemini CLI 0.65.0 completed official Google OAuth in an isolated home, but Code Assist rejected
   the client with `UNSUPPORTED_CLIENT`. Use `antigravity-cli` (`agy`) or a Gemini API key instead.
@@ -102,3 +102,5 @@ None.
   a log. The cause of one failed launch on 0.5.2 is still unknown.
 - 2026-11-07: v0.6.0 prepared: orchestrator, a runtime bundled into 335 files (#61), and `main`
   protected (pull requests and the four CI checks required, also for admins).
+- 2026-11-07: v0.6.1 prepared: the macOS app is signed ad hoc; unsigned, a downloaded copy was
+  reported as damaged.

@@ -63,8 +63,12 @@ await build({
       target: 'dmg',
       icon: join(root, 'assets/icon.png'),
       category: 'public.app-category.developer-tools',
-      // Unsigned preview: no Apple Developer ID yet.
-      identity: null,
+      // No Apple Developer ID yet, so the app is signed ad hoc. Unsigned, the signature Electron
+      // ships with breaks once the bundle is assembled, and a downloaded copy is then reported as
+      // "damaged" with no way to open it. Ad hoc, macOS offers Privacy & Security → Open Anyway.
+      identity: '-',
+      // Hardened runtime would reject Electron's frameworks, which carry another team's signature.
+      hardenedRuntime: false,
       // biome-ignore lint/suspicious/noTemplateCurlyInString: electron-builder expands these macros.
       artifactName: 'DaveCode-macOS-${arch}.${ext}',
     },
