@@ -10,6 +10,7 @@ import type { GatewayOptions, StartGatewayOptions } from './options';
 import { registerAccountRoutes } from './routes/account';
 import { registerApiRoutes } from './routes/api';
 import { authCookie, registerAuthRoutes } from './routes/auth';
+import { registerChangesRoutes } from './routes/changes';
 import { registerEventRoutes } from './routes/events';
 import { registerOrchestratorRoutes } from './routes/orchestrator';
 import { registerV1Routes } from './routes/v1';
@@ -300,6 +301,7 @@ export async function buildGateway(
   registerAuthRoutes(app, login);
   registerAccountRoutes(app, options.account);
   registerOrchestratorRoutes(app, engine, options.orchestrator);
+  registerChangesRoutes(app, engine, options.changes);
   registerApiRoutes(app, engine, options);
   registerEventRoutes(app, engine, options.heartbeatMs ?? 15_000);
 

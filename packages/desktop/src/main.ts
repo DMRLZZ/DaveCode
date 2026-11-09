@@ -14,7 +14,7 @@ import {
   Menu,
   shell,
 } from 'electron';
-import { openSchema, resizeSchema, writeSchema } from './panes';
+import { openSchema, paneWorkspaceDir, resizeSchema, writeSchema } from './panes';
 import { backendErrorSchema, externalUrl, readySchema, sameOrigin } from './policy';
 import { verifyWindow } from './smoke';
 import {
@@ -325,9 +325,12 @@ else {
     });
     ipcMain.handle('terminal:open', (event, request: unknown) => {
       if (!fromGateway(event) || !project) throw new Error('no_project');
-      const { kind, cols, rows } = openSchema.parse(request);
+      const { kind, cols, rows, workspace } = openSchema.parse(request);
+      // An isolated pane runs in its own worktree, which the gateway created under the home.
+      const cwd = workspace ? paneWorkspaceDir(home, project, workspace) : project;
+      if (!cwd || !existsSync(cwd)) throw new Error('no_workspace');
       try {
-        return terminals.open(kind, project, cols, rows);
+        return terminals.open(kind, cwd, cols, rows);
       } catch (error) {
         console.error('Terminal failed to start:', error instanceof Error ? error.message : error);
         throw new Error('terminal_failed');

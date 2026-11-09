@@ -13,6 +13,10 @@ export type {
   AccountState,
   AgentAvailability,
   AgentOutput,
+  ChangedFile,
+  ChangesDiff,
+  ChangesSuggestion,
+  ChangesWorkspace,
   LoginProvider,
   LoginStatus,
   LoginUser,
@@ -21,6 +25,9 @@ export type {
   OrchestratorRunStatus,
   OrchestratorTask,
   OrchestratorTaskStatus,
+  ShipInput,
+  ShipResult,
+  ShipStep,
   StartRunInput,
 } from '@davecode/core';
 

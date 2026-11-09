@@ -1,6 +1,7 @@
 import type {
   Account,
   AccountControl,
+  ChangesService,
   ClearableTaskField,
   Goal,
   GoalArtifact,
@@ -110,6 +111,11 @@ export interface GatewayOptions {
    * gateway and the user share a machine: it drives the vendor CLIs the user is signed in to.
    */
   orchestrator?: OrchestratorService;
+  /**
+   * Changes review for the served project (`/api/changes/*`): isolated pane worktrees, diffs and
+   * commit, push and pull request. Inject it only when the gateway and the user share a machine.
+   */
+  changes?: ChangesService;
   /** SSE heartbeat interval for `/api/events` (default 15 000 ms). */
   heartbeatMs?: number;
   /** Bind address, used to decide which Host headers are expected (set by `startGateway`). */

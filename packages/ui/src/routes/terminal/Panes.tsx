@@ -1,10 +1,11 @@
 import '@xterm/xterm/css/xterm.css';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { Plus, X } from 'lucide-react';
+import { GitBranch, Plus, X } from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrandMark } from '../../components/shell/Sidebar';
 import { errorMessage } from '../../lib/api';
+import { changedFileCount, lineCounts, shortBranch } from '../../lib/changes';
 import { cn } from '../../lib/cn';
 import { useOrchestratorRunMap } from '../../lib/data';
 import { gridColumns, type PaneKind, type TerminalBridge } from '../../lib/desktop';
@@ -17,12 +18,15 @@ import {
   toggleAgent,
 } from '../../lib/orchestrator';
 import {
+  useChangesWorkspaces,
+  useCreateWorkspace,
   useOrchestratorAgents,
   useOrchestratorRuns,
   useStartOrchestratorRun,
 } from '../../lib/queries';
 import { Link } from '../../lib/router';
-import type { OrchestratorAgent } from '../../lib/types';
+import type { ChangesWorkspace, OrchestratorAgent } from '../../lib/types';
+import { ChangesPanel, ChangesToggle } from './Changes';
 import { KINDS, kindMeta } from './kinds';
 import {
   AgentChips,
@@ -36,6 +40,8 @@ import {
 interface PaneState {
   key: number;
   kind: PaneKind;
+  /** Isolated workspace (own worktree and branch) the pane runs in. */
+  workspace?: string;
 }
 
 function isCopy(e: KeyboardEvent, selection: boolean): boolean {
@@ -52,12 +58,17 @@ function Pane({
   bridge,
   active,
   focused,
+  workspace,
   onFocus,
   onClose,
   onWriter,
+  onShowChanges,
 }: {
   pane: PaneState;
   bridge: TerminalBridge;
+  /** Live state of the pane's isolated workspace, once known. */
+  workspace: ChangesWorkspace | undefined;
+  onShowChanges: () => void;
   active: boolean;
   focused: boolean;
   onFocus: () => void;
@@ -137,7 +148,12 @@ function Pane({
     refit.current();
 
     bridge
-      .open({ kind: pane.kind, cols: term.cols, rows: term.rows })
+      .open({
+        kind: pane.kind,
+        cols: term.cols,
+        rows: term.rows,
+        ...(pane.workspace ? { workspace: pane.workspace } : {}),
+      })
       .then((opened) => {
         if (disposed) {
           void bridge.close(opened);
@@ -189,6 +205,26 @@ function Pane({
       <header className="flex h-7 shrink-0 items-center gap-2 border-b border-zinc-800 px-2 font-mono text-[11px] text-zinc-400">
         <span aria-hidden className="size-1.5 rounded-full" style={{ background: meta.accent }} />
         <span className="truncate">{meta.label}</span>
+        {pane.workspace && (
+          <button
+            type="button"
+            onClick={onShowChanges}
+            title={
+              workspace?.branch
+                ? `Isolated on ${workspace.branch}: review its changes`
+                : 'Isolated workspace'
+            }
+            className="flex min-w-0 items-center gap-1 rounded px-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
+          >
+            <GitBranch aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">
+              {workspace ? shortBranch(workspace.branch) : 'isolated'}
+            </span>
+            {workspace && workspace.files.length > 0 && (
+              <span className="shrink-0 tabular-nums text-zinc-400">{lineCounts(workspace)}</span>
+            )}
+          </button>
+        )}
         {!live && <span className="text-zinc-600">stopped</span>}
         <button
           type="button"
@@ -211,10 +247,35 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
   const [message, setMessage] = useState('');
   const writers = useRef(new Map<number, (data: string) => void>());
 
-  const add = (kind: PaneKind) => {
+  const [isolate, setIsolate] = useState(false);
+  const [isolateError, setIsolateError] = useState<string>();
+  const createWorkspace = useCreateWorkspace();
+  const changesQuery = useChangesWorkspaces(active);
+  const workspaces = changesQuery.data ?? undefined;
+  const changesOffered = workspaces !== undefined;
+  const workspaceById = useMemo(
+    () => new Map((workspaces ?? []).map((w) => [w.id, w])),
+    [workspaces],
+  );
+  const [changesOpen, setChangesOpen] = useState(false);
+  const [changesId, setChangesId] = useState<string>();
+
+  const place = (kind: PaneKind, workspace?: string) => {
     const key = next.current++;
-    setPanes((current) => [...current, { key, kind }]);
+    setPanes((current) => [...current, { key, kind, ...(workspace ? { workspace } : {}) }]);
     setFocused(key);
+  };
+  const add = (kind: PaneKind) => {
+    setIsolateError(undefined);
+    if (!isolate || !changesOffered) {
+      place(kind);
+      return;
+    }
+    // Each isolated pane gets a fresh worktree on its own branch before its terminal starts.
+    createWorkspace.mutate(kindMeta(kind).label, {
+      onSuccess: (workspace) => place(kind, workspace.id),
+      onError: (error) => setIsolateError(errorMessage(error)),
+    });
   };
   const close = (key: number) => {
     const remaining = panes.filter((pane) => pane.key !== key);
@@ -245,7 +306,12 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
   const [startError, setStartError] = useState<string>();
   const shownRun = runs.find((r) => r.id === runId) ?? runs[0];
   const busy = runs.some(isActiveRun);
-  const panel = offered && panelOpen;
+  const panel = offered && panelOpen && !changesOpen;
+  const showChanges = (id?: string) => {
+    if (id) setChangesId(id);
+    setChangesOpen(true);
+    setPanelOpen(false);
+  };
 
   const orchestrate = () => {
     const lead = planner ?? availableAgents(availability)[0];
@@ -257,6 +323,7 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
         setMessage('');
         setRunId(run.id);
         setPanelOpen(true);
+        setChangesOpen(false);
       },
       onError: (error) => setStartError(errorMessage(error)),
     });
@@ -297,6 +364,32 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
             {label}
           </button>
         ))}
+        {changesOffered && (
+          <button
+            type="button"
+            aria-pressed={isolate}
+            onClick={() => setIsolate((on) => !on)}
+            title="New panes get their own git worktree and branch, so agents never step on each other"
+            className={cn(
+              'ml-1 flex h-7 items-center gap-1.5 rounded border px-2',
+              isolate
+                ? 'border-zinc-600 bg-zinc-900 text-zinc-100'
+                : 'border-zinc-800 text-zinc-500 hover:text-zinc-200',
+            )}
+          >
+            <GitBranch aria-hidden className="size-3" />
+            {createWorkspace.isPending ? 'Creating…' : 'Isolated'}
+          </button>
+        )}
+        {isolateError && (
+          <span
+            role="alert"
+            title={isolateError}
+            className="ml-2 max-w-[30%] truncate text-red-400"
+          >
+            {isolateError}
+          </span>
+        )}
         <nav aria-label="DaveCode" className="ml-auto flex items-center gap-3 text-zinc-500">
           <Link to="/accounts" className="hover:text-zinc-100">
             Connections
@@ -329,12 +422,24 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
                 bridge={bridge}
                 active={active}
                 focused={pane.key === focused}
+                workspace={pane.workspace ? workspaceById.get(pane.workspace) : undefined}
                 onFocus={() => setFocused(pane.key)}
                 onClose={() => close(pane.key)}
                 onWriter={onWriter}
+                onShowChanges={() => showChanges(pane.workspace)}
               />
             ))}
           </main>
+        )}
+        {changesOpen && (changesOffered || changesQuery.isError) && (
+          <ChangesPanel
+            workspaces={workspaces}
+            error={changesQuery.isError ? errorMessage(changesQuery.error) : undefined}
+            selectedId={changesId}
+            onSelect={setChangesId}
+            onClose={() => setChangesOpen(false)}
+            agents={availableAgents(availability)}
+          />
         )}
         {panel && (
           <OrchestratorPanel
@@ -405,8 +510,22 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
             onToggle={(agent) => setChosenAgents(toggleAgent(selection, agent))}
           />
         )}
+        {(changesOffered || changesQuery.isError) && (
+          <ChangesToggle
+            open={changesOpen}
+            count={changedFileCount(workspaces)}
+            onToggle={() => (changesOpen ? setChangesOpen(false) : showChanges())}
+          />
+        )}
         {offered && (
-          <PanelToggle open={panelOpen} busy={busy} onToggle={() => setPanelOpen((o) => !o)} />
+          <PanelToggle
+            open={panel}
+            busy={busy}
+            onToggle={() => {
+              setPanelOpen(!panel);
+              setChangesOpen(false);
+            }}
+          />
         )}
       </form>
     </div>

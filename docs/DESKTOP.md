@@ -59,7 +59,13 @@ main window and main frame and accepts no caller-supplied filesystem path. Closi
 or switching projects stops goals, the runner, the gateway and SQLite before shutting down the
 child; a timed process-tree fallback handles a stalled shutdown.
 
-The desktop preview does not yet embed a terminal, manage vendor CLI installations or ship
-automatic updates. Official provider sign-in can open an external terminal using the bundled
+Panes are real terminals (`@lydell/node-pty` + xterm.js) owned by the main process; the page
+picks only a pane kind from an allow-list, never a command line. With **Isolated** on, each new
+pane first gets its own git worktree and branch from `/api/changes`, and the main process opens
+the terminal there after checking the id against `<DAVECODE_HOME>/panes/<project key>/<id>`. The
+**Changes** panel (bottom bar) lists the project checkout and every isolated workspace with their
+diffs, and commits, pushes, opens pull requests with `gh`, or merges a pane's branch back.
+
+The desktop preview does not yet manage vendor CLI installations or ship automatic updates. Official provider sign-in can open an external terminal using the bundled
 Node/CLI. Gemini's upstream `UNSUPPORTED_CLIENT` limitation remains; see
 [provider verification](PROVIDER-VERIFICATION.md).

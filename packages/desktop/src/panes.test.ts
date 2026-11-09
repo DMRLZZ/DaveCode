@@ -1,5 +1,6 @@
+import { paneWorkspacePath } from '@davecode/core';
 import { describe, expect, it } from 'vitest';
-import { openSchema, paneEnv, shellPlan, writeSchema } from './panes';
+import { openSchema, paneEnv, paneWorkspaceDir, shellPlan, writeSchema } from './panes';
 
 describe('shellPlan', () => {
   it('starts a plain shell', () => {
@@ -55,5 +56,27 @@ describe('paneEnv', () => {
       COLORTERM: 'truecolor',
       TERM_PROGRAM: 'DaveCode',
     });
+  });
+});
+
+describe('isolated panes', () => {
+  it('accepts a workspace id and nothing that could be a path', () => {
+    expect(
+      openSchema.parse({ kind: 'claude', cols: 80, rows: 24, workspace: 'ab12cd' }).workspace,
+    ).toBe('ab12cd');
+    for (const workspace of ['../x', 'C:\\x', 'AB12CD', 'abc', '', 'a/b1c2']) {
+      expect(openSchema.safeParse({ kind: 'claude', cols: 80, rows: 24, workspace }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it('finds the same worktree as the gateway', () => {
+    const home = '/home/u/.davecode';
+    const project = '/work/my project';
+    expect(paneWorkspaceDir(home, project, 'ab12cd')).toBe(
+      paneWorkspacePath(home, project, 'ab12cd'),
+    );
+    expect(paneWorkspaceDir(home, project, '../x')).toBeUndefined();
   });
 });
