@@ -795,17 +795,17 @@ resolves the folder itself and never accepts a path from the page.
 
 Errors use the `/api` envelope with these codes:
 
-| Status | Code                | When                                                                   |
-| :----- | :------------------ | :--------------------------------------------------------------------- |
-| 400    | `invalid_body`      | The body failed validation (the zod message is included)               |
-| 400    | `invalid`           | The request makes no sense here (merge `main`, ship a detached HEAD)   |
-| 404    | `not_found`         | Unknown workspace, or a file without changes in `?path=`               |
-| 409    | `not_a_repository`  | The project is not a git repository with at least one commit           |
-| 409    | `limit`             | Already 12 isolated workspaces                                         |
-| 409    | `nothing_to_commit` | Nothing to commit, describe or merge                                   |
-| 409    | `dirty`             | Merge refused: the isolated workspace has uncommitted changes          |
-| 409    | `conflict`          | The merge conflicts; it was aborted                                    |
-| 409    | `unavailable`       | No agent can write the message, or the agent failed                    |
+| Status | Code                | When                                                                 |
+| :----- | :------------------ | :------------------------------------------------------------------- |
+| 400    | `invalid_body`      | The body failed validation (the zod message is included)             |
+| 400    | `invalid`           | The request makes no sense here (merge `main`, ship a detached HEAD) |
+| 404    | `not_found`         | Unknown workspace, or a file without changes in `?path=`             |
+| 409    | `not_a_repository`  | The project is not a git repository with at least one commit         |
+| 409    | `limit`             | Already 12 isolated workspaces                                       |
+| 409    | `nothing_to_commit` | Nothing to commit, describe or merge                                 |
+| 409    | `dirty`             | Merge refused: the isolated workspace has uncommitted changes        |
+| 409    | `conflict`          | The merge conflicts; it was aborted                                  |
+| 409    | `unavailable`       | No agent can write the message, or the agent failed                  |
 
 ### Live events
 
