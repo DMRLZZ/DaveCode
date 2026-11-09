@@ -1,14 +1,14 @@
 # DaveCode: project state
 
-_Last updated: 2026-11-07_
+_Last updated: 2026-11-08_
 
 ## Current focus
 
-**v0.6.1 on `main`**: the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
+**v0.7.0 on `main`**: isolated panes (one git worktree and branch per pane) with a Changes panel that reviews diffs and commits, pushes, opens pull requests or merges a pane back; the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
 setup, DaveCode accounts on Cloudflare (`davecode-auth` + D1 at `auth.davecode.app`),
 official vendor sign-in for Claude Code, Codex and Antigravity (`agy`), desktop installers
 for Windows, macOS and Linux, and the public site at `davecode.app` served from the
-`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.6.1`
+`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.7.0`
 (installed command `davecode`).
 
 ## In progress
@@ -46,6 +46,11 @@ for Windows, macOS and Linux, and the public site at `davecode.app` served from 
 - **Orchestrator** (v0.6.0): `packages/core/src/orchestrator/` (planner, scheduler, headless
   runners, git worktree workspace), `/api/orchestrator/*`, `davecode orchestrate` and the
   workspace panel. Verified live with Claude Code and Codex in the packaged app.
+- **Changes review** (v0.7.0): `packages/core/src/changes/` (worktrees under
+  `<home>/panes/<key>/<id>`, status, patch, suggestion, ship = branch → commit → push → `gh pr
+  create`, merge, remove), `/api/changes/*`, the **Isolated** toggle and the Changes panel in the
+  desktop workspace. Verified live in the dev desktop app via CDP (isolated shell pane, diff,
+  Claude Code writing the message, merge, push).
 - **Desktop terminals**: real PTY panes (`@lydell/node-pty` + xterm.js) for a shell, Claude Code,
   Codex, Antigravity and DaveCode; the desktop opens on them and reopens the last project.
 
@@ -68,6 +73,8 @@ None.
 - The dashboard's Connect button can only open a terminal when the gateway is bound to loopback;
   remote gateways get the command to run instead.
 
+- Remote control from a phone or browser (T3 Code has it) is not built yet.
+
 ## Decisions log
 
 | Date | Decision |
@@ -82,6 +89,8 @@ None.
 | 2026-10-15 | Subscription details are entered by hand; DaveCode never scrapes billing pages |
 | 2026-10-15 | Subscriptions connect only through the vendor CLI's official login; no passwords, no token reuse, no Antigravity |
 | 2026-10-15 | The gateway's Connect endpoint delegates to an injected launcher, only on loopback binds |
+| 2026-11-08 | T3 Code (MIT) is a reference for concepts only; DaveCode writes its own code and keeps real terminal panes |
+| 2026-11-08 | Shipping never force-pushes; a failed step is reported in `steps`, not as an HTTP error |
 
 ## Activity log
 
@@ -104,3 +113,4 @@ None.
   protected (pull requests and the four CI checks required, also for admins).
 - 2026-11-07: v0.6.1 prepared: the macOS app is signed ad hoc; unsigned, a downloaded copy was
   reported as damaged.
+- 2026-11-08: v0.7.0 prepared: isolated panes and the Changes panel.

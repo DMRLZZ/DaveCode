@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-08
+
+This release adds isolated panes and a changes review, so you can run several agents on the
+same project and ship their work without leaving DaveCode.
+
+### Added
+
+- **Isolated panes.** Turn on **Isolated** in the workspace bar and every new pane gets its own
+  copy of the repository (a git worktree) on its own branch. Claude Code, Codex and Antigravity
+  can work side by side without touching each other's files. The pane header shows its branch
+  and how many lines it changed.
+- **Changes panel.** The new button in the bottom bar opens a review of the project and of every
+  isolated pane: changed files, a line-numbered diff, and one button to **Commit**, **Commit &
+  push** or **Commit, push & open a pull request** (draft optional). A pull request from `main`
+  first moves the work to a new branch named after it.
+- **Commit messages written for you.** DaveCode suggests a Conventional Commits message and pull
+  request text from the changed files, or asks Claude Code, Codex or Antigravity to write them
+  from the diff, using your own subscription.
+- **Merge a pane back.** Merge an isolated pane's branch into your checkout with one click; a
+  conflicting merge is cancelled and the files are named. Removing a pane's workspace keeps its
+  branch.
+- `/api/changes/*` routes for all of the above.
+
 ## [0.6.1] - 2026-11-07
 
 ### Fixed
