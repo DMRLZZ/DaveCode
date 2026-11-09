@@ -1,6 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import type { RunnerAction } from './api';
+import {
+  createWorkspace,
+  fetchDiff,
+  listWorkspaces,
+  mergeWorkspace,
+  removeWorkspace,
+  shipWorkspace,
+  suggestText,
+} from './changes';
 import { qk, upsertGoal, useData } from './data';
 import {
   applyOrchestratorRun,
@@ -15,10 +24,12 @@ import type {
   Account,
   AccountCreate,
   AccountPatch,
+  ChangesSuggestion,
   Goal,
   GoalStart,
   RoutesUpdate,
   RunnerStatus,
+  ShipInput,
   StartRunInput,
   TaskCreate,
   TaskNode,
@@ -433,5 +444,74 @@ export function useApplyOrchestratorRun() {
   return useMutation({
     mutationFn: (id: string) => applyOrchestratorRun(base, token, id),
     onSuccess: (run) => orchestrator.upsert(run),
+  });
+}
+
+// --- Changes review --------------------------------------------------------------------------
+
+/**
+ * The project's workspaces (checkout plus isolated panes), polled while `enabled`. `data` is
+ * null when this gateway has no changes review.
+ */
+export function useChangesWorkspaces(enabled: boolean) {
+  const { sourceKey, connection } = useData();
+  const { base, token } = useGateway();
+  return useQuery({
+    queryKey: qk(sourceKey, 'changes', 'workspaces'),
+    queryFn: () => listWorkspaces(base, token),
+    enabled: enabled && connection.mode === 'live',
+    refetchInterval: 4000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+}
+
+/** The patch of one workspace (or one of its files), refreshed when its file list changes. */
+export function useChangesDiff(id: string | undefined, file: string | undefined, version: string) {
+  const { sourceKey, connection } = useData();
+  const { base, token } = useGateway();
+  return useQuery({
+    queryKey: qk(sourceKey, 'changes', 'diff', id ?? '', file ?? '', version),
+    queryFn: () => fetchDiff(base, token, id ?? 'main', file),
+    enabled: id !== undefined && connection.mode === 'live',
+    placeholderData: (previous) => previous,
+    retry: false,
+  });
+}
+
+function useChangesMutation<I, O>(run: (base: string, token: string, input: I) => Promise<O>) {
+  const { sourceKey } = useData();
+  const { base, token } = useGateway();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: I) => run(base, token, input),
+    onSettled: () => qc.invalidateQueries({ queryKey: qk(sourceKey, 'changes') }),
+  });
+}
+
+export const useCreateWorkspace = () =>
+  useChangesMutation((base, token, label: string) => createWorkspace(base, token, label));
+
+export const useShipWorkspace = () =>
+  useChangesMutation((base, token, input: { id: string; ship: ShipInput }) =>
+    shipWorkspace(base, token, input.id, input.ship),
+  );
+
+export const useMergeWorkspace = () =>
+  useChangesMutation((base, token, input: { id: string; message?: string }) =>
+    mergeWorkspace(base, token, input.id, input.message),
+  );
+
+export const useRemoveWorkspace = () =>
+  useChangesMutation((base, token, input: { id: string; deleteBranch: boolean }) =>
+    removeWorkspace(base, token, input.id, input.deleteBranch),
+  );
+
+/** Suggestions change nothing on disk, so they do not refresh the workspaces. */
+export function useSuggestText() {
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: (input: { id: string; agent?: ChangesSuggestion['by'] }) =>
+      suggestText(base, token, input.id, input.agent),
   });
 }

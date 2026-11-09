@@ -1,7 +1,13 @@
 export type PaneKind = 'shell' | 'claude' | 'codex' | 'agy' | 'davecode';
 
 export interface TerminalBridge {
-  open(request: { kind: PaneKind; cols: number; rows: number }): Promise<string>;
+  /** `workspace` opens the pane in that isolated worktree instead of the project checkout. */
+  open(request: {
+    kind: PaneKind;
+    cols: number;
+    rows: number;
+    workspace?: string;
+  }): Promise<string>;
   write(request: { id: string; data: string }): Promise<void>;
   resize(request: { id: string; cols: number; rows: number }): Promise<void>;
   close(id: string): Promise<void>;
