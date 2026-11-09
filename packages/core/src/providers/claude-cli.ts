@@ -48,7 +48,12 @@ const SAFE_MODEL = /^[\w.:[\]-]+$/;
  * Reads `account.config`: `binaryPath` (default `claude`), `binaryArgs` (prefix args, e.g.
  * `['script.js']` when `binaryPath` is `node`), `models` (advertised model list),
  * `systemPromptMode` (`append` (default) uses `--append-system-prompt`, `replace` uses
- * `--system-prompt`), `cwd` (working directory, default the sandbox dir).
+ * `--system-prompt`), `cwd` (working directory, default the sandbox dir), `nativeTools` (`true`
+ * keeps Claude Code's own tools and MCP servers).
+ *
+ * By default the CLI runs with `--tools= --strict-mcp-config`: its tools are never surfaced here,
+ * and their definitions (plus every MCP server the user configured) made a one-word reply cost
+ * about 34k context tokens instead of about 3k.
  *
  * On Windows `.cmd`/`.bat` shims are run through the shell; the system prompt is then folded
  * into the stdin transcript instead of a command-line flag to avoid shell quoting problems.
@@ -78,6 +83,8 @@ export class ClaudeCliProvider implements Provider {
       '--include-partial-messages',
     ];
     args.push('--no-session-persistence');
+    // `--tools=` (not `--tools ""`) stays a shell-safe argument for Windows `.cmd` shims.
+    if (ctx.account.config.nativeTools !== true) args.push('--tools=', '--strict-mcp-config');
     if (model && model !== 'default') {
       if (!SAFE_MODEL.test(model)) {
         throw new ProviderError('claude-cli: unsupported characters in model id', {

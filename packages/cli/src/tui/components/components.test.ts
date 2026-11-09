@@ -8,7 +8,7 @@ import { SLASH_COMMANDS } from '../slash';
 import { ThemeProvider } from '../theme-context';
 import { cursorParts, InputBox, SlashHints } from './InputBox';
 import { StatusLine } from './StatusLine';
-import { EntryView, StreamingView } from './Transcript';
+import { EntryView, StreamingView, streamTail } from './Transcript';
 
 const themed = (child: ReturnType<typeof h>) => h(ThemeProvider, { theme: plain }, child);
 
@@ -78,11 +78,46 @@ describe('transcript entries', () => {
         h(StreamingView, {
           streaming: { id: 1, text: '', startedAt: 0, model: 'davecode/auto' },
           now: 3000,
+          columns: 80,
+          rows: 24,
         }),
       ),
     );
     expect(ui.lastFrame()).toContain('thinking 3s · esc to cancel');
     ui.unmount();
+  });
+
+  it('keeps a long reply inside the terminal while it streams', () => {
+    const text = Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join('\n');
+    const ui = render(
+      themed(
+        h(StreamingView, {
+          streaming: { id: 1, text, startedAt: 0, model: 'davecode/auto' },
+          now: 1000,
+          columns: 80,
+          rows: 20,
+        }),
+      ),
+    );
+    const frame = ui.lastFrame() ?? '';
+    expect(frame).toContain('line 60');
+    expect(frame).not.toMatch(/line 1$/m);
+    expect(frame).toContain('earlier lines appear when the reply finishes');
+    expect(frame.split('\n').length).toBeLessThanOrEqual(20);
+    ui.unmount();
+  });
+});
+
+describe('streamTail', () => {
+  it('keeps the last lines that fit, counting wrapped rows', () => {
+    expect(streamTail('a\nb\nc', 10, 5)).toEqual({ text: 'a\nb\nc', clipped: false });
+    expect(streamTail('a\nb\nc', 10, 2)).toEqual({ text: 'b\nc', clipped: true });
+    // 25 characters wrap to three rows of ten.
+    expect(streamTail(`x\n${'y'.repeat(25)}`, 10, 3)).toEqual({
+      text: 'y'.repeat(25),
+      clipped: true,
+    });
+    expect(streamTail('z'.repeat(50), 10, 2)).toEqual({ text: 'z'.repeat(20), clipped: true });
   });
 });
 

@@ -3,6 +3,7 @@ import { render } from 'ink-testing-library';
 import { createElement as h } from 'react';
 import { describe, expect, it } from 'vitest';
 import { plain } from '../test-utils';
+import { ABOUT_DAVECODE } from './about';
 import type { ChatBackend } from './backend';
 import { ChatApp } from './ChatApp';
 
@@ -111,7 +112,10 @@ describe('ChatApp', () => {
     expect(ui.frames.join('\n')).not.toContain('4999');
     expect(requests[0]).toEqual({
       model: 'davecode/auto',
-      messages: [{ role: 'user', content: 'hi' }],
+      messages: [
+        { role: 'system', content: ABOUT_DAVECODE },
+        { role: 'user', content: 'hi' },
+      ],
     });
     ui.unmount();
   });
@@ -130,7 +134,7 @@ describe('ChatApp', () => {
     expect(ui.lastFrame()).toContain('  two');
     await type(ui, '\r');
     await tick(50);
-    expect(requests[0]?.messages[0]?.content).toBe('one\ntwo');
+    expect(requests[0]?.messages[1]?.content).toBe('one\ntwo');
     ui.unmount();
   });
 

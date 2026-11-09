@@ -3,6 +3,7 @@ import { Box, Static, useApp, useInput, usePaste, useStdout, useWindowSize } fro
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { brandBanner } from '../ui/banner';
 import type { Theme } from '../ui/theme';
+import { withAbout } from './about';
 import type { ChatBackend } from './backend';
 import { chatReducer, initialChatState } from './chat-state';
 import { InputBox, SlashHints } from './components/InputBox';
@@ -68,7 +69,7 @@ function Chat({
   const theme = useTheme();
   const { exit } = useApp();
   const { write } = useStdout();
-  const { columns } = useWindowSize();
+  const { columns, rows } = useWindowSize();
   const width = Math.max(20, columns);
   // The banner is drawn once; it reads the width at mount without redrawing on resize.
   const widthRef = useRef(width);
@@ -173,7 +174,7 @@ function Chat({
       let accountId: string | undefined;
       try {
         const { meta, chunks } = await backend.stream(
-          { model: stateRef.current.model, messages: conversation },
+          { model: stateRef.current.model, messages: withAbout(conversation) },
           controller.signal,
         );
         accountId = meta.accountId;
@@ -485,7 +486,9 @@ function Chat({
       <Static key={state.epoch} items={state.entries}>
         {(entry) => <EntryView key={entry.id} entry={entry} />}
       </Static>
-      {state.streaming ? <StreamingView streaming={state.streaming} now={clock} /> : null}
+      {state.streaming ? (
+        <StreamingView streaming={state.streaming} now={clock} columns={width} rows={rows} />
+      ) : null}
       {picker ? (
         <Picker title={picker.title} options={picker.options} index={picker.index} />
       ) : (

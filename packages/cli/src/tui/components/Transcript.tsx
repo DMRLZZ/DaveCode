@@ -76,15 +76,64 @@ export function EntryView({ entry }: { entry: Entry }) {
 }
 
 /** The reply being streamed: spinner until the first token, then the growing text. */
-export function StreamingView({ streaming, now }: { streaming: StreamingState; now: number }) {
+/**
+ * The end of `text` that fits in `rows` terminal rows of `columns` columns, and whether anything
+ * was cut. Ink redraws the live region on every chunk and cannot erase rows that have scrolled
+ * off the top, so a reply taller than the terminal was printed again and again. The full reply
+ * is shown once it finishes.
+ */
+export function streamTail(
+  text: string,
+  columns: number,
+  rows: number,
+): { text: string; clipped: boolean } {
+  const width = Math.max(1, columns);
+  const budget = Math.max(1, rows);
+  const lines = text.split('\n');
+  const kept: string[] = [];
+  let used = 0;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i] ?? '';
+    const height = Math.max(1, Math.ceil([...line].length / width));
+    if (used + height > budget) {
+      if (kept.length === 0) {
+        // One very long line: keep its end.
+        const chars = [...line];
+        kept.unshift(chars.slice(Math.max(0, chars.length - budget * width)).join(''));
+      }
+      return { text: kept.join('\n'), clipped: true };
+    }
+    kept.unshift(line);
+    used += height;
+  }
+  return { text: kept.join('\n'), clipped: false };
+}
+
+export function StreamingView({
+  streaming,
+  now,
+  columns,
+  rows,
+}: {
+  streaming: StreamingState;
+  now: number;
+  /** Terminal size; the live text is clipped to it (see `streamTail`). */
+  columns: number;
+  rows: number;
+}) {
   const theme = useTheme();
   const seconds = Math.max(0, (now - streaming.startedAt) / 1000).toFixed(0);
+  // The marker takes two columns; the spinner, input box and status line need about eight rows.
+  const tail = streamTail(streaming.text, columns - 2, rows - 9);
   return (
     <Box flexDirection="column" marginBottom={1}>
+      {tail.clipped ? (
+        <Text dimColor={theme.ink.dim}> … earlier lines appear when the reply finishes</Text>
+      ) : null}
       {streaming.text ? (
         <Box>
           <Marker color={theme.ink.accent} glyph={theme.glyph.dot} />
-          <Text>{streaming.text}</Text>
+          <Text>{tail.text}</Text>
         </Box>
       ) : null}
       <Box paddingLeft={streaming.text ? 2 : 0}>
