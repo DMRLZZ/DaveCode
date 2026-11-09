@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { join, resolve } from 'node:path';
 import { z } from 'zod';
 
 /** What a pane runs. The renderer picks a kind; it never supplies a command line. */
@@ -11,8 +13,13 @@ const AGENT_COMMANDS: Record<Exclude<PaneKind, 'shell'>, string> = {
   davecode: 'davecode',
 };
 
+/** Same rule as core's `WORKSPACE_ID_PATTERN`: isolated workspace ids, never a path. */
+const WORKSPACE_ID = /^[a-z0-9]{4,24}$/;
+
 export const openSchema = z.object({
   kind: z.enum(PANE_KINDS),
+  /** Isolated workspace to open the pane in (created through `/api/changes`). */
+  workspace: z.string().regex(WORKSPACE_ID).optional(),
   cols: z.number().int().min(2).max(500),
   rows: z.number().int().min(1).max(300),
 });
@@ -64,4 +71,14 @@ export function paneEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   clean.COLORTERM = 'truecolor';
   clean.TERM_PROGRAM = 'DaveCode';
   return clean;
+}
+
+/**
+ * The worktree of isolated workspace `id` for `project`. Mirrors core's `paneWorkspacePath`
+ * (the main bundle does not carry core); a test keeps the two in step.
+ */
+export function paneWorkspaceDir(home: string, project: string, id: string): string | undefined {
+  if (!WORKSPACE_ID.test(id)) return undefined;
+  const key = createHash('sha256').update(resolve(project)).digest('hex').slice(0, 16);
+  return join(home, 'panes', key, id);
 }
