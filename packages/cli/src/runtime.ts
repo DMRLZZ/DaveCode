@@ -9,7 +9,9 @@ import {
   type Account,
   type AccountControl,
   type AutonomousRunner,
+  type ChangesService,
   createAccountControl,
+  createChangesService,
   createCliAgentRunner,
   createEngine,
   createGitWorkspace,
@@ -222,6 +224,11 @@ export interface RuntimeOptions {
    * built for the project when the gateway binds to loopback.
    */
   orchestrator?: OrchestratorService | false;
+  /**
+   * Changes review to serve, or false for none. By default one is built for the project when the
+   * gateway binds to loopback.
+   */
+  changes?: ChangesService | false;
   /** Non-fatal startup problems (default: only a `log` event on the engine's bus). */
   onWarning?: (message: string) => void;
 }
@@ -234,6 +241,8 @@ export interface Runtime {
   goals: GoalService | undefined;
   /** The pane orchestrator, when this runtime serves one. */
   orchestrator: OrchestratorService | undefined;
+  /** The changes review, when this runtime serves one. */
+  changes: ChangesService | undefined;
   /** Address to connect to, e.g. `http://127.0.0.1:4040`. */
   url: string;
   host: string;
@@ -267,6 +276,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     });
   let account: AccountControl | undefined;
   let orchestrator: OrchestratorService | undefined;
+  let changes: ChangesService | undefined;
 
   try {
     const project = projectRoot
@@ -314,10 +324,23 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       }
     }
 
+    // The changes review works on this machine's checkout and pushes with its git and gh logins.
+    if (options.changes !== undefined) {
+      changes = options.changes || undefined;
+    } else if (projectRoot && LOOPBACK_HOSTS.has(bindHost)) {
+      changes = createChangesService({
+        projectDir: projectRoot,
+        home: options.home,
+        env: options.env,
+        writer: createCliAgentRunner({ env: options.env }),
+      });
+    }
+
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
       ...(account ? { account } : {}),
       ...(orchestrator ? { orchestrator } : {}),
+      ...(changes ? { changes } : {}),
       ...((options.loginLauncher ?? loginLauncher)
         ? { loginLauncher: options.loginLauncher ?? loginLauncher }
         : {}),
@@ -341,6 +364,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       runner,
       goals,
       orchestrator,
+      changes,
       url: `http://${connectHost(host)}:${port}`,
       host,
       port,

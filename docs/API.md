@@ -691,6 +691,122 @@ From the terminal: `davecode orchestrate "<objective>" [--agents claude,codex,ag
 [--max-tasks <n>] [--apply]`, `davecode orchestrate --list` and
 `davecode orchestrate --apply-run <id>` run the same service in-process.
 
+### Changes review
+
+Review what the agents changed and ship it. Every desktop pane runs either in the project's own
+checkout (workspace `main`) or in an **isolated workspace**: a git worktree on its own branch,
+`davecode/pane-<id>`, so several agents can work on the same project without touching each
+other's files. For each workspace the routes return the changed files and their patch, and one
+call can commit, push and open a pull request. The contract lives in
+`packages/core/src/changes/contract.ts`.
+
+The routes exist only when the gateway was given a `ChangesService`. The runtime behind
+`davecode start`, `davecode app`, `davecode chat` and the desktop app does that for its project
+when it binds to loopback; without one every route below answers `404 not_found`. They need the
+gateway token like any other `/api` route, and `GET` responses are sent with
+`Cache-Control: no-store`.
+
+| Method   | Path                                  | Body                     | Response                                    |
+| :------- | :------------------------------------ | :----------------------- | :------------------------------------------ |
+| `GET`    | `/api/changes/workspaces`             | —                        | `{ "workspaces": ChangesWorkspace[] }`      |
+| `POST`   | `/api/changes/workspaces`             | `{ label? }`             | `201 ChangesWorkspace` (a new isolated one) |
+| `GET`    | `/api/changes/workspaces/:id`         | —                        | `ChangesWorkspace`                          |
+| `GET`    | `/api/changes/workspaces/:id/diff`    | — (`?path=<file>`)       | `{ "patch": string, "truncated": boolean }` |
+| `POST`   | `/api/changes/workspaces/:id/suggest` | `{ agent? }`             | `ChangesSuggestion`                         |
+| `POST`   | `/api/changes/workspaces/:id/ship`    | `ShipInput`              | `ShipResult`                                |
+| `POST`   | `/api/changes/workspaces/:id/merge`   | `{ message? }`           | `ChangesWorkspace` (the `main` checkout)    |
+| `DELETE` | `/api/changes/workspaces/:id`         | — (`?deleteBranch=true`) | `204`                                       |
+
+`:id` is `main` or an isolated workspace id (4–24 lowercase letters and digits); anything else
+is a `404`. The list starts with `main`, then the isolated workspaces, oldest first.
+
+```ts
+interface ChangesWorkspace {
+  id: string; // "main" or the isolated workspace id
+  label: string; // the pane's agent ("Claude Code"), or the project folder for main
+  isolated: boolean;
+  path: string; // absolute working tree
+  branch?: string; // absent when HEAD is detached
+  baseBranch?: string; // isolated: the branch it left, and the default PR base
+  files: ChangedFile[]; // main: uncommitted vs HEAD; isolated: everything since baseBranch
+  additions: number;
+  deletions: number;
+  dirty: boolean; // uncommitted changes exist
+  ahead: number; // isolated: commits not in baseBranch; main: commits not pushed
+  upstream?: string; // e.g. "origin/feature"
+  unpushed: number; // commits the upstream lacks
+  hasRemote: boolean; // an "origin" remote exists
+  createdAt?: string;
+}
+interface ChangedFile {
+  path: string; // relative, "/" separators
+  oldPath?: string; // renames
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+interface ChangesSuggestion {
+  message: string; // Conventional Commits subject
+  title: string; // pull request title
+  body: string; // pull request description (Markdown)
+  by: 'davecode' | 'claude' | 'codex' | 'agy';
+}
+interface ShipInput {
+  message?: string; // commit everything with this message (1–5000 chars)
+  push?: boolean; // default false; implied by pr
+  pr?: { title: string; body?: string; draft?: boolean; base?: string };
+}
+interface ShipResult {
+  ok: boolean; // every step succeeded
+  steps: { phase: 'branch' | 'commit' | 'push' | 'pr'; ok: boolean; detail: string }[];
+  commit?: string; // short id
+  branch?: string;
+  prUrl?: string;
+  workspace: ChangesWorkspace; // after shipping
+}
+```
+
+`suggest` without an agent derives the text from the file list for free. With `agent` it runs
+that vendor CLI headlessly in read-only (`plan`) mode in the workspace, with the file list and
+the patch (cut at 40,000 characters), and expects a JSON reply; a CLI that fails or answers
+something else gives `409 unavailable`.
+
+`ship` runs its steps in order and stops at the first failure, which is reported in `steps`
+(`ok: false`) rather than as an HTTP error, so a commit that succeeded before a failed push is
+not lost. **branch**: a pull request from the default branch first moves the work to a new
+`davecode/<title-slug>` branch, and an isolated workspace that was never pushed renames
+`davecode/pane-<id>` the same way. **commit**: `git add -A` and commit, with the repository's
+hooks. **push**: `git push --set-upstream origin <branch>`, never forced. **pr**:
+`gh pr create` with the user's own `gh` login; the base is `pr.base`, else the workspace's
+`baseBranch`, else the remote's default branch. If a pull request for the branch already exists
+its URL is returned. Error details are cut to 300 characters with credentials removed.
+
+`merge` merges an isolated workspace's branch into the branch the checkout is on (`--no-ff`).
+Uncommitted work in the isolated workspace is committed first when `message` is given, otherwise
+the call fails with `409 dirty`. A conflicting merge is aborted, nothing changes, and the
+conflicting files are named. `DELETE` removes the worktree; its branch stays unless
+`deleteBranch=true`, so no work is lost.
+
+Isolated worktrees live under `<DAVECODE_HOME>/panes/<project key>/<id>` (same key as the
+orchestrator: the first 16 hex digits of the SHA-256 of the project path), at most 12 per
+project. The desktop opens a pane in one by passing its id to `terminal:open`; the main process
+resolves the folder itself and never accepts a path from the page.
+
+Errors use the `/api` envelope with these codes:
+
+| Status | Code                | When                                                                   |
+| :----- | :------------------ | :--------------------------------------------------------------------- |
+| 400    | `invalid_body`      | The body failed validation (the zod message is included)               |
+| 400    | `invalid`           | The request makes no sense here (merge `main`, ship a detached HEAD)   |
+| 404    | `not_found`         | Unknown workspace, or a file without changes in `?path=`               |
+| 409    | `not_a_repository`  | The project is not a git repository with at least one commit           |
+| 409    | `limit`             | Already 12 isolated workspaces                                         |
+| 409    | `nothing_to_commit` | Nothing to commit, describe or merge                                   |
+| 409    | `dirty`             | Merge refused: the isolated workspace has uncommitted changes          |
+| 409    | `conflict`          | The merge conflicts; it was aborted                                    |
+| 409    | `unavailable`       | No agent can write the message, or the agent failed                    |
+
 ### Live events
 
 `GET /api/events` returns `text/event-stream`. Every event carries a strictly increasing
