@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-09
+
+### Fixed
+
+- The DaveCode chat no longer prints a long reply over and over while it streams. A reply taller
+  than the terminal or pane is shown by its last lines until it finishes, then in full.
+- The chat knows what DaveCode is. It used to send no context at all, so asked "how does
+  DaveCode work?" the model said it had no documentation and guessed.
+- Chat replies through Claude Code cost far fewer tokens. Claude Code ran with all its tools and
+  MCP servers, which the chat never used: a one-word reply read about 34k tokens of context,
+  and now about 3k. Set `nativeTools: true` on a `claude-cli` account to keep them.
+
+### Added
+
+- [A user guide](docs/GUIDE.md): the workspace, Orchestrate, isolated panes and the Changes
+  panel, the chat, terminal commands, what each part costs, and troubleshooting.
+
 ## [0.7.0] - 2026-11-08
 
 This release adds isolated panes and a changes review, so you can run several agents on the

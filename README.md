@@ -46,8 +46,10 @@ account in the browser (Google, GitHub or email) and connects your first agent w
 login.
 
 The desktop app opens on real terminals: add Shell, Claude Code, Codex or Antigravity panes side
-by side in your project, using the logins those CLIs already have, and send one message to every
-agent from the bar at the bottom.
+by side in your project, using the logins those CLIs already have. **Orchestrate** splits one
+objective across them, each in its own git worktree, and applies the result only when you say so.
+**Isolated** panes and the **Changes** panel let several agents work on one project and ship it.
+New here? Read the [guide](docs/GUIDE.md).
 
 ![The DaveCode desktop terminal](docs/assets/desktop.png)
 

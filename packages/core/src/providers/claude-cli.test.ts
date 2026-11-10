@@ -119,6 +119,19 @@ describe('ClaudeCliProvider', () => {
     expect(seen.args).toContain('--system-prompt');
   });
 
+  it("drops Claude Code's own tools and MCP servers unless nativeTools is set", async () => {
+    const lean = await provider.complete(req, ctx('echo'));
+    const leanArgs = (JSON.parse(lean.choices[0]?.message.content as string) as { args: string[] })
+      .args;
+    expect(leanArgs).toEqual(expect.arrayContaining(['--tools=', '--strict-mcp-config']));
+
+    const full = await provider.complete(req, ctx('echo', { nativeTools: true }));
+    const fullArgs = (JSON.parse(full.choices[0]?.message.content as string) as { args: string[] })
+      .args;
+    expect(fullArgs).not.toContain('--tools=');
+    expect(fullArgs).not.toContain('--strict-mcp-config');
+  });
+
   it('streams text deltas once (no duplicate from the assistant event) with final usage', async () => {
     const chunks = await collect(provider.stream(req, ctx('stream')));
     const s = summarizeChunks(chunks);
