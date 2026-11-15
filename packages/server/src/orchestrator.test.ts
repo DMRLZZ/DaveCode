@@ -42,6 +42,13 @@ function service(overrides: Partial<OrchestratorService> = {}): OrchestratorServ
     ),
     get: vi.fn((id: string) => runs.get(id)),
     list: vi.fn(() => [...runs.values()]),
+    transcript: vi.fn((id: string) =>
+      runs.has(id)
+        ? {
+            plan: { from: 0, chunks: [{ kind: 'status' as const, text: 'Planning with claude…' }] },
+          }
+        : undefined,
+    ),
     cancel: vi.fn((id: string) => runs.get(id)?.status === 'running'),
     apply: vi.fn(async (id: string) => {
       const found = runs.get(id);
@@ -301,6 +308,7 @@ describe('/api/orchestrator', () => {
       runId: 'r1',
       taskId: 'plan',
       output: { kind: 'tool', text: 'Read src/index.ts' },
+      seq: 0,
     });
     // The stream never ends on its own: read the replayed frames, then disconnect.
     const address = await gateway.listen({ host: '127.0.0.1', port: 0 });
@@ -318,5 +326,26 @@ describe('/api/orchestrator', () => {
     expect(text).toContain('event: orchestrator.run');
     expect(text).toContain('event: orchestrator.output');
     expect(text).toContain('Read src/index.ts');
+  });
+});
+
+describe('GET /api/orchestrator/runs/:id/output', () => {
+  it('returns what the agents of a run printed', async () => {
+    const orchestrator = service();
+    const gateway = await setup(orchestrator);
+    const response = await gateway.inject('/api/orchestrator/runs/r1/output');
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(response.json()).toEqual({
+      output: { plan: { from: 0, chunks: [{ kind: 'status', text: 'Planning with claude…' }] } },
+    });
+    expect(orchestrator.transcript).toHaveBeenCalledWith('r1');
+  });
+
+  it('answers 404 for an unknown run', async () => {
+    const gateway = await setup(service());
+    const response = await gateway.inject('/api/orchestrator/runs/nope/output');
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error.code).toBe('not_found');
   });
 });

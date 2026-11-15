@@ -161,8 +161,35 @@ describe('agentArgs', () => {
     for (const agent of ['claude', 'codex', 'agy'] as const) {
       for (const mode of ['plan', 'edit'] as const) {
         expect(agentArgs(agent, mode).every(isShellSafeArg)).toBe(true);
+        expect(agentArgs(agent, mode, 'full', 'win32').every(isShellSafeArg)).toBe(true);
       }
     }
+  });
+
+  it('gives Claude Code its shell tools only with full access to an edit run', () => {
+    expect(agentArgs('claude', 'edit')).not.toContain('--allowedTools');
+    expect(agentArgs('claude', 'edit', 'edit')).not.toContain('Bash');
+    const posix = agentArgs('claude', 'edit', 'full', 'linux');
+    expect(posix.slice(-2)).toEqual(['--allowedTools', 'Bash']);
+    expect(posix).toEqual(expect.arrayContaining(['--permission-mode', 'acceptEdits']));
+    expect(agentArgs('claude', 'edit', 'full', 'win32').slice(-3)).toEqual([
+      '--allowedTools',
+      'Bash',
+      'PowerShell',
+    ]);
+    // Planning never writes or runs anything, whatever the run allows.
+    expect(agentArgs('claude', 'plan', 'full')).toEqual(agentArgs('claude', 'plan'));
+    expect(agentArgs('claude', 'plan', 'full')).not.toContain('Bash');
+  });
+
+  it('gives Codex network access in its sandbox only with full access', () => {
+    const network = 'sandbox_workspace_write.network_access=true';
+    expect(agentArgs('codex', 'edit')).not.toContain(network);
+    expect(agentArgs('codex', 'edit', 'full')).toContain(network);
+    expect(agentArgs('codex', 'edit', 'full')).toContain('workspace-write');
+    expect(agentArgs('codex', 'edit', 'full').at(-1)).toBe('-');
+    expect(agentArgs('codex', 'plan', 'full')).toEqual(agentArgs('codex', 'plan'));
+    expect(agentArgs('agy', 'edit', 'full')).toEqual(agentArgs('agy', 'edit'));
   });
 });
 
@@ -209,6 +236,8 @@ describe('createCliAgentRunner: claude', () => {
     const error = await runner('claude', 'error').run(request('claude'));
     expect(error.ok).toBe(false);
     expect(error.error).toContain('Something broke');
+    // An unexplained failure may be a dropped connection; sign-in and limits are not.
+    expect(error.retryable).toBe(true);
 
     const login = await runner('claude', 'login').run(request('claude'));
     expect(login).toMatchObject({
@@ -216,8 +245,11 @@ describe('createCliAgentRunner: claude', () => {
       error: 'Claude Code is not signed in: run `claude` in a terminal and sign in',
     });
 
+    expect(login.retryable).toBe(false);
+
     const limit = await runner('claude', 'limit').run(request('claude'));
     expect(limit.error).toMatch(/^Claude Code usage limit reached/);
+    expect(limit.retryable).toBe(false);
   });
 
   it('reports a crash with a redacted stderr tail, and a missing final result', async () => {
@@ -239,6 +271,7 @@ describe('createCliAgentRunner: claude', () => {
     }).run(request('claude'));
     expect(res.ok).toBe(false);
     expect(res.error).toContain('could not be started');
+    expect(res.retryable).toBeUndefined();
   });
 });
 

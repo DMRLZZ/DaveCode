@@ -37,6 +37,7 @@ import {
   type AgentRunRequest,
   type AgentRunResult,
   ORCHESTRATOR_AGENTS,
+  type OrchestratorAccess,
   type OrchestratorAgent,
 } from './contract';
 
@@ -93,10 +94,33 @@ export const AGY_PLAN_NOTE =
   "see the repository's files. Answer from the information in this message only and do not " +
   'create files.';
 
-/** The CLI arguments for an agent and mode (prompt excluded: it always goes on stdin). */
-export function agentArgs(agent: OrchestratorAgent, mode: AgentRunRequest['mode']): string[] {
+/**
+ * The CLI arguments for an agent and mode (prompt excluded: it always goes on stdin). `access`
+ * only matters for `edit` runs: `full` lets Claude Code use its shell tools (it has no OS sandbox,
+ * so they run with the user's permissions) and gives Codex network access inside its sandbox.
+ */
+export function agentArgs(
+  agent: OrchestratorAgent,
+  mode: AgentRunRequest['mode'],
+  access: OrchestratorAccess = 'edit',
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  const full = mode === 'edit' && access === 'full';
   switch (agent) {
     case 'claude':
+      if (full) {
+        return [
+          '-p',
+          '--output-format',
+          'stream-json',
+          '--verbose',
+          '--permission-mode',
+          'acceptEdits',
+          '--allowedTools',
+          'Bash',
+          ...(platform === 'win32' ? ['PowerShell'] : []),
+        ];
+      }
       return mode === 'plan'
         ? [
             '-p',
@@ -121,6 +145,7 @@ export function agentArgs(agent: OrchestratorAgent, mode: AgentRunRequest['mode'
         mode === 'plan' ? 'read-only' : 'workspace-write',
         '-c',
         'approval_policy=never',
+        ...(full ? ['-c', 'sandbox_workspace_write.network_access=true'] : []),
         '-',
       ];
     case 'agy':
@@ -504,20 +529,35 @@ const PARSERS: Record<OrchestratorAgent, (emit: Emit, cwd: string) => StreamPars
 
 // --- Runner ------------------------------------------------------------------------------------
 
-/** `detail` is shown; `evidence` (detail plus stderr) decides whether it is a sign-in/limit issue. */
-function failureMessage(
+/**
+ * `detail` is shown; `evidence` (detail plus stderr) decides whether it is a sign-in/limit issue.
+ * Sign-in and limits are not worth a second try; anything else may be a dropped connection.
+ */
+function failure(
   info: AgentInfo,
   detail: string,
   evidence: string,
   code: number | null,
-): string {
+): { error: string; retryable: boolean } {
   const { kind } = classifyCliText(evidence);
-  if (kind === 'auth') return `${info.label} is not signed in: ${info.signIn}`;
+  if (kind === 'auth') {
+    return { error: `${info.label} is not signed in: ${info.signIn}`, retryable: false };
+  }
   const clean = scrubSecrets(detail);
-  if (kind === 'quota_exhausted') return shortError(`${info.label} usage limit reached: ${clean}`);
-  if (kind === 'rate_limit') return shortError(`${info.label} is rate limited: ${clean}`);
+  if (kind === 'quota_exhausted') {
+    return {
+      error: shortError(`${info.label} usage limit reached: ${clean}`),
+      retryable: false,
+    };
+  }
+  if (kind === 'rate_limit') {
+    return { error: shortError(`${info.label} is rate limited: ${clean}`), retryable: false };
+  }
   const exit = code !== null && code !== 0 ? ` (exit ${code})` : '';
-  return shortError(`${info.label} failed${exit}${clean ? `: ${clean}` : ''}`);
+  return {
+    error: shortError(`${info.label} failed${exit}${clean ? `: ${clean}` : ''}`),
+    retryable: true,
+  };
 }
 
 export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): AgentRunner {
@@ -545,7 +585,7 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
     if (request.signal.aborted) throw abortError();
     const info = AGENTS[request.agent];
     const { command, prefix } = resolveBinary(request.agent);
-    const args = agentArgs(request.agent, request.mode);
+    const args = agentArgs(request.agent, request.mode, request.access);
     if (needsShell(command) && ![...prefix, ...args].every(isShellSafeArg)) {
       return { ok: false, text: '', error: `${info.label}: unsafe argument for the Windows shell` };
     }
@@ -632,7 +672,7 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
       return {
         ok: false,
         text: state.text,
-        error: failureMessage(info, detail, `${detail}\n${tail(exit.stderr)}`, exit.code),
+        ...failure(info, detail, `${detail}\n${tail(exit.stderr)}`, exit.code),
         ...(state.tokens !== undefined ? { tokens: state.tokens } : {}),
       };
     } finally {

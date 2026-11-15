@@ -28,7 +28,21 @@ export const ORCHESTRATOR_LIMITS = {
   planTimeoutMs: 5 * 60_000,
   /** Longest summary kept per task (characters, head kept). */
   summaryMaxLength: 4000,
+  /** Output chunks kept per task (and for the planner) in a run's transcript; oldest dropped. */
+  transcriptMaxChunks: 400,
+  /** Times a task's agent is started: a failure that may be transient gets one more try. */
+  taskAttempts: 2,
 } as const;
+
+/**
+ * What the agents of a run may do besides editing files in their worktree.
+ * - `edit`: edit files only. Codex and Antigravity still run commands inside their own OS
+ *   sandbox; Claude Code has no such sandbox, so it runs no shell command at all.
+ * - `full`: agents may also run shell commands (tests, builds, installs) with the user's own
+ *   permissions. Claude Code gets its shell tools and Codex gets network access in its sandbox.
+ */
+export const ORCHESTRATOR_ACCESS = ['edit', 'full'] as const;
+export type OrchestratorAccess = (typeof ORCHESTRATOR_ACCESS)[number];
 
 export type OrchestratorRunStatus =
   /** The planner agent is splitting the objective. */
@@ -83,6 +97,8 @@ export interface OrchestratorRun {
   agents: OrchestratorAgent[];
   /** The agent that wrote the plan. */
   planner?: OrchestratorAgent;
+  /** What the task agents may do. Missing on runs recorded before 0.8 (they ran as `edit`). */
+  access?: OrchestratorAccess;
   /** Branch and commit the run started from. */
   baseBranch?: string;
   baseCommit?: string;
@@ -105,6 +121,15 @@ export interface AgentOutput {
   text: string;
 }
 
+/** The kept part of one task's output: `chunks[0]` was the stream's chunk number `from`. */
+export interface AgentTranscript {
+  from: number;
+  chunks: AgentOutput[];
+}
+
+/** Every stream of a run, keyed by task id (`plan` for the planner). */
+export type RunTranscript = Record<string, AgentTranscript>;
+
 export interface AgentAvailability {
   agent: OrchestratorAgent;
   /** Its CLI is on PATH. Sign-in is not checked: a signed-out CLI fails its task. */
@@ -121,6 +146,8 @@ export interface AgentRunRequest {
   prompt: string;
   /** `plan` must not modify files; `edit` may edit files inside `cwd`. */
   mode: 'plan' | 'edit';
+  /** Only for `edit` runs; defaults to `edit` (no shell for Claude Code). */
+  access?: OrchestratorAccess;
   signal: AbortSignal;
   timeoutMs: number;
   onOutput(chunk: AgentOutput): void;
@@ -132,6 +159,11 @@ export interface AgentRunResult {
   text: string;
   /** Short, redacted reason when `ok` is false. */
   error?: string;
+  /**
+   * The failure may not happen again (a dropped connection, a CLI that died mid-turn). False for
+   * what a retry cannot fix: not signed in, out of quota, rate limited, timed out, not installed.
+   */
+  retryable?: boolean;
   tokens?: number;
 }
 
@@ -178,6 +210,8 @@ export const startRunSchema = z.object({
   /** The agent that splits the objective. It must be installed, but need not take tasks.
    * Defaults to the first allowed agent in the order claude, codex, agy. */
   planner: z.enum(ORCHESTRATOR_AGENTS).optional(),
+  /** Defaults to `edit`. */
+  access: z.enum(ORCHESTRATOR_ACCESS).optional(),
 });
 export type StartRunInput = z.infer<typeof startRunSchema>;
 
@@ -209,6 +243,8 @@ export interface OrchestratorService {
   get(id: string): OrchestratorRun | undefined;
   /** Newest first. */
   list(): OrchestratorRun[];
+  /** What every agent of a run printed, live or from disk. Undefined for an unknown run. */
+  transcript(id: string): RunTranscript | undefined;
   /** Stops the agents of an active run. False when the run is unknown or already over. */
   cancel(id: string): boolean;
   /** Rejects with `not_found` or `not_appliable` (not `done`, already applied, dirty tree…). */

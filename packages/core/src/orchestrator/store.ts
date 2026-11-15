@@ -4,11 +4,17 @@
  * so the agents' worktrees and the user's tree never see it.
  */
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readdirSync, readFileSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { atomicWriteFile } from '../brain/fs-util';
-import { ORCHESTRATOR_AGENTS, type OrchestratorRun } from './contract';
+import {
+  ORCHESTRATOR_ACCESS,
+  ORCHESTRATOR_AGENTS,
+  ORCHESTRATOR_LIMITS,
+  type OrchestratorRun,
+  type RunTranscript,
+} from './contract';
 
 /** Runs kept on disk (newest by `createdAt`). */
 export const ORCHESTRATOR_RUNS_KEPT = 20;
@@ -36,6 +42,7 @@ export const orchestratorRunSchema = z.object({
   status: z.enum(['planning', 'running', 'done', 'failed', 'cancelled']),
   agents: z.array(agentSchema),
   planner: agentSchema.optional(),
+  access: z.enum(ORCHESTRATOR_ACCESS).optional(),
   baseBranch: z.string().optional(),
   baseCommit: z.string().optional(),
   integrationBranch: z.string().optional(),
@@ -129,6 +136,112 @@ export class OrchestratorStore {
         await atomicWriteFile(this.path, content);
       } catch {
         // Disk full, permissions…: keep the runs in memory; the next save tries again.
+      }
+    }
+  }
+}
+
+// --- Transcripts ------------------------------------------------------------------------------
+
+/** Run ids are generated hex; anything else never becomes part of a file name. */
+const RUN_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const TRANSCRIPT_FILE = /^output-([A-Za-z0-9_-]{1,64})\.json$/;
+
+const transcriptSchema = z.object({
+  version: z.literal(1),
+  streams: z.record(
+    z.string(),
+    z.object({
+      from: z.number().int().min(0),
+      chunks: z.array(
+        z.object({ kind: z.enum(['text', 'tool', 'status', 'error']), text: z.string() }),
+      ),
+    }),
+  ),
+});
+
+/**
+ * What the agents of each run printed, one `output-<runId>.json` next to `runs.json`. Kept apart
+ * from the runs so a state change does not rewrite every transcript.
+ */
+export class TranscriptStore {
+  private readonly dir: string;
+  private readonly queued = new Map<string, string>();
+  private writing: Promise<void> | undefined;
+
+  constructor(home: string, projectDir: string) {
+    this.dir = dirname(orchestratorRunsPath(home, projectDir));
+  }
+
+  private file(runId: string): string | undefined {
+    return RUN_ID.test(runId) ? join(this.dir, `output-${runId}.json`) : undefined;
+  }
+
+  /** The stored transcript; a missing or corrupt file yields none. */
+  load(runId: string): RunTranscript | undefined {
+    const file = this.file(runId);
+    if (!file) return undefined;
+    try {
+      const parsed = transcriptSchema.parse(JSON.parse(readFileSync(file, 'utf8')));
+      const max = ORCHESTRATOR_LIMITS.transcriptMaxChunks;
+      const streams: RunTranscript = {};
+      for (const [taskId, stream] of Object.entries(parsed.streams)) {
+        const extra = Math.max(0, stream.chunks.length - max);
+        streams[taskId] = { from: stream.from + extra, chunks: stream.chunks.slice(extra) };
+      }
+      return streams;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Writes a snapshot in the background; a newer snapshot of the same run replaces a queued one. */
+  save(runId: string, transcript: RunTranscript): Promise<void> {
+    if (!this.file(runId)) return Promise.resolve();
+    this.queued.set(runId, `${JSON.stringify({ version: 1, streams: transcript })}\n`);
+    if (!this.writing) {
+      this.writing = this.drain().finally(() => {
+        this.writing = undefined;
+      });
+    }
+    return this.writing;
+  }
+
+  async flush(): Promise<void> {
+    while (this.writing) await this.writing;
+  }
+
+  /** Removes the transcripts of runs that are no longer kept. */
+  prune(keep: ReadonlySet<string>): void {
+    let names: string[];
+    try {
+      names = readdirSync(this.dir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const id = TRANSCRIPT_FILE.exec(name)?.[1];
+      if (!id || keep.has(id) || this.queued.has(id)) continue;
+      try {
+        rmSync(join(this.dir, name), { force: true });
+      } catch {
+        // Best effort: a leftover transcript is small and harmless.
+      }
+    }
+  }
+
+  private async drain(): Promise<void> {
+    for (;;) {
+      const next = this.queued.entries().next();
+      if (next.done) return;
+      const [runId, content] = next.value;
+      this.queued.delete(runId);
+      const file = this.file(runId);
+      if (!file) continue;
+      try {
+        await atomicWriteFile(file, content);
+      } catch {
+        // Disk full, permissions…: the transcript stays in memory for this session.
       }
     }
   }

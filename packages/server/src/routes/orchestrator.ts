@@ -92,6 +92,16 @@ export function registerOrchestratorRoutes(
     return run;
   });
 
+  app.get<{ Params: { id: string } }>(
+    '/api/orchestrator/runs/:id/output',
+    async (request, reply) => {
+      reply.header('Cache-Control', 'no-store');
+      const output = orchestrator.transcript(request.params.id);
+      if (!output) return unknownRun(reply, request.params.id);
+      return { output };
+    },
+  );
+
   app.post<{ Params: { id: string } }>(
     '/api/orchestrator/runs/:id/cancel',
     async (request, reply) => {

@@ -63,7 +63,13 @@ describe('prompts', () => {
     ];
     const prompt = buildTaskPrompt({
       objective: 'Ship search',
-      task: { id: 't2', title: 'UI', prompt: 'Build the search box.', dependsOn: ['t1'] },
+      task: {
+        id: 't2',
+        title: 'UI',
+        agent: 'agy',
+        prompt: 'Build the search box.',
+        dependsOn: ['t1'],
+      },
       tasks,
     });
     expect(prompt).toContain('Ship search');
@@ -74,6 +80,31 @@ describe('prompts', () => {
     expect(prompt).toMatch(/Do not commit, push/);
     expect(prompt).toContain('.davecode/');
     expect(prompt).toMatch(/short summary/);
+    expect(prompt).not.toMatch(/cut off/);
+  });
+
+  it('tells each agent how to verify its work for the access it has', () => {
+    const tasks = [{ id: 't1', title: 'API', agent: 'claude' as const }];
+    const base = { id: 't1', title: 'API', prompt: 'Build it.', dependsOn: [] };
+    const prompt = (agent: 'claude' | 'codex', access?: 'edit' | 'full') =>
+      buildTaskPrompt({ objective: 'X', task: { ...base, agent }, tasks, access });
+    // Headless Claude Code is refused every command in `edit`, and says so up front.
+    expect(prompt('claude')).toMatch(/cannot run shell commands/);
+    expect(prompt('claude', 'edit')).toMatch(/do not try/);
+    expect(prompt('codex')).not.toMatch(/cannot run shell commands/);
+    expect(prompt('codex')).toMatch(/If you can run the tests/);
+    expect(prompt('claude', 'full')).toMatch(/run the tests or the build/);
+    expect(prompt('claude', 'full')).not.toMatch(/cannot run shell commands/);
+  });
+
+  it('tells a second attempt that the first one left files behind', () => {
+    const prompt = buildTaskPrompt({
+      objective: 'X',
+      task: { id: 't1', title: 'API', agent: 'agy', prompt: 'Build it.', dependsOn: [] },
+      tasks: [{ id: 't1', title: 'API', agent: 'agy' }],
+      retry: true,
+    });
+    expect(prompt).toMatch(/first attempt at this task was cut off/);
   });
 });
 

@@ -5,9 +5,11 @@ import type {
   AgentOutput,
   ApiErrorBody,
   DaveEvent,
+  OrchestratorAccess,
   OrchestratorAgent,
   OrchestratorRun,
   OrchestratorTask,
+  RunTranscript,
   StartRunInput,
 } from './types';
 
@@ -152,6 +154,39 @@ export async function getOrchestratorRun(
   return parseRun(await call(base, token, 'GET', `/runs/${encodeURIComponent(id)}`));
 }
 
+const transcriptSchema = z.object({
+  output: z.record(
+    z.string(),
+    z.object({
+      from: z.number().int().min(0),
+      chunks: z.array(
+        z.object({ kind: z.enum(['text', 'tool', 'status', 'error']), text: z.string() }),
+      ),
+    }),
+  ),
+});
+
+/**
+ * What every agent of a run printed so far, so a run opened later (or after a restart) still
+ * shows its work. Null when the gateway is older than 0.8 and has no such route.
+ */
+export async function getOrchestratorTranscript(
+  base: string,
+  token: string,
+  id: string,
+): Promise<RunTranscript | null> {
+  let json: unknown;
+  try {
+    json = await call(base, token, 'GET', `/runs/${encodeURIComponent(id)}/output`);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
+  const parsed = transcriptSchema.safeParse(json);
+  if (!parsed.success) throw new ApiError(0, 'bad_response', 'Unexpected orchestrator response.');
+  return parsed.data.output;
+}
+
 /** Starts a run (202). A 409 (`busy`, `no_agents`, `not_a_repository`) carries the reason. */
 export async function startOrchestratorRun(
   base: string,
@@ -202,6 +237,10 @@ export interface OutputStream {
   /** The last line is a `text` line still waiting for its newline. */
   open: boolean;
   next: number;
+  /** Position in the task's stream after the last chunk applied: the `seq` expected next. */
+  end: number;
+  /** The newest chunks behind the lines, ending at `end`; kept to merge a fetched transcript. */
+  chunks: AgentOutput[];
 }
 
 export interface OrchestratorState {
@@ -225,10 +264,33 @@ export function isOrchestratorEvent(event: DaveEvent): event is OrchestratorEven
   return event.type === 'orchestrator.run' || event.type === 'orchestrator.output';
 }
 
-const EMPTY_STREAM: OutputStream = { lines: [], open: false, next: 0 };
+export const EMPTY_STREAM: OutputStream = { lines: [], open: false, next: 0, end: 0, chunks: [] };
 
-/** Appends one chunk: consecutive `text` chunks join the last line until it gets a newline. */
-export function appendOutput(stream: OutputStream, output: AgentOutput): OutputStream {
+/** Chunks kept per stream; the same bound the gateway uses for its transcript. */
+export const MAX_OUTPUT_CHUNKS = 400;
+
+/**
+ * Appends one chunk: consecutive `text` chunks join the last line until it gets a newline.
+ * `seq` is the chunk's position in its stream; without it the chunk is taken as the next one.
+ */
+export function appendOutput(
+  stream: OutputStream,
+  output: AgentOutput,
+  seq: number = stream.end,
+): OutputStream {
+  const folded = foldOutput(stream, output);
+  const chunks = [...stream.chunks, output];
+  return {
+    ...folded,
+    end: seq + 1,
+    chunks: chunks.length > MAX_OUTPUT_CHUNKS ? chunks.slice(-MAX_OUTPUT_CHUNKS) : chunks,
+  };
+}
+
+function foldOutput(
+  stream: Pick<OutputStream, 'lines' | 'open' | 'next'>,
+  output: AgentOutput,
+): Pick<OutputStream, 'lines' | 'open' | 'next'> {
   const lines = stream.lines.slice();
   let { open, next } = stream;
   const text = output.text.replace(/\r\n?/g, '\n');
@@ -273,10 +335,42 @@ export function applyOrchestratorEvent(
     if (typeof runId !== 'string' || typeof taskId !== 'string') return state;
     if (!output || typeof output.text !== 'string') return state;
     const key = outputKey(runId, taskId);
-    const stream = appendOutput(state.outputs[key] ?? EMPTY_STREAM, output);
+    const current = state.outputs[key] ?? EMPTY_STREAM;
+    // Gateways before 0.8 send no position: every chunk is then simply the next one.
+    const seq = typeof event.seq === 'number' ? event.seq : current.end;
+    // Already here: the fetched transcript included it, or the stream replayed it on reconnect.
+    if (seq < current.end) return state;
+    const stream = appendOutput(current, output, seq);
     return { ...state, outputs: { ...state.outputs, [key]: stream } };
   }
   return state;
+}
+
+/**
+ * Merges the transcript the gateway keeps for a run with the chunks that arrived live: the
+ * gateway's copy fills in everything printed before this page was listening, and live chunks
+ * newer than it are kept after it.
+ */
+export function hydrateTranscript(
+  state: OrchestratorState,
+  runId: string,
+  transcript: RunTranscript,
+): OrchestratorState {
+  let outputs = state.outputs;
+  for (const [taskId, fetched] of Object.entries(transcript)) {
+    const key = outputKey(runId, taskId);
+    const current = state.outputs[key] ?? EMPTY_STREAM;
+    const fetchedEnd = fetched.from + fetched.chunks.length;
+    const localStart = current.end - current.chunks.length;
+    // Nothing to add when the live stream already starts where the gateway's copy does.
+    if (fetchedEnd <= current.end && localStart <= fetched.from) continue;
+    const newer = current.chunks.slice(Math.max(0, fetchedEnd - localStart));
+    let stream: OutputStream = { ...EMPTY_STREAM, end: fetched.from };
+    for (const chunk of [...fetched.chunks, ...newer]) stream = appendOutput(stream, chunk);
+    if (outputs === state.outputs) outputs = { ...state.outputs };
+    outputs[key] = { ...stream, end: Math.max(fetchedEnd, current.end) };
+  }
+  return outputs === state.outputs ? state : { ...state, outputs };
 }
 
 /**
@@ -351,6 +445,12 @@ export class OrchestratorStore {
     this.set(hydrateRuns(this.state, runs));
   }
 
+  /** Puts a run's fetched transcript under what arrived live. */
+  hydrateTranscript(runId: string, transcript: RunTranscript): void {
+    this.flush();
+    this.set(hydrateTranscript(this.state, runId, transcript));
+  }
+
   flush(): void {
     if (this.timer !== undefined) {
       clearTimeout(this.timer);
@@ -408,13 +508,44 @@ export function startRequest(
   selection: readonly OrchestratorAgent[],
   agents: AgentAvailability[] | null | undefined,
   planner?: OrchestratorAgent,
+  access?: OrchestratorAccess,
 ): StartRunInput | null {
   const text = objective.trim();
   const installed = availableAgents(agents);
   const usable = installed.filter((id) => selection.includes(id));
   if (!text || usable.length === 0) return null;
   const lead = planner && installed.includes(planner) ? planner : undefined;
-  return { objective: text, agents: usable, ...(lead ? { planner: lead } : {}) };
+  return {
+    objective: text,
+    agents: usable,
+    ...(lead ? { planner: lead } : {}),
+    // `edit` is the gateway's default; only the wider access is spelled out.
+    ...(access === 'full' ? { access } : {}),
+  };
+}
+
+/** `2/4`: tasks that ended well out of all the tasks, or empty before there is a plan. */
+export function runProgress(run: Pick<OrchestratorRun, 'tasks'>): string {
+  if (run.tasks.length === 0) return '';
+  return `${run.tasks.filter((t) => t.status === 'done').length}/${run.tasks.length}`;
+}
+
+/** Milliseconds from the run's creation to its end (still counting while it is active). */
+export function runElapsedMs(run: OrchestratorRun, now: number): number | undefined {
+  const start = Date.parse(run.createdAt);
+  if (Number.isNaN(start)) return undefined;
+  const end = isActiveRun(run) ? now : Date.parse(run.updatedAt);
+  return Math.max(0, (Number.isNaN(end) ? now : end) - start);
+}
+
+/** Files changed by the tasks that made it into the integration branch, without repeats. */
+export function runChangedFiles(run: Pick<OrchestratorRun, 'tasks'>): string[] {
+  const files = new Set<string>();
+  for (const task of run.tasks) {
+    if (task.status !== 'done') continue;
+    for (const file of task.changedFiles ?? []) files.add(file);
+  }
+  return [...files].sort();
 }
 
 export type PlanStatus = 'running' | 'done' | 'failed' | 'cancelled';

@@ -24,6 +24,8 @@ export interface OrchestrateOptions {
   agents?: string;
   /** Agent that writes the plan. */
   planner?: string;
+  /** Let the agents run shell commands (tests, builds) with the user's permissions. */
+  fullAccess?: boolean;
   maxTasks?: number;
   apply?: boolean;
   list?: boolean;
@@ -104,6 +106,7 @@ export function startInput(words: string[], opts: OrchestrateOptions): StartRunI
     ...(opts.agents !== undefined ? { agents: parseAgents(opts.agents) } : {}),
     ...(opts.maxTasks !== undefined ? { maxTasks: opts.maxTasks } : {}),
     ...(opts.planner !== undefined ? { planner: parsePlanner(opts.planner) } : {}),
+    ...(opts.fullAccess ? { access: 'full' as const } : {}),
   };
 }
 

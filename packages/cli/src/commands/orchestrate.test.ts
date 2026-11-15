@@ -82,6 +82,11 @@ describe('startInput', () => {
     expect(() => startInput(['x'], { planner: 'gpt' })).toThrow(/Unknown agent/);
   });
 
+  it('asks for full access only with --full-access', () => {
+    expect(startInput(['x'], {})).toEqual({ objective: 'x' });
+    expect(startInput(['x'], { fullAccess: true })).toEqual({ objective: 'x', access: 'full' });
+  });
+
   it('refuses an empty objective and out-of-range limits', () => {
     expect(() => startInput([' '], {})).toThrow(/Describe the objective/);
     expect(() => startInput(['x'], { maxTasks: 9 })).toThrow(/between 1 and 8/);
@@ -265,6 +270,7 @@ function fakeService(events: EventBus, final: OrchestratorRun['status'] = 'done'
     }),
     get: vi.fn((id: string) => runs.get(id)),
     list: vi.fn(() => [...runs.values()]),
+    transcript: vi.fn(() => undefined),
     cancel: vi.fn((id: string) => {
       const current = runs.get(id);
       if (!current || cancelled) return false;

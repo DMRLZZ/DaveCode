@@ -23,6 +23,7 @@ function fakeService(): OrchestratorService {
     start: vi.fn(),
     get: vi.fn(() => undefined),
     list: vi.fn(() => []),
+    transcript: vi.fn(() => undefined),
     cancel: vi.fn(() => false),
     apply: vi.fn(),
     close: vi.fn(async () => {}),
