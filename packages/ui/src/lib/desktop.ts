@@ -16,14 +16,22 @@ export interface TerminalBridge {
   onExit(listener: (id: string, code: number) => void): () => void;
 }
 
-/** Present only inside the desktop app; a browser tab cannot open local terminals. */
-export function terminalBridge(): TerminalBridge | undefined {
-  return (window as unknown as { davecodeDesktop?: { terminal?: TerminalBridge } }).davecodeDesktop
-    ?.terminal;
+interface DesktopBridge {
+  terminal?: TerminalBridge;
+  chooseProject?: () => Promise<void>;
 }
 
-/** Columns of the pane grid: one pane fills the window, then 2 × 2, then 3 across. */
-export function gridColumns(panes: number): number {
-  if (panes <= 1) return 1;
-  return panes <= 4 ? 2 : 3;
+function desktop(): DesktopBridge | undefined {
+  return (window as unknown as { davecodeDesktop?: DesktopBridge }).davecodeDesktop;
+}
+
+/** Present only inside the desktop app; a browser tab cannot open local terminals. */
+export function terminalBridge(): TerminalBridge | undefined {
+  return desktop()?.terminal;
+}
+
+/** Opens the desktop app's folder picker to switch projects; absent in a browser tab. */
+export function chooseProject(): (() => void) | undefined {
+  const choose = desktop()?.chooseProject;
+  return choose ? () => void choose() : undefined;
 }

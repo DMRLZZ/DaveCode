@@ -1,21 +1,22 @@
 /**
- * Pane layout of the terminal workspace: columns side by side, each a stack of panes. Sizes are
- * weights, so nothing has to add up to 100. Every function is pure and returns a new layout;
- * panes are identified by their key and never remount when the layout changes.
+ * Pane layout of the terminal workspace: a tree of splits, like a tiling terminal. A `row`
+ * split puts its children side by side, a `column` split stacks them, and any child can be
+ * split again, so splitting one pane never resizes the panes next to it. Sizes are weights, so
+ * nothing has to add up to 100. Every function is pure and returns a new layout; panes are
+ * identified by their key and never remount when the layout changes.
  */
 
-export interface LayoutCell {
-  key: number;
-  weight: number;
-}
+export type LayoutNode =
+  | { kind: 'pane'; key: number }
+  | { kind: 'split'; direction: 'row' | 'column'; children: LayoutChild[] };
 
-export interface LayoutColumn {
-  cells: LayoutCell[];
+export interface LayoutChild {
+  node: LayoutNode;
   weight: number;
 }
 
 export interface Layout {
-  columns: LayoutColumn[];
+  root: LayoutNode | undefined;
 }
 
 /** A rectangle in fractions of the pane area (0 to 1). */
@@ -28,21 +29,30 @@ export interface Rect {
 
 export type SplitDirection = 'right' | 'down';
 
-/** A draggable border: between column `column` and the next, or below cell `cell` of a column. */
+/** A draggable border between child `index` and the next one of the split found at `path`. */
 export interface Divider extends Rect {
+  /** `column`: a vertical line, dragged sideways. `row`: a horizontal line, dragged up or down. */
   kind: 'column' | 'row';
-  column: number;
-  /** Index of the cell above the border; only for `row`. */
-  cell: number;
+  /** Child indexes from the root down to the split that owns the border. */
+  path: number[];
+  index: number;
 }
 
-export const EMPTY_LAYOUT: Layout = { columns: [] };
+export const EMPTY_LAYOUT: Layout = { root: undefined };
 
-/** Smallest share of the area a column or a pane may be dragged down to. */
-export const MIN_SHARE = 0.12;
+/** Smallest share of the whole area a side of a border may be dragged down to. */
+export const MIN_SHARE = 0.1;
 
-const sum = (weights: readonly { weight: number }[]) =>
-  weights.reduce((total, item) => total + item.weight, 0);
+const FULL: Rect = { left: 0, top: 0, width: 1, height: 1 };
+
+const sum = (children: readonly LayoutChild[]) =>
+  children.reduce((total, child) => total + child.weight, 0);
+
+const pane = (key: number): LayoutNode => ({ kind: 'pane', key });
+
+function average(children: readonly LayoutChild[]): number {
+  return children.length === 0 ? 1 : sum(children) / children.length;
+}
 
 /** Columns of the automatic arrangement: one pane fills the area, then 2 × 2, then 3 across. */
 export function autoColumns(panes: number): number {
@@ -50,254 +60,299 @@ export function autoColumns(panes: number): number {
   return panes <= 4 ? 2 : 3;
 }
 
+function keysOf(node: LayoutNode | undefined): number[] {
+  if (!node) return [];
+  if (node.kind === 'pane') return [node.key];
+  return node.children.flatMap((child) => keysOf(child.node));
+}
+
+/** Every pane on the grid, left to right and top to bottom. */
 export function layoutKeys(layout: Layout): number[] {
-  return layout.columns.flatMap((column) => column.cells.map((cell) => cell.key));
+  return keysOf(layout.root);
 }
 
-function locate(layout: Layout, key: number): { column: number; cell: number } | undefined {
-  for (let column = 0; column < layout.columns.length; column++) {
-    const cell = layout.columns[column]?.cells.findIndex((c) => c.key === key) ?? -1;
-    if (cell !== -1) return { column, cell };
+/**
+ * Keeps the tree canonical: a split with one child is that child, and a split nested in a split
+ * of the same direction is merged into it (its children share the space it had).
+ */
+function normalize(node: LayoutNode | undefined): LayoutNode | undefined {
+  if (!node || node.kind === 'pane') return node;
+  const children: LayoutChild[] = [];
+  for (const child of node.children) {
+    const inner = normalize(child.node);
+    if (!inner) continue;
+    if (inner.kind === 'split' && inner.direction === node.direction) {
+      const total = sum(inner.children);
+      for (const grandchild of inner.children) {
+        children.push({
+          node: grandchild.node,
+          weight: total === 0 ? child.weight : (child.weight * grandchild.weight) / total,
+        });
+      }
+    } else children.push({ node: inner, weight: child.weight });
   }
-  return undefined;
+  if (children.length === 0) return undefined;
+  if (children.length === 1) return children[0]?.node;
+  return { kind: 'split', direction: node.direction, children };
 }
 
-function averageWeight(items: readonly { weight: number }[]): number {
-  return items.length === 0 ? 1 : sum(items) / items.length;
+/** Adds a pane under (below) whatever `node` is. */
+function stackInto(node: LayoutNode, key: number): LayoutNode {
+  if (node.kind === 'split' && node.direction === 'column') {
+    return {
+      ...node,
+      children: [...node.children, { node: pane(key), weight: average(node.children) }],
+    };
+  }
+  return {
+    kind: 'split',
+    direction: 'column',
+    children: [
+      { node, weight: 1 },
+      { node: pane(key), weight: 1 },
+    ],
+  };
 }
 
 /** Places a new pane where the grid has room: a new column first, then the shortest column. */
 export function addPane(layout: Layout, key: number): Layout {
-  if (locate(layout, key)) return layout;
-  const count = layoutKeys(layout).length + 1;
-  if (layout.columns.length < autoColumns(count)) {
-    const weight = averageWeight(layout.columns);
-    return { columns: [...layout.columns, { weight, cells: [{ key, weight: 1 }] }] };
+  const { root } = layout;
+  if (!root) return { root: pane(key) };
+  if (keysOf(root).includes(key)) return layout;
+  const columns: LayoutChild[] =
+    root.kind === 'split' && root.direction === 'row' ? root.children : [{ node: root, weight: 1 }];
+  if (columns.length < autoColumns(keysOf(root).length + 1)) {
+    return {
+      root: {
+        kind: 'split',
+        direction: 'row',
+        children: [...columns, { node: pane(key), weight: average(columns) }],
+      },
+    };
   }
   let target = 0;
-  layout.columns.forEach((column, index) => {
-    const best = layout.columns[target];
-    if (best && column.cells.length <= best.cells.length) target = index;
+  columns.forEach((column, index) => {
+    const best = columns[target];
+    if (best && keysOf(column.node).length <= keysOf(best.node).length) target = index;
   });
-  return {
-    columns: layout.columns.map((column, index) =>
-      index === target
-        ? {
-            ...column,
-            cells: [...column.cells, { key, weight: averageWeight(column.cells) }],
-          }
-        : column,
-    ),
-  };
+  const children = columns.map((column, index) =>
+    index === target ? { ...column, node: stackInto(column.node, key) } : column,
+  );
+  return { root: normalize({ kind: 'split', direction: 'row', children }) };
 }
 
-/** Splits pane `near` in two, giving the new pane half of its space. */
+function splitNode(
+  node: LayoutNode,
+  near: number,
+  key: number,
+  direction: 'row' | 'column',
+): LayoutNode {
+  if (node.kind === 'pane') {
+    if (node.key !== near) return node;
+    return {
+      kind: 'split',
+      direction,
+      children: [
+        { node, weight: 1 },
+        { node: pane(key), weight: 1 },
+      ],
+    };
+  }
+  const children: LayoutChild[] = [];
+  for (const child of node.children) {
+    const isNear = child.node.kind === 'pane' && child.node.key === near;
+    if (isNear && node.direction === direction) {
+      // Same direction as the split it sits in: the two halves become siblings.
+      children.push(
+        { node: child.node, weight: child.weight / 2 },
+        { node: pane(key), weight: child.weight / 2 },
+      );
+    } else {
+      children.push({ ...child, node: splitNode(child.node, near, key, direction) });
+    }
+  }
+  return { ...node, children };
+}
+
+/** Splits pane `near` in two, giving the new pane half of its space and touching nothing else. */
 export function splitPane(
   layout: Layout,
   near: number,
   key: number,
   direction: SplitDirection,
 ): Layout {
-  const at = locate(layout, near);
-  if (!at || locate(layout, key)) return addPane(layout, key);
-  const columns = layout.columns.slice();
-  const column = columns[at.column];
-  if (!column) return layout;
-  if (direction === 'right') {
-    const half = column.weight / 2;
-    columns.splice(
-      at.column,
-      1,
-      { ...column, weight: half },
-      {
-        weight: half,
-        cells: [{ key, weight: 1 }],
-      },
-    );
-    return { columns };
-  }
-  const cells = column.cells.slice();
-  const cell = cells[at.cell];
-  if (!cell) return layout;
-  const half = cell.weight / 2;
-  cells.splice(at.cell, 1, { ...cell, weight: half }, { key, weight: half });
-  columns[at.column] = { ...column, cells };
-  return { columns };
+  const keys = layoutKeys(layout);
+  if (!layout.root || !keys.includes(near) || keys.includes(key)) return addPane(layout, key);
+  return { root: splitNode(layout.root, near, key, direction === 'right' ? 'row' : 'column') };
 }
 
-/** Removes a pane; its neighbours take the space, and an emptied column disappears. */
+function without(node: LayoutNode, key: number): LayoutNode | undefined {
+  if (node.kind === 'pane') return node.key === key ? undefined : node;
+  const children: LayoutChild[] = [];
+  for (const child of node.children) {
+    const inner = without(child.node, key);
+    if (inner) children.push({ ...child, node: inner });
+  }
+  return { ...node, children };
+}
+
+/** Removes a pane; its neighbours in the same split take the space. */
 export function removePane(layout: Layout, key: number): Layout {
-  if (!locate(layout, key)) return layout;
+  if (!layout.root || !layoutKeys(layout).includes(key)) return layout;
+  return { root: normalize(without(layout.root, key)) };
+}
+
+function even(node: LayoutNode): LayoutNode {
+  if (node.kind === 'pane') return node;
   return {
-    columns: layout.columns
-      .map((column) => ({ ...column, cells: column.cells.filter((cell) => cell.key !== key) }))
-      .filter((column) => column.cells.length > 0),
+    ...node,
+    children: node.children.map((child) => ({ node: even(child.node), weight: 1 })),
   };
 }
 
-/** Evens every column and every pane out again. */
+/** Evens every split out again. */
 export function balance(layout: Layout): Layout {
-  return {
-    columns: layout.columns.map((column) => ({
-      weight: 1,
-      cells: column.cells.map((cell) => ({ ...cell, weight: 1 })),
-    })),
-  };
+  return { root: layout.root ? even(layout.root) : undefined };
 }
 
-/** Moves a pane one step left/right (into the neighbouring column) or up/down in its column. */
-export function movePane(
-  layout: Layout,
-  key: number,
-  direction: 'left' | 'right' | 'up' | 'down',
-): Layout {
-  const at = locate(layout, key);
-  if (!at) return layout;
-  const column = layout.columns[at.column];
-  const cell = column?.cells[at.cell];
-  if (!column || !cell) return layout;
-  if (direction === 'up' || direction === 'down') {
-    const to = at.cell + (direction === 'up' ? -1 : 1);
-    if (to < 0 || to >= column.cells.length) return layout;
-    const cells = column.cells.slice();
-    cells.splice(at.cell, 1);
-    cells.splice(to, 0, cell);
-    return {
-      columns: layout.columns.map((c, index) => (index === at.column ? { ...c, cells } : c)),
-    };
+/** Calls `visit` for every child of every split, with the rectangle the child gets. */
+function walk(
+  node: LayoutNode,
+  rect: Rect,
+  path: number[],
+  visit: {
+    pane?: (key: number, rect: Rect) => void;
+    border?: (divider: Divider) => void;
+  },
+): void {
+  if (node.kind === 'pane') {
+    visit.pane?.(node.key, rect);
+    return;
   }
-  const step = direction === 'left' ? -1 : 1;
-  const alone = column.cells.length === 1;
-  const to = at.column + step;
-  // A pane alone in its column swaps places with the neighbouring column.
-  if (alone) {
-    if (to < 0 || to >= layout.columns.length) return layout;
-    const columns = layout.columns.slice();
-    const other = columns[to];
-    if (!other) return layout;
-    columns[to] = column;
-    columns[at.column] = other;
-    return { columns };
-  }
-  const without = layout.columns.map((c, index) =>
-    index === at.column ? { ...c, cells: c.cells.filter((x) => x.key !== key) } : c,
-  );
-  // At the edge, a pane leaves its stack for a column of its own.
-  if (to < 0 || to >= layout.columns.length) {
-    const fresh: LayoutColumn = {
-      weight: averageWeight(layout.columns),
-      cells: [{ key, weight: 1 }],
-    };
-    return { columns: step < 0 ? [fresh, ...without] : [...without, fresh] };
-  }
-  return {
-    columns: without.map((c, index) =>
-      index === to ? { ...c, cells: [...c.cells, { key, weight: averageWeight(c.cells) }] } : c,
-    ),
-  };
-}
-
-/** Moves a share of `total` weight from one neighbour to the other, keeping both above the minimum. */
-function shift<T extends { weight: number }>(
-  items: readonly T[],
-  index: number,
-  share: number,
-): T[] {
-  const first = items[index];
-  const second = items[index + 1];
-  if (!first || !second) return items.slice();
-  const total = sum(items);
-  const min = total * MIN_SHARE;
-  const pair = first.weight + second.weight;
-  // Two neighbours smaller than twice the minimum cannot be resized at all.
-  if (pair <= min * 2) return items.slice();
-  const wanted = first.weight + share * total;
-  const weight = Math.min(pair - min, Math.max(min, wanted));
-  const next = items.slice();
-  next[index] = { ...first, weight };
-  next[index + 1] = { ...second, weight: pair - weight };
-  return next;
-}
-
-/** Drags the border after column `index` by `share` of the area's width (negative: left). */
-export function resizeColumns(layout: Layout, index: number, share: number): Layout {
-  return { columns: shift(layout.columns, index, share) };
-}
-
-/** Drags the border below cell `index` of a column by `share` of the area's height. */
-export function resizeCells(layout: Layout, column: number, index: number, share: number): Layout {
-  return {
-    columns: layout.columns.map((c, i) =>
-      i === column ? { ...c, cells: shift(c.cells, index, share) } : c,
-    ),
-  };
+  const total = sum(node.children);
+  const row = node.direction === 'row';
+  let offset = 0;
+  node.children.forEach((child, index) => {
+    const share = total === 0 ? 0 : child.weight / total;
+    const childRect: Rect = row
+      ? {
+          left: rect.left + offset * rect.width,
+          top: rect.top,
+          width: share * rect.width,
+          height: rect.height,
+        }
+      : {
+          left: rect.left,
+          top: rect.top + offset * rect.height,
+          width: rect.width,
+          height: share * rect.height,
+        };
+    walk(child.node, childRect, [...path, index], visit);
+    offset += share;
+    if (index < node.children.length - 1) {
+      visit.border?.(
+        row
+          ? {
+              kind: 'column',
+              path,
+              index,
+              left: rect.left + offset * rect.width,
+              top: rect.top,
+              width: 0,
+              height: rect.height,
+            }
+          : {
+              kind: 'row',
+              path,
+              index,
+              left: rect.left,
+              top: rect.top + offset * rect.height,
+              width: rect.width,
+              height: 0,
+            },
+      );
+    }
+  });
 }
 
 /** Where each pane goes, in fractions of the pane area. */
 export function paneRects(layout: Layout): Map<number, Rect> {
   const rects = new Map<number, Rect>();
-  const width = sum(layout.columns);
-  let left = 0;
-  for (const column of layout.columns) {
-    const columnWidth = width === 0 ? 0 : column.weight / width;
-    const height = sum(column.cells);
-    let top = 0;
-    for (const cell of column.cells) {
-      const cellHeight = height === 0 ? 0 : cell.weight / height;
-      rects.set(cell.key, { left, top, width: columnWidth, height: cellHeight });
-      top += cellHeight;
-    }
-    left += columnWidth;
-  }
+  if (layout.root) walk(layout.root, FULL, [], { pane: (key, rect) => rects.set(key, rect) });
   return rects;
 }
 
 /** The borders that can be dragged, as zero-thickness lines in fractions of the pane area. */
 export function dividers(layout: Layout): Divider[] {
   const lines: Divider[] = [];
-  const width = sum(layout.columns);
-  let left = 0;
-  layout.columns.forEach((column, columnIndex) => {
-    const columnWidth = width === 0 ? 0 : column.weight / width;
-    const height = sum(column.cells);
-    let top = 0;
-    column.cells.forEach((cell, cellIndex) => {
-      top += height === 0 ? 0 : cell.weight / height;
-      if (cellIndex < column.cells.length - 1) {
-        lines.push({
-          kind: 'row',
-          column: columnIndex,
-          cell: cellIndex,
-          left,
-          top,
-          width: columnWidth,
-          height: 0,
-        });
-      }
-    });
-    left += columnWidth;
-    if (columnIndex < layout.columns.length - 1) {
-      lines.push({
-        kind: 'column',
-        column: columnIndex,
-        cell: 0,
-        left,
-        top: 0,
-        width: 0,
-        height: 1,
-      });
-    }
-  });
+  if (layout.root) walk(layout.root, FULL, [], { border: (divider) => lines.push(divider) });
   return lines;
 }
 
-/** The pane to focus after `key` goes away: the one below or above it, then a neighbour column. */
+/**
+ * Drags the border after child `index` of the split at `path` by `share` of the whole area
+ * (negative: left or up). Neither side goes below {@link MIN_SHARE} of the area.
+ */
+export function resizeAt(
+  layout: Layout,
+  path: readonly number[],
+  index: number,
+  share: number,
+): Layout {
+  if (!layout.root) return layout;
+  const resize = (node: LayoutNode, depth: number, extent: Rect): LayoutNode => {
+    if (node.kind === 'pane') return node;
+    const total = sum(node.children);
+    const row = node.direction === 'row';
+    if (depth < path.length) {
+      const step = path[depth];
+      return {
+        ...node,
+        children: node.children.map((child, i) => {
+          const part = total === 0 ? 0 : child.weight / total;
+          const childExtent: Rect = row
+            ? { ...extent, width: part * extent.width }
+            : { ...extent, height: part * extent.height };
+          return i === step
+            ? { ...child, node: resize(child.node, depth + 1, childExtent) }
+            : child;
+        }),
+      };
+    }
+    const first = node.children[index];
+    const second = node.children[index + 1];
+    // How much of the whole area this split spans along the direction being dragged.
+    const span = row ? extent.width : extent.height;
+    if (!first || !second || span === 0 || total === 0) return node;
+    const perArea = total / span;
+    const min = MIN_SHARE * perArea;
+    const pair = first.weight + second.weight;
+    // Two neighbours smaller than twice the minimum cannot be resized at all.
+    if (pair <= min * 2) return node;
+    const weight = Math.min(pair - min, Math.max(min, first.weight + share * perArea));
+    const children = node.children.slice();
+    children[index] = { ...first, weight };
+    children[index + 1] = { ...second, weight: pair - weight };
+    return { ...node, children };
+  };
+  return { root: resize(layout.root, 0, FULL) };
+}
+
+/** The pane to focus after `key` goes away: the next one in reading order, else the previous. */
 export function neighbour(layout: Layout, key: number): number | undefined {
-  const at = locate(layout, key);
-  if (!at) return layoutKeys(layout)[0];
-  const column = layout.columns[at.column];
-  const inColumn = column?.cells[at.cell + 1] ?? column?.cells[at.cell - 1];
-  if (inColumn) return inColumn.key;
-  const beside = layout.columns[at.column + 1] ?? layout.columns[at.column - 1];
-  return beside?.cells[0]?.key;
+  const keys = layoutKeys(layout);
+  const at = keys.indexOf(key);
+  if (at === -1) return keys[0];
+  return keys[at + 1] ?? keys[at - 1];
+}
+
+function shapeOf(node: LayoutNode): string {
+  if (node.kind === 'pane') return String(node.key);
+  const separator = node.direction === 'row' ? '|' : '/';
+  return `[${node.children.map((child) => shapeOf(child.node)).join(separator)}]`;
+}
+
+/** The tree in one line, for logs and tests: `[1|[2/3]]` is pane 1 beside 2 stacked on 3. */
+export function layoutShape(layout: Layout): string {
+  return layout.root ? shapeOf(layout.root) : '';
 }

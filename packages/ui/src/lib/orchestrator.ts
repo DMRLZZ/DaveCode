@@ -524,6 +524,39 @@ export function startRequest(
   };
 }
 
+/**
+ * The planner's activity without its JSON reply (bare or in a code fence), which the list of
+ * tasks already shows in a readable form. Anything else the planner said stays.
+ */
+export function withoutPlanReply(lines: OutputLine[]): OutputLine[] {
+  const kept: OutputLine[] = [];
+  let block: OutputLine[] = [];
+  // A long reply arrives cut short, so it cannot be parsed: it is recognized by how it starts.
+  const startsPlan = /^\s*(?:```[a-z]*\s*)?\{\s*"tasks"\s*:/i;
+  const flush = () => {
+    // The planner may say something first; only the part from the JSON on is dropped.
+    const from = block.findIndex((_, index) =>
+      startsPlan.test(
+        block
+          .slice(index)
+          .map((line) => line.text)
+          .join('\n'),
+      ),
+    );
+    kept.push(...(from === -1 ? block : block.slice(0, from)));
+    block = [];
+  };
+  for (const line of lines) {
+    if (line.kind === 'text') block.push(line);
+    else {
+      flush();
+      kept.push(line);
+    }
+  }
+  flush();
+  return kept.length === lines.length ? lines : kept;
+}
+
 /** `2/4`: tasks that ended well out of all the tasks, or empty before there is a plan. */
 export function runProgress(run: Pick<OrchestratorRun, 'tasks'>): string {
   if (run.tasks.length === 0) return '';

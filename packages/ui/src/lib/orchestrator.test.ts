@@ -32,6 +32,7 @@ import {
   startRequest,
   taskElapsedMs,
   toggleAgent,
+  withoutPlanReply,
 } from './orchestrator';
 import type { AgentOutput, DaveEvent, OrchestratorRun, OrchestratorTask } from './types';
 
@@ -591,5 +592,52 @@ describe('run helpers', () => {
       30_000,
     );
     expect(runChangedFiles(r)).toEqual(['a.ts', 'b.ts']);
+  });
+});
+
+describe('withoutPlanReply', () => {
+  const line = (id: number, kind: AgentOutput['kind'], text: string) => ({ id, kind, text });
+
+  it('drops the JSON plan and keeps what the planner did and said', () => {
+    const lines = [
+      line(0, 'status', 'Planning with claude…'),
+      line(1, 'tool', 'Read package.json'),
+      line(2, 'text', 'The project is small.'),
+      line(3, 'tool', 'Read math.js'),
+      line(4, 'text', '{"tasks":[{"title":"A","agent":"claude","prompt":"Do A","dependsOn":[]}]}'),
+    ];
+    expect(withoutPlanReply(lines).map((l) => l.id)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('drops a fenced, multi-line plan and a repaired one', () => {
+    const lines = [
+      line(0, 'text', '```json'),
+      line(1, 'text', '{'),
+      line(2, 'text', '  "tasks": []'),
+      line(3, 'text', '}'),
+      line(4, 'text', '```'),
+      line(
+        5,
+        'status',
+        'The plan was not usable (the plan has no tasks); asking claude to fix it.',
+      ),
+      line(6, 'text', '{ "tasks": [{ "title": "A" }] }'),
+    ];
+    expect(withoutPlanReply(lines).map((l) => l.id)).toEqual([5]);
+  });
+
+  it('returns the same lines when there is no plan in them', () => {
+    const lines = [line(0, 'text', '{ not a plan }'), line(1, 'text', 'The "tasks" are easy.')];
+    expect(withoutPlanReply(lines)).toBe(lines);
+  });
+
+  it('keeps what the planner said before the JSON in the same reply', () => {
+    const lines = [
+      line(0, 'text', 'Here is the plan:'),
+      line(1, 'text', '```json'),
+      line(2, 'text', '{"tasks":[{"title":"A…'),
+    ];
+    expect(withoutPlanReply(lines).map((l) => l.id)).toEqual([0]);
+    expect(withoutPlanReply([])).toEqual([]);
   });
 });
