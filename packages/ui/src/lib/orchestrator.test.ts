@@ -592,6 +592,18 @@ describe('run helpers', () => {
       30_000,
     );
     expect(runChangedFiles(r)).toEqual(['a.ts', 'b.ts']);
+    // Applying a run later moves `updatedAt`; the time the work took does not change.
+    const applied = run({
+      status: 'done',
+      createdAt: '2026-11-07T10:00:00.000Z',
+      updatedAt: '2026-11-07T11:30:00.000Z',
+      appliedAt: '2026-11-07T11:30:00.000Z',
+      tasks: [
+        task({ id: 't1', status: 'done', finishedAt: '2026-11-07T10:01:00.000Z' }),
+        task({ id: 't2', status: 'done', finishedAt: '2026-11-07T10:01:30.000Z' }),
+      ],
+    });
+    expect(runElapsedMs(applied, 0)).toBe(90_000);
   });
 });
 

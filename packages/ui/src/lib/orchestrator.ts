@@ -567,7 +567,12 @@ export function runProgress(run: Pick<OrchestratorRun, 'tasks'>): string {
 export function runElapsedMs(run: OrchestratorRun, now: number): number | undefined {
   const start = Date.parse(run.createdAt);
   if (Number.isNaN(start)) return undefined;
-  const end = isActiveRun(run) ? now : Date.parse(run.updatedAt);
+  if (isActiveRun(run)) return Math.max(0, now - start);
+  // The work ended with its last task; `updatedAt` also moves later, when the run is applied.
+  const finished = run.tasks
+    .map((task) => (task.finishedAt ? Date.parse(task.finishedAt) : Number.NaN))
+    .filter((time) => !Number.isNaN(time));
+  const end = finished.length > 0 ? Math.max(...finished) : Date.parse(run.updatedAt);
   return Math.max(0, (Number.isNaN(end) ? now : end) - start);
 }
 
