@@ -355,6 +355,8 @@ const PATH_SEPARATOR = String.raw`[\\/]+`;
 const PATH_END = '\\s"\'`)\\]';
 /** What may follow the folder: a separator, the end or punctuation; never more of a name. */
 const AFTER_FOLDER = `(?=[\\\\/${PATH_END},;:]|\\.(?:\\s|$)|$)`;
+/** The folder must start a path: `/var/x` is not found inside `/private/var/x`. */
+const NOT_INSIDE_A_PATH = String.raw`(?<![\w\\/.-])`;
 /** The optional path inside the folder. */
 const INSIDE_FOLDER = `(?:${PATH_SEPARATOR}([^${PATH_END}]*))?`;
 
@@ -369,7 +371,10 @@ function escapeRegExp(text: string): string {
  */
 export function relativePaths(text: string, cwd: string): string {
   let out = text.replace(FILE_LINK, '$1');
-  for (const base of new Set([cwd, realPath(cwd)])) {
+  // The resolved spelling can contain the given one (macOS: /private/var/… and /var/…), so the
+  // longer one goes first and neither may match in the middle of a longer path.
+  const bases = [...new Set([cwd, realPath(cwd)])].sort((a, b) => b.length - a.length);
+  for (const base of bases) {
     if (base.length < 4) continue;
     // Agents spell the same folder with either slash, and Windows paths in any letter case.
     const spelled = base
@@ -379,7 +384,7 @@ export function relativePaths(text: string, cwd: string): string {
       .join(PATH_SEPARATOR);
     const prefix = /^[\\/]/.test(base) ? PATH_SEPARATOR : '';
     const pattern = new RegExp(
-      `${prefix}${spelled}${AFTER_FOLDER}${INSIDE_FOLDER}`,
+      `${NOT_INSIDE_A_PATH}${prefix}${spelled}${AFTER_FOLDER}${INSIDE_FOLDER}`,
       process.platform === 'win32' ? 'gi' : 'g',
     );
     out = out.replace(pattern, (_match, rest: string | undefined) =>

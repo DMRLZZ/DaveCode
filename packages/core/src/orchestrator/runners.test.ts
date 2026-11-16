@@ -503,6 +503,17 @@ describe('relativePaths', () => {
     expect(relativePaths('nothing to change', posix)).toBe('nothing to change');
     // A folder that merely starts the same is another folder.
     expect(relativePaths(`${posix}0/a.ts`, posix)).toBe(`${posix}0/a.ts`);
+    // And it is not found in the middle of a longer path.
+    expect(relativePaths(`/private${posix}/a.ts`, posix)).toBe(`/private${posix}/a.ts`);
+  });
+
+  it('recognizes the resolved spelling of the folder as well as the given one', () => {
+    // On macOS the temp folder is /var/… and resolves to /private/var/…, which contains it.
+    const resolved = realpathSync.native(workdir);
+    const inside = path.join(resolved, 'src', 'a.ts');
+    expect(relativePaths(`Edited ${inside}`, workdir)).toBe('Edited src/a.ts');
+    expect(relativePaths(`Edited ${path.join(workdir, 'b.ts')}`, workdir)).toBe('Edited b.ts');
+    expect(relativePaths(`{"cwd":${JSON.stringify(resolved)}}`, workdir)).toBe('{"cwd":"."}');
   });
 
   it('understands a Windows worktree spelled with either slash', () => {
