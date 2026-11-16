@@ -14,7 +14,7 @@ describe('macSigning', () => {
   it('keeps the ad hoc signature when there is no certificate', () => {
     expect(macSigning({}, ROOT)).toEqual({
       mode: 'adhoc',
-      config: { identity: '-', hardenedRuntime: false },
+      config: { identity: '-', hardenedRuntime: false, notarize: false },
     });
     // Apple credentials alone sign nothing.
     expect(macSigning({ APPLE_ID: 'a', APPLE_TEAM_ID: 'b' }, ROOT).mode).toBe('adhoc');

@@ -42,7 +42,38 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm desktop:package
+      - run: pnpm build
+      # Notarization reads the App Store Connect key from a file.
+      - name: Write the notarization key
+        if: runner.os == 'macOS'
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "$APPLE_API_KEY_P8" ]; then
+            printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            echo "APPLE_API_KEY=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+          fi
+      # Signing is optional (docs/SIGNING.md): without these secrets the installers are built
+      # exactly as before, unsigned. Only this step sees them.
+      - name: Package the installer
+        run: pnpm --filter @davecode/desktop package
+        env:
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          DAVECODE_AZURE_SIGN_ENDPOINT: ${{ vars.AZURE_SIGN_ENDPOINT }}
+          DAVECODE_AZURE_SIGN_ACCOUNT: ${{ vars.AZURE_SIGN_ACCOUNT }}
+          DAVECODE_AZURE_SIGN_PROFILE: ${{ vars.AZURE_SIGN_PROFILE }}
+          DAVECODE_AZURE_SIGN_PUBLISHER: ${{ vars.AZURE_SIGN_PUBLISHER }}
       - if: runner.os != 'Linux'
         run: pnpm --filter @davecode/desktop smoke --packaged
       - if: runner.os == 'Linux'
@@ -54,7 +85,25 @@ jobs:
           codesign --verify --deep --strict --verbose=2 mac-arm64/DaveCode.app
           hdiutil attach DaveCode-macOS-arm64.dmg -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg"
           codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/dmg/DaveCode.app"
+          # With a Developer ID, Gatekeeper must accept the app as a download would be judged;
+          # that fails unless it was notarized. An ad hoc build is not assessed.
+          if codesign -dvv "$RUNNER_TEMP/dmg/DaveCode.app" 2>&1 | grep -q 'Authority=Developer ID Application'; then
+            spctl --assess --type execute --verbose=2 "$RUNNER_TEMP/dmg/DaveCode.app"
+          else
+            echo "Ad hoc signature: not notarized, Gatekeeper will ask on first launch."
+          fi
           hdiutil detach "$RUNNER_TEMP/dmg"
+      # A signing secret that produced no valid signature must fail the build, not ship unsigned.
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          EXPECT_SIGNED: ${{ secrets.WIN_CSC_LINK != '' || secrets.AZURE_CLIENT_SECRET != '' }}
+        run: |
+          $signature = Get-AuthenticodeSignature packages/desktop/release/DaveCode-Setup-x64.exe
+          Write-Host "Installer signature: $($signature.Status)"
+          if ($env:EXPECT_SIGNED -eq 'true' -and $signature.Status -ne 'Valid') {
+            throw "A signing secret is set but the installer is not validly signed."
+          }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

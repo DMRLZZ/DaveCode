@@ -57,7 +57,8 @@ export function macSigning(env, root) {
       // Unsigned, the signature Electron ships with breaks once the bundle is assembled, and a
       // downloaded copy is then reported as "damaged" with no way to open it.
       // Hardened runtime would reject Electron's frameworks, which carry another team's signature.
-      config: { identity: '-', hardenedRuntime: false },
+      // Never notarize an ad hoc build, even if Apple credentials happen to be set.
+      config: { identity: '-', hardenedRuntime: false, notarize: false },
     };
   }
   const notarize =
