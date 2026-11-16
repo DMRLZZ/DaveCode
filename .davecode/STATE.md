@@ -1,21 +1,23 @@
 # DaveCode: project state
 
-_Last updated: 2026-11-08_
+_Last updated: 2026-11-16_
 
 ## Current focus
 
-**v0.7.1 on `main`**: isolated panes (one git worktree and branch per pane) with a Changes panel that reviews diffs and commits, pushes, opens pull requests or merges a pane back; the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
+**v0.8.0 prepared on `feat/workspace-threads`** (v0.7.1 on `main`): a desktop workspace with a session sidebar, tiling panes (split, resize, rename, maximize, minimize) and an orchestrator thread with one live card per agent; isolated panes (one git worktree and branch per pane) with a Changes panel that reviews diffs and commits, pushes, opens pull requests or merges a pane back; the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
 setup, DaveCode accounts on Cloudflare (`davecode-auth` + D1 at `auth.davecode.app`),
 official vendor sign-in for Claude Code, Codex and Antigravity (`agy`), desktop installers
 for Windows, macOS and Linux, and the public site at `davecode.app` served from the
 `davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.7.1`
-(installed command `davecode`).
+(installed command `davecode`); 0.8.0 is not released yet.
 
 ## In progress
 
-- Optional code-signing certificates for the Windows and macOS desktop installers.
-- Orchestrator follow-ups: API-model leads through the router, letting Claude run tests in
-  worktrees (headless `acceptEdits` denies Bash), and reusing the visible panes for tasks.
+- Code-signing certificates for the Windows and macOS installers. The build signs and notarizes
+  when CI has them (`docs/SIGNING.md`); none exists yet, so downloads are still warned about.
+  That path has never run with a real certificate.
+- Orchestrator follow-ups: API-model leads through the router, and running a task in a visible
+  terminal pane instead of headlessly.
 
 ## Done
 
@@ -51,6 +53,12 @@ for Windows, macOS and Linux, and the public site at `davecode.app` served from 
   create`, merge, remove), `/api/changes/*`, the **Isolated** toggle and the Changes panel in the
   desktop workspace. Verified live in the dev desktop app via CDP (isolated shell pane, diff,
   Claude Code writing the message, merge, push).
+- **Workspace** (v0.8.0): `packages/ui/src/lib/layout.ts` (tree of splits), `workspace.ts`
+  (sessions reducer), `SessionSidebar`, `Pane`, `RunThread`. Orchestrator runs have an `access`
+  (`edit` or `full`), retry a cut-off task once, and keep a transcript per run
+  (`/api/orchestrator/runs/:id/output`). Verified live in the dev desktop app via CDP: splits,
+  border drag, rename, minimize, maximize, send to panes, and a 3-agent run (3 of 3 tasks) whose
+  output survived a restart.
 - **Desktop terminals**: real PTY panes (`@lydell/node-pty` + xterm.js) for a shell, Claude Code,
   Codex, Antigravity and DaveCode; the desktop opens on them and reopens the last project.
 
@@ -64,7 +72,12 @@ None.
 
 - npm installation uses `npm install -g @dmrlzz/davecode`; the unscoped name is unavailable.
 - Desktop installers are not vendor-signed (Windows SmartScreen asks to confirm; the macOS app is
-  signed ad hoc, so Gatekeeper asks for Open Anyway in Privacy & Security on first launch).
+  signed ad hoc, so Gatekeeper asks for Open Anyway in Privacy & Security on first launch). Only
+  certificates remove this: Apple Developer Program for macOS; SignPath Foundation, Azure
+  Artifact Signing or a CA certificate for Windows.
+- With `access: edit` (the default) Claude Code runs no shell command in orchestrator tasks;
+  `full` lets it, with the user's own permissions and no sandbox.
+- Sessions and the pane layout are not restored when the app restarts.
 - Codex CLI, Claude Code and Antigravity (`agy`) passed live adapter completion checks on Windows.
 - Gemini CLI 0.65.0 completed official Google OAuth in an isolated home, but Code Assist rejected
   the client with `UNSUPPORTED_CLIENT`. Use `antigravity-cli` (`agy`) or a Gemini API key instead.
@@ -91,6 +104,9 @@ None.
 | 2026-10-15 | The gateway's Connect endpoint delegates to an injected launcher, only on loopback binds |
 | 2026-11-08 | T3 Code (MIT) is a reference for concepts only; DaveCode writes its own code and keeps real terminal panes |
 | 2026-11-08 | Shipping never force-pushes; a failed step is reported in `steps`, not as an HTTP error |
+| 2026-11-16 | Orchestrator runs default to `access: edit`; running commands unsandboxed (`full`) is the user's explicit choice per run |
+| 2026-11-16 | A split opens a shell in the pane's folder; other session kinds are opened from the sidebar |
+| 2026-11-16 | Signing is driven only by CI secrets; a build without them is identical to the unsigned build |
 
 ## Activity log
 
@@ -117,3 +133,7 @@ None.
 - 2026-11-09: v0.7.1 prepared: the chat no longer reprints streaming replies, knows what DaveCode
   is, and runs Claude Code without tools or MCP (about 3k context tokens a reply, not 34k);
   docs/GUIDE.md added.
+- 2026-11-16: v0.8.0 prepared: session sidebar, tiling panes, orchestrator thread, run access,
+  one retry for cut-off tasks, kept transcripts, and signing that turns on when CI has
+  certificates. A live run before the change finished 2 of 3 tasks (Antigravity lost its work to
+  a dropped connection; Claude Code was refused `npm test` five times); after it, 3 of 3.

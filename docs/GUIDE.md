@@ -29,26 +29,49 @@ This guide covers what you can do with it and what each part costs. For the HTTP
    terminal: `claude` for Claude Code, `codex` for Codex, `agy` for Antigravity.
    `davecode doctor` shows what is installed and what is missing.
 
-The installers are not signed by a vendor yet. On Windows choose **More info → Run anyway**. On
-macOS open the app once, then choose **Open Anyway** in **System Settings → Privacy & Security**.
-The macOS build is for Apple silicon only.
+Windows and macOS warn about the installers because they are not signed with a vendor
+certificate yet; nothing is wrong with the download. On Windows choose **More info → Run
+anyway**. On macOS open the app once, then choose **Open Anyway** in **System Settings → Privacy
+& Security**. [SIGNING.md](SIGNING.md) explains the warning and what removes it. The macOS build
+is for Apple silicon only.
 
 ## The desktop workspace
 
-Open a project folder. The workspace shows real terminals, the same as any other terminal on
-your machine.
+Open a project folder. The workspace has two views, switched at the top: **Terminals** and
+**Orchestrator**. Whatever runs in one keeps running while you look at the other.
 
-- **Top bar:** add a **Shell**, **Claude Code**, **Codex**, **Antigravity** or **DaveCode** pane.
-  Each agent pane starts that agent's own CLI, with its own login and its normal interface.
-- **Bottom bar:** type one message. Choose what it does:
-  - **Orchestrate** splits an objective across your agents (next section).
-  - **Send to panes** types the same message into every agent pane you have open.
-- **Connections, Dashboard, Settings** (top right) manage accounts, quotas and the look.
+**The sidebar** (left; hide it with `Ctrl+Shift+B`) lists:
+
+- **Sessions.** One per pane. Press **+** to open a **Shell**, **Claude Code**, **Codex**,
+  **Antigravity** or **DaveCode** session; each agent session starts that agent's own CLI, with
+  its own login and its normal interface. Click a session to go to it. Double-click its name
+  (or press F2 on it) to rename it. Hover for **minimize** and **close**.
+- **Orchestrator.** Every run of this project, newest first. Click one to open its thread.
+- **Changes**, **Connections**, **Dashboard** and **Settings**.
+
+**Terminals** are real terminals, arranged like a tiling terminal:
+
+| Do this                                | With                                                                                                                                |
+| :------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------- |
+| Split a pane to the right or downwards | The two split buttons in its bar, `Ctrl+Shift+D` / `Ctrl+Shift+E`. The new pane is a shell in the same folder.                      |
+| Resize                                 | Drag any border. Double-click a border, or use the button at the top right, to even the panes out.                                  |
+| Maximize one pane, and back            | The maximize button, a double-click on its bar, or `Ctrl+Shift+Enter`. While one is maximized, picking another session swaps it in. |
+| Minimize                               | The **–** button or `Ctrl+Shift+M`. The session keeps running and stays in the sidebar; click it there to bring it back.            |
+| Rename                                 | Double-click the name in the pane's bar or in the sidebar.                                                                          |
+| Close                                  | The **×** button or `Ctrl+Shift+W`. This ends the session.                                                                          |
+
+**The message box** at the bottom takes one message, several lines if you like (`Shift+Enter`
+for a new line, `Enter` to send). Choose what it does:
+
+- **Orchestrate** splits an objective across your agents (next section).
+- **Send to panes** types the same message into every agent pane you have open, or only into
+  the pane you are in: pick the receiver next to **to**.
 
 ## Orchestrate: one objective, several agents
 
-Type an objective in the bottom bar, for example _"Add a /health endpoint with tests and
-document it in the README"_, and press Enter.
+Type an objective in the message box, for example _"Add a /health endpoint with tests and
+document it in the README"_, and press Enter. The **Orchestrator** view opens on the run's
+thread.
 
 1. **The lead plans.** Pick the lead in the **lead** selector: Claude Code, Codex or
    Antigravity. It reads the project without changing anything and splits the objective into up
@@ -58,24 +81,44 @@ document it in the README"_, and press Enter.
    never edit the same files at the same time. Up to three tasks run at once, one per agent.
 3. **The results are merged** into a `davecode/run-<id>` branch. A task that conflicts with the
    others is marked **conflict** and left out, never forced.
-4. **You decide.** The panel on the right shows the plan, every task's live activity, the files
-   it changed and a summary. **Apply to `<branch>`** merges the result into the branch you
-   started from. Until then your files do not change, and DaveCode never pushes.
+4. **You decide.** **Apply to `<branch>`** merges the result into the branch you started from.
+   Until then your files do not change, and DaveCode never pushes.
+
+**Nothing is hidden.** The thread shows your objective, the plan as a list of tasks, and one
+card per agent, all on screen at the same time. Each card shows live what that agent reads,
+edits and runs, then its own summary, the files it changed and its branch. Expand a card to
+read it in full. Runs are kept: open an older one from the sidebar and its cards still show
+what each agent did.
+
+**What the agents may run.** The button next to the agent chips sets it for the next run:
+
+- **edits only** (the default): agents change files in their worktree. Codex and Antigravity
+  still run commands inside their own sandbox. Claude Code has no sandbox, so it runs no
+  command at all and tells you which command to run to check its work.
+- **runs commands**: Claude Code may also run shell commands (your tests, builds, installs),
+  and Codex gets network access in its sandbox. These commands run **with your own
+  permissions**, the same as if you had typed them. Use it on projects you trust.
+
+If an agent is cut off mid-task (a dropped connection, a CLI that dies), DaveCode starts it once
+more in the same worktree, where its unfinished work still is. It does not retry an agent that
+is signed out, out of quota or rate limited.
 
 The project must be a git repository with at least one commit. From the terminal:
-`davecode orchestrate "<objective>" --planner codex --agents claude,codex`.
+`davecode orchestrate "<objective>" --planner codex --agents claude,codex [--full-access]`.
 
 Notes:
 
 - Antigravity has no safe read-only mode, so when it leads it plans without seeing the files.
-- In its tasks, Claude Code can edit files but cannot run commands such as your tests; Codex can.
-- Worktrees do not have your installed dependencies (`node_modules` and similar).
+- Worktrees do not have your installed dependencies (`node_modules` and similar), so a test
+  that needs them fails until the agent installs them (it can, with **runs commands**).
 
 ## Isolated panes and the Changes panel
 
-- **Isolated** (top bar, after the pane buttons): when it is on, every new pane gets its own worktree and branch
-  (`davecode/pane-<id>`). Run several agents on the same project without them touching each
-  other's files. The pane header shows its branch and how many lines it changed.
+- **Isolated worktree** (a checkbox under the session kinds, in the sidebar's **+** menu): when
+  it is on, every new session gets its own worktree and branch (`davecode/pane-<id>`). Run
+  several agents on the same project without them touching each other's files. The pane's bar
+  and the sidebar show its branch; the bar also shows how many lines it changed. Splitting an
+  isolated pane opens a shell in the same worktree, to look at what the agent is doing.
 - **Changes panel:** a review of the project and of every isolated pane, with a line-numbered
   diff. Commit, commit and push, or commit, push and open a pull request, and merge a pane's
   branch back into your checkout. DaveCode can write the commit message and pull request text
