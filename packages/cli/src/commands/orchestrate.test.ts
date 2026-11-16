@@ -121,6 +121,7 @@ describe('formatting', () => {
         runId: 'r1',
         taskId: 't1',
         output: { kind: 'tool', text: 'Edit src/server.ts\n' },
+        seq: 0,
         ts: TS,
       }),
       ...progress({
@@ -128,6 +129,7 @@ describe('formatting', () => {
         runId: 'r1',
         taskId: 't1',
         output: { kind: 'text', text: 'Thinking about it' },
+        seq: 0,
         ts: TS,
       }),
       ...progress({
@@ -135,6 +137,7 @@ describe('formatting', () => {
         runId: 'other',
         taskId: 't1',
         output: { kind: 'error', text: 'not ours' },
+        seq: 0,
         ts: TS,
       }),
       ...progress(

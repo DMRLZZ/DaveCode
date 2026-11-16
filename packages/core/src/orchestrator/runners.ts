@@ -347,6 +347,67 @@ function claudeParser(emit: Emit, cwd: string): StreamParser {
   };
 }
 
+const FILE_LINK = /\[([^\]\n]+)\]\(file:\/\/[^)\s]*\)/g;
+
+// Pieces of the pattern that finds a folder in running text, as regular expression source.
+const PATH_SEPARATOR = String.raw`[\\/]+`;
+/** A path ends at whitespace, a quote, a backtick or a closing bracket. */
+const PATH_END = '\\s"\'`)\\]';
+/** What may follow the folder: a separator, the end or punctuation; never more of a name. */
+const AFTER_FOLDER = `(?=[\\\\/${PATH_END},;:]|\\.(?:\\s|$)|$)`;
+/** The optional path inside the folder. */
+const INSIDE_FOLDER = `(?:${PATH_SEPARATOR}([^${PATH_END}]*))?`;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * What an agent wrote, with the worktree taken out of it: `[x.ts](file:///…/t3/x.ts)` becomes
+ * `x.ts` and `C:\…\worktrees\…\t3\src\x.ts` becomes `src/x.ts`. The worktree is a temporary
+ * folder deep under the DaveCode home; its path says nothing and fills the screen.
+ */
+export function relativePaths(text: string, cwd: string): string {
+  let out = text.replace(FILE_LINK, '$1');
+  for (const base of new Set([cwd, realPath(cwd)])) {
+    if (base.length < 4) continue;
+    // Agents spell the same folder with either slash, and Windows paths in any letter case.
+    const spelled = base
+      .split(/[\\/]+/)
+      .filter(Boolean)
+      .map(escapeRegExp)
+      .join(PATH_SEPARATOR);
+    const prefix = /^[\\/]/.test(base) ? PATH_SEPARATOR : '';
+    const pattern = new RegExp(
+      `${prefix}${spelled}${AFTER_FOLDER}${INSIDE_FOLDER}`,
+      process.platform === 'win32' ? 'gi' : 'g',
+    );
+    out = out.replace(pattern, (_match, rest: string | undefined) =>
+      rest ? rest.replace(/\\+/g, '/') : '.',
+    );
+  }
+  return out;
+}
+
+const POWERSHELL_WRAPPER =
+  /^\s*(?:"[^"]*(?:powershell|pwsh)(?:\.exe)?"|\S*(?:powershell|pwsh)(?:\.exe)?)\s+(?:-(?:NoProfile|NoLogo|NonInteractive)\s+)*-Command\s+([\s\S]+)$/i;
+const POSIX_WRAPPER = /^\s*(?:\S*\/)?(?:bash|zsh|sh)\s+-l?c\s+([\s\S]+)$/;
+
+/**
+ * Codex reports the whole shell invocation (`"C:\…\powershell.exe" -Command 'npm test'`,
+ * `bash -lc "npm test"`). Only the command inside says what the agent did.
+ */
+export function unwrapShell(command: string): string {
+  const inner = (POWERSHELL_WRAPPER.exec(command) ?? POSIX_WRAPPER.exec(command))?.[1]?.trim();
+  if (!inner) return command;
+  const quote = inner[0];
+  const quoted =
+    inner.length >= 2 && (quote === "'" || quote === '"') && inner.endsWith(quote)
+      ? inner.slice(1, -1)
+      : inner;
+  return quoted.trim() || command;
+}
+
 function codexErrorText(value: unknown): string | undefined {
   if (typeof value === 'string') return value;
   if (isRecord(value)) return asString(value.message) ?? JSON.stringify(value);
@@ -360,7 +421,7 @@ function codexItemLine(item: Record<string, unknown>, cwd: string): string | und
     case 'todo_list':
       return undefined;
     case 'command_execution':
-      return toolLine('Run', { command: asString(item.command) ?? '' }, cwd);
+      return toolLine('Run', { command: unwrapShell(asString(item.command) ?? '') }, cwd);
     case 'file_change': {
       const files = asArray(item.changes)
         .flatMap((c) => (isRecord(c) && asString(c.path) ? [asString(c.path) as string] : []))
@@ -590,17 +651,20 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
       return { ok: false, text: '', error: `${info.label}: unsafe argument for the Windows shell` };
     }
 
+    // Antigravity cannot be kept read-only, so plan runs see an empty directory.
+    let scratch: string | undefined;
+    let cwd = request.cwd;
+    // What a task agent says is shown as written, minus the path of its temporary worktree. A
+    // plan is a reply to parse, so it is passed on untouched.
+    const tidy = (text: string) => (request.mode === 'edit' ? relativePaths(text, cwd) : text);
     const emit: Emit = (chunk) => {
       try {
-        request.onOutput(chunk);
+        request.onOutput(chunk.kind === 'text' ? { ...chunk, text: tidy(chunk.text) } : chunk);
       } catch {
         // a broken listener must not break the run
       }
     };
 
-    // Antigravity cannot be kept read-only, so plan runs see an empty directory.
-    let scratch: string | undefined;
-    let cwd = request.cwd;
     if (request.agent === 'agy' && request.mode === 'plan') {
       scratch = mkdtempSync(path.join(options.scratchDir ?? tmpdir(), 'davecode-agy-plan-'));
       cwd = scratch;
@@ -654,13 +718,13 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
         };
       }
       if (request.signal.aborted) throw abortError();
-      if (exit.aborted || timeout.aborted) return { ...timedOut(), text: parser.state.text };
+      if (exit.aborted || timeout.aborted) return { ...timedOut(), text: tidy(parser.state.text) };
 
       const { state } = parser;
       if (state.completed && !state.failure && exit.code === 0) {
         return {
           ok: true,
-          text: state.text,
+          text: tidy(state.text),
           ...(state.tokens !== undefined ? { tokens: state.tokens } : {}),
         };
       }
@@ -671,7 +735,7 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
           (exit.code === 0 ? 'the CLI ended without a final result' : 'no output'));
       return {
         ok: false,
-        text: state.text,
+        text: tidy(state.text),
         ...failure(info, detail, `${detail}\n${tail(exit.stderr)}`, exit.code),
         ...(state.tokens !== undefined ? { tokens: state.tokens } : {}),
       };

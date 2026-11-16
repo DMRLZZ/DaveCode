@@ -4,7 +4,14 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isShellSafeArg } from '../providers/shared/cli';
 import type { AgentOutput, AgentRunRequest, OrchestratorAgent } from './contract';
-import { AGY_PLAN_NOTE, agentArgs, createCliAgentRunner, scrubSecrets } from './runners';
+import {
+  AGY_PLAN_NOTE,
+  agentArgs,
+  createCliAgentRunner,
+  relativePaths,
+  scrubSecrets,
+  unwrapShell,
+} from './runners';
 
 /** One fake CLI for all three agents: `node fake.cjs <agent> <scenario> ...realArgs`. */
 const FAKE = `
@@ -205,7 +212,8 @@ describe('createCliAgentRunner: claude', () => {
       'acceptEdits',
     ]);
     expect(edit.stdin).toBe('Do the thing\nwith "quotes" & %PATH% !bang');
-    expect(realpathSync.native(edit.cwd)).toBe(realpathSync.native(workdir));
+    // An edit run's reply has its worktree path taken out, so its own folder reads ".".
+    expect(edit.cwd).toBe('.');
     expect(edit.claudeConfigDir ?? null).toBe(process.env.CLAUDE_CONFIG_DIR ?? null);
 
     const plan = await echo('claude', 'plan');
@@ -327,7 +335,8 @@ describe('createCliAgentRunner: agy', () => {
       '--disable-slash-commands',
       '--print=',
     ]);
-    expect(realpathSync.native(edit.cwd)).toBe(realpathSync.native(workdir));
+    // An edit run's reply has its worktree path taken out, so its own folder reads ".".
+    expect(edit.cwd).toBe('.');
     expect(JSON.parse(edit.stdin)).toEqual({
       event: 'user',
       message: { content: 'Do the thing\nwith "quotes" & %PATH% !bang' },
@@ -433,5 +442,91 @@ describe('scrubSecrets', () => {
     );
     expect(out).not.toMatch(/abc123def456|eyJhbGciOi|ghp_abcdefghijklmnop|AIzaSyA1234567890/);
     expect(out).not.toContain('\n');
+  });
+});
+
+describe('unwrapShell', () => {
+  it('shows the command, not the shell Codex started it with', () => {
+    expect(
+      unwrapShell(
+        String.raw`"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -Command 'npm test'`,
+      ),
+    ).toBe('npm test');
+    expect(
+      unwrapShell(
+        String.raw`"C:\Program Files\PowerShell\7\pwsh.exe" -NoProfile -Command "git status"`,
+      ),
+    ).toBe('git status');
+    expect(unwrapShell('powershell.exe -NoLogo -NoProfile -Command Get-Location')).toBe(
+      'Get-Location',
+    );
+    expect(unwrapShell(`bash -lc "pnpm test --run"`)).toBe('pnpm test --run');
+    expect(unwrapShell(`/bin/zsh -lc 'rg -n foo'`)).toBe('rg -n foo');
+    expect(unwrapShell(`sh -c ls`)).toBe('ls');
+  });
+
+  it('leaves every other command as it is', () => {
+    for (const command of [
+      'rg -n foo',
+      'npm test',
+      'bash build.sh',
+      'pwsh',
+      '',
+      'echo "-Command x"',
+    ]) {
+      expect(unwrapShell(command)).toBe(command);
+    }
+    // Only one layer of quotes is the shell's; the rest belongs to the command.
+    expect(unwrapShell(`bash -lc "echo 'a b'"`)).toBe("echo 'a b'");
+    expect(unwrapShell(`bash -lc ''`)).toBe(`bash -lc ''`);
+  });
+});
+
+describe('relativePaths', () => {
+  const posix = '/home/me/.davecode/worktrees/abc/run1/t3';
+
+  it('turns file links into their label', () => {
+    expect(
+      relativePaths(
+        `Created [x.test.js](file://${posix}/x.test.js) like [a.js](file:///a.js).`,
+        posix,
+      ),
+    ).toBe('Created x.test.js like a.js.');
+  });
+
+  it('makes paths inside the worktree relative and leaves the others', () => {
+    expect(relativePaths(`Edited ${posix}/src/a.ts and /etc/hosts`, posix)).toBe(
+      'Edited src/a.ts and /etc/hosts',
+    );
+    expect(relativePaths(`cwd is ${posix}`, posix)).toBe('cwd is .');
+    expect(relativePaths(`"${posix}/a b.ts"`, posix)).toBe('"a b.ts"');
+    expect(relativePaths('nothing to change', posix)).toBe('nothing to change');
+    // A folder that merely starts the same is another folder.
+    expect(relativePaths(`${posix}0/a.ts`, posix)).toBe(`${posix}0/a.ts`);
+  });
+
+  it('understands a Windows worktree spelled with either slash', () => {
+    const win = String.raw`C:\Users\me\.davecode\worktrees\abc\run1\t3`;
+    const expected = process.platform === 'win32' ? 'see src/a.ts' : undefined;
+    const backslashes = relativePaths(
+      String.raw`see C:\Users\me\.davecode\worktrees\abc\run1\t3\src\a.ts`,
+      win,
+    );
+    const slashes = relativePaths('see C:/Users/me/.davecode/worktrees/abc/run1/t3/src/a.ts', win);
+    expect(backslashes).toBe('see src/a.ts');
+    expect(slashes).toBe('see src/a.ts');
+    if (expected) {
+      expect(relativePaths('see c:/users/ME/.davecode/worktrees/abc/run1/t3/src/a.ts', win)).toBe(
+        expected,
+      );
+    }
+  });
+
+  it('is not applied to a plan, which is parsed as it was written', async () => {
+    const res = await runner('claude', 'echo').run(request('claude', { mode: 'plan' }));
+    expect(JSON.parse(res.text).cwd).toBeTruthy();
+    const edit = await runner('claude', 'echo').run(request('claude', { mode: 'edit' }));
+    // The echo reply contains its own working directory: in an edit run it comes back as ".".
+    expect(JSON.parse(edit.text).cwd).toBe('.');
   });
 });
