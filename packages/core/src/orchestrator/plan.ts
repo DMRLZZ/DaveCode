@@ -7,6 +7,7 @@ import { extractJsonObject } from '../autonomous/judge';
 import {
   ORCHESTRATOR_AGENTS,
   ORCHESTRATOR_LIMITS,
+  type OrchestratorAccess,
   type OrchestratorAgent,
   type OrchestratorTask,
 } from './contract';
@@ -90,9 +91,26 @@ export function buildRepairPrompt(
 
 export interface TaskPromptInput {
   objective: string;
-  task: Pick<OrchestratorTask, 'id' | 'title' | 'prompt' | 'dependsOn'>;
+  task: Pick<OrchestratorTask, 'id' | 'title' | 'prompt' | 'dependsOn' | 'agent'>;
   /** Every task of the plan, used to describe the parallel work and the dependencies. */
   tasks: ReadonlyArray<Pick<OrchestratorTask, 'id' | 'title' | 'agent'>>;
+  /** What the run lets its agents do (default `edit`). */
+  access?: OrchestratorAccess;
+  /** A first attempt stopped half way; its files are still in the worktree. */
+  retry?: boolean;
+}
+
+/** How the agent should check its work, given what it is allowed to run. */
+function verificationRule(agent: OrchestratorAgent, access: OrchestratorAccess): string {
+  if (access === 'full') {
+    return '- Before you finish, run the tests or the build that cover what you changed, if the project has them, and fix what you broke.';
+  }
+  // Headless Claude Code is refused every shell command in this mode; without this line it keeps
+  // retrying them and the task takes minutes longer for nothing.
+  if (agent === 'claude') {
+    return '- You cannot run shell commands in this run (no tests, builds or git): every attempt is refused, so do not try. Check your work by reading the code, and say in your summary which command should be run to verify it.';
+  }
+  return '- If you can run the tests that cover what you changed, do; otherwise say in your summary which command should be run to verify it.';
 }
 
 export function buildTaskPrompt(input: TaskPromptInput): string {
@@ -108,6 +126,12 @@ export function buildTaskPrompt(input: TaskPromptInput): string {
     input.task.prompt,
     '',
   ];
+  if (input.retry) {
+    lines.push(
+      'A first attempt at this task was cut off before it finished. Whatever it wrote is still in your copy of the repository: look at what is there first, keep what is right and finish the task.',
+      '',
+    );
+  }
   if (deps.length > 0) {
     lines.push(
       'The results of these tasks are already in your copy of the repository:',
@@ -127,6 +151,7 @@ export function buildTaskPrompt(input: TaskPromptInput): string {
     '- Keep to the scope of your task; leave the other parts to the other agents.',
     '- Do not commit, push, create or switch branches. DaveCode commits and merges your changes.',
     '- Do not read or modify anything under `.davecode/`.',
+    verificationRule(input.task.agent, input.access ?? 'edit'),
     '- When you are done, finish with a short summary of what you changed and anything left open.',
   );
   return lines.join('\n');

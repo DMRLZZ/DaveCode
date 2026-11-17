@@ -1,14 +1,33 @@
-import '@xterm/xterm/css/xterm.css';
-import { FitAddon } from '@xterm/addon-fit';
-import { Terminal } from '@xterm/xterm';
-import { GitBranch, Plus, X } from 'lucide-react';
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BrandMark } from '../../components/shell/Sidebar';
+import { Columns3, GitCompareArrows, PanelLeftOpen, Plus, SendHorizontal } from 'lucide-react';
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { errorMessage } from '../../lib/api';
-import { changedFileCount, lineCounts, shortBranch } from '../../lib/changes';
+import { changedFileCount, shortBranch } from '../../lib/changes';
 import { cn } from '../../lib/cn';
 import { useOrchestratorRunMap } from '../../lib/data';
-import { gridColumns, type PaneKind, type TerminalBridge } from '../../lib/desktop';
+import {
+  chooseProject,
+  type PaneKind,
+  type TerminalBridge,
+  workspaceBridge,
+} from '../../lib/desktop';
+import {
+  type Divider,
+  dividers,
+  type Layout,
+  paneRects,
+  resizeAt,
+  type SplitDirection,
+} from '../../lib/layout';
 import {
   availableAgents,
   isActiveRun,
@@ -23,272 +42,273 @@ import {
   useOrchestratorAgents,
   useOrchestratorRuns,
   useStartOrchestratorRun,
+  useTasks,
 } from '../../lib/queries';
-import { Link } from '../../lib/router';
-import type { ChangesWorkspace, OrchestratorAgent } from '../../lib/types';
-import { ChangesPanel, ChangesToggle } from './Changes';
-import { KINDS, kindMeta } from './kinds';
+import { workspaceAction } from '../../lib/sessions';
+import type { OrchestratorAccess, OrchestratorAgent } from '../../lib/types';
 import {
-  AgentChips,
-  type BarMode,
-  ModeSwitch,
-  OrchestratorPanel,
-  PanelToggle,
-  PlannerPicker,
-} from './Orchestrator';
+  initialWorkspace,
+  isShown,
+  parseSavedWorkspace,
+  restoreWorkspace,
+  savedWorkspace,
+  type WorkspaceState,
+  workspaceReducer,
+} from '../../lib/workspace';
+import { ChangesPanel } from './Changes';
+import { KINDS, kindMeta } from './kinds';
+import { AccessToggle, AgentChips, type BarMode, ModeSwitch, PlannerPicker } from './Orchestrator';
+import { Pane } from './Pane';
+import { RunThread } from './RunThread';
+import { SessionSidebar, type SidebarSession } from './SessionSidebar';
 
-interface PaneState {
-  key: number;
-  kind: PaneKind;
-  /** Isolated workspace (own worktree and branch) the pane runs in. */
-  workspace?: string;
+type View = 'terminals' | 'run';
+type Target = 'agents' | 'focused';
+
+/** How long the page waits for the saved workspace before it opens a fresh one. */
+const LOAD_TIMEOUT_MS = 3000;
+/** A burst of changes (a border being dragged) is saved once it settles. */
+const SAVE_DELAY_MS = 300;
+
+/** What the workspace opens with: the last launch's sessions and preferences, or a shell. */
+interface Opening {
+  state: WorkspaceState;
+  sidebar: boolean;
+  access: OrchestratorAccess;
+  /** Isolated sessions brought back from the last launch, whose worktree may be gone since. */
+  restoredIsolated: ReadonlySet<number>;
 }
 
-function isCopy(e: KeyboardEvent, selection: boolean): boolean {
-  if (e.key.toLowerCase() !== 'c' || !(e.ctrlKey || e.metaKey)) return false;
-  return e.shiftKey || selection;
+function freshOpening(): Opening {
+  return { state: initialWorkspace(), sidebar: true, access: 'edit', restoredIsolated: new Set() };
 }
 
-function isPaste(e: KeyboardEvent): boolean {
-  return e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey);
-}
-
-function Pane({
-  pane,
-  bridge,
-  active,
-  focused,
-  workspace,
-  onFocus,
-  onClose,
-  onWriter,
-  onShowChanges,
-}: {
-  pane: PaneState;
-  bridge: TerminalBridge;
-  /** Live state of the pane's isolated workspace, once known. */
-  workspace: ChangesWorkspace | undefined;
-  onShowChanges: () => void;
-  active: boolean;
-  focused: boolean;
-  onFocus: () => void;
-  onClose: () => void;
-  onWriter: (key: number, writer: ((data: string) => void) | undefined) => void;
-}) {
-  const host = useRef<HTMLDivElement>(null);
-  const terminal = useRef<Terminal | undefined>(undefined);
-  const refit = useRef<() => void>(() => {});
-  const [live, setLive] = useState(false);
-  const meta = kindMeta(pane.kind);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: one terminal per pane for its lifetime
+/**
+ * The terminal workspace. It first asks the app for the project's last sessions and layout, so
+ * no terminal starts only to be replaced a moment later.
+ */
+export function Panes({ bridge, active }: { bridge: TerminalBridge; active: boolean }) {
+  const [opening, setOpening] = useState<Opening>();
   useEffect(() => {
-    const element = host.current;
-    if (!element) return;
-    const term = new Terminal({
-      allowProposedApi: false,
-      cursorBlink: true,
-      fontFamily: "'Geist Mono Variable', Consolas, 'Courier New', monospace",
-      fontSize: 13,
-      lineHeight: 1.2,
-      scrollback: 10_000,
-      theme: { background: '#000000', foreground: '#f4f4f5', cursor: '#ffffff' },
-    });
-    const fit = new FitAddon();
-    term.loadAddon(fit);
-    term.open(element);
-    terminal.current = term;
-    term.attachCustomKeyEventHandler((event) => {
-      if (event.type !== 'keydown') return true;
-      if (isCopy(event, term.hasSelection())) {
-        event.preventDefault();
-        void bridge.copy(term.getSelection());
-        term.clearSelection();
-        return false;
-      }
-      // Returning false lets the browser fire the paste event that xterm listens for.
-      return !isPaste(event);
-    });
-
-    let id: string | undefined;
-    let disposed = false;
-    let starting = true;
-    // Output can arrive before `open` resolves, so nothing is matched to this pane yet.
-    const early: [string, string][] = [];
-    const offData = bridge.onData((from, data) => {
-      if (starting) early.push([from, data]);
-      else if (from === id) term.write(data);
-    });
-    const offExit = bridge.onExit((from, code) => {
-      if (from !== id) return;
-      id = undefined;
-      setLive(false);
-      onWriter(pane.key, undefined);
-      term.write(`\r\n\x1b[90m[process exited with code ${code}]\x1b[0m\r\n`);
-    });
-    const typed = term.onData((data) => {
-      if (id !== undefined) void bridge.write({ id, data });
-    });
-
-    let frame = 0;
-    refit.current = () => {
-      if (element.clientWidth === 0 || element.clientHeight === 0) return;
-      fit.fit();
-      // When a pane narrows (e.g. the orchestrator panel opens), the first fit can measure the
-      // old, wider screen and overflow the pane; fitting again once it has rendered settles it.
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (disposed || element.clientWidth === 0 || element.clientHeight === 0) return;
-        fit.fit();
-        if (id !== undefined) void bridge.resize({ id, cols: term.cols, rows: term.rows });
-      });
+    let settled = false;
+    const finish = (value: Opening) => {
+      if (settled) return;
+      settled = true;
+      setOpening(value);
     };
-    const observer = new ResizeObserver(() => refit.current());
-    observer.observe(element);
-    refit.current();
-
-    bridge
-      .open({
-        kind: pane.kind,
-        cols: term.cols,
-        rows: term.rows,
-        ...(pane.workspace ? { workspace: pane.workspace } : {}),
-      })
-      .then((opened) => {
-        if (disposed) {
-          void bridge.close(opened);
-          return;
-        }
-        id = opened;
-        starting = false;
-        for (const [from, data] of early) if (from === opened) term.write(data);
-        early.length = 0;
-        setLive(true);
-        onWriter(pane.key, (data) => void bridge.write({ id: opened, data }));
-        term.focus();
-      })
-      .catch(() => {
-        starting = false;
-        early.length = 0;
-        term.write('\x1b[31mCould not start this terminal.\x1b[0m\r\n');
-      });
-
+    const timer = window.setTimeout(() => finish(freshOpening()), LOAD_TIMEOUT_MS);
+    const store = workspaceBridge();
+    if (!store) finish(freshOpening());
+    else {
+      store.load().then(
+        (value) => {
+          const saved = parseSavedWorkspace(value);
+          if (!saved) return finish(freshOpening());
+          const state = restoreWorkspace(saved) ?? initialWorkspace();
+          finish({
+            state,
+            sidebar: saved.sidebar,
+            access: saved.access,
+            restoredIsolated: new Set(state.sessions.filter((s) => s.workspace).map((s) => s.key)),
+          });
+        },
+        () => finish(freshOpening()),
+      );
+    }
     return () => {
-      disposed = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      offData();
-      offExit();
-      typed.dispose();
-      onWriter(pane.key, undefined);
-      if (id !== undefined) void bridge.close(id);
-      term.dispose();
+      settled = true;
+      window.clearTimeout(timer);
     };
   }, []);
+  if (!opening) return <div aria-busy="true" className="h-full bg-black" />;
+  return <Workspace bridge={bridge} active={active} opening={opening} />;
+}
 
-  // A hidden page has no size; fit again when it comes back.
-  useEffect(() => {
-    if (active) refit.current();
-    if (active && focused) terminal.current?.focus();
-  }, [active, focused]);
+/** A border between two panes that can be dragged. */
+function DividerHandle({
+  divider,
+  layout,
+  area,
+  onResize,
+  onReset,
+}: {
+  divider: Divider;
+  layout: Layout;
+  area: RefObject<HTMLDivElement | null>;
+  onResize: (layout: Layout) => void;
+  onReset: () => void;
+}) {
+  const column = divider.kind === 'column';
+  const [dragging, setDragging] = useState(false);
+  const start = useRef<{ x: number; y: number; layout: Layout } | undefined>(undefined);
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    start.current = { x: event.clientX, y: event.clientY, layout };
+    setDragging(true);
+  };
+  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const from = start.current;
+    const box = area.current?.getBoundingClientRect();
+    if (!from || !box || box.width === 0 || box.height === 0) return;
+    // Always from the layout the drag started with, so rounding never accumulates.
+    const share = column
+      ? (event.clientX - from.x) / box.width
+      : (event.clientY - from.y) / box.height;
+    onResize(resizeAt(from.layout, divider.path, divider.index, share));
+  };
+  const end = () => {
+    start.current = undefined;
+    setDragging(false);
+  };
+  const step = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const back = column ? 'ArrowLeft' : 'ArrowUp';
+    const forward = column ? 'ArrowRight' : 'ArrowDown';
+    if (event.key !== back && event.key !== forward) return;
+    event.preventDefault();
+    onResize(resizeAt(layout, divider.path, divider.index, event.key === back ? -0.02 : 0.02));
+  };
 
   return (
-    <section
-      data-pane-live={live}
-      aria-label={meta.label}
-      onMouseDown={onFocus}
+    // biome-ignore lint/a11y/useSemanticElements: an <hr> cannot be dragged or focused
+    <div
+      role="separator"
+      aria-orientation={column ? 'vertical' : 'horizontal'}
+      aria-label={column ? 'Resize columns' : 'Resize panes'}
+      aria-valuenow={Math.round((column ? divider.left : divider.top) * 100)}
+      tabIndex={0}
+      title="Drag to resize; double-click to even out"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={end}
+      onPointerCancel={end}
+      onDoubleClick={onReset}
+      onKeyDown={step}
       className={cn(
-        'flex min-h-0 min-w-0 flex-col border bg-black',
-        focused ? 'border-zinc-500' : 'border-zinc-800',
+        'group absolute z-10 flex items-center justify-center outline-none',
+        column
+          ? 'w-2 -translate-x-1/2 cursor-col-resize'
+          : 'h-2 -translate-y-1/2 cursor-row-resize',
       )}
+      style={{
+        left: `${divider.left * 100}%`,
+        top: `${divider.top * 100}%`,
+        ...(column ? { height: `${divider.height * 100}%` } : { width: `${divider.width * 100}%` }),
+      }}
     >
-      <header className="flex h-7 shrink-0 items-center gap-2 border-b border-zinc-800 px-2 font-mono text-[11px] text-zinc-400">
-        <span aria-hidden className="size-1.5 rounded-full" style={{ background: meta.accent }} />
-        <span className="truncate">{meta.label}</span>
-        {pane.workspace && (
-          <button
-            type="button"
-            onClick={onShowChanges}
-            title={
-              workspace?.branch
-                ? `Isolated on ${workspace.branch}: review its changes`
-                : 'Isolated workspace'
-            }
-            className="flex min-w-0 items-center gap-1 rounded px-1 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-100"
-          >
-            <GitBranch aria-hidden className="size-3 shrink-0" />
-            <span className="truncate">
-              {workspace ? shortBranch(workspace.branch) : 'isolated'}
-            </span>
-            {workspace && workspace.files.length > 0 && (
-              <span className="shrink-0 tabular-nums text-zinc-400">{lineCounts(workspace)}</span>
-            )}
-          </button>
+      <span
+        aria-hidden
+        className={cn(
+          'rounded-full bg-zinc-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100',
+          dragging && 'opacity-100',
+          column ? 'h-full w-px' : 'h-px w-full',
         )}
-        {!live && <span className="text-zinc-600">stopped</span>}
-        <button
-          type="button"
-          aria-label={`Close ${meta.label} pane`}
-          onClick={onClose}
-          className="ml-auto rounded p-0.5 hover:bg-zinc-800 hover:text-zinc-100"
-        >
-          <X aria-hidden className="size-3" />
-        </button>
-      </header>
-      <div ref={host} className="min-h-0 flex-1 overflow-hidden p-1.5" />
-    </section>
+      />
+    </div>
   );
 }
 
-export function Panes({ bridge, active }: { bridge: TerminalBridge; active: boolean }) {
-  const next = useRef(2);
-  const [panes, setPanes] = useState<PaneState[]>([{ key: 1, kind: 'shell' }]);
-  const [focused, setFocused] = useState(1);
-  const [message, setMessage] = useState('');
+function Workspace({
+  bridge,
+  active,
+  opening,
+}: {
+  bridge: TerminalBridge;
+  active: boolean;
+  opening: Opening;
+}) {
+  const [state, dispatch] = useReducer(workspaceReducer, opening.state);
+  const [view, setView] = useState<View>('terminals');
+  const [liveKeys, setLiveKeys] = useState<ReadonlySet<number>>(() => new Set());
+  const [sidebar, setSidebar] = useState<'on' | 'off'>(opening.sidebar ? 'on' : 'off');
   const writers = useRef(new Map<number, (data: string) => void>());
+  const area = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
+  const [message, setMessage] = useState('');
 
+  const project = useTasks().data?.project?.name;
+  const pickProject = chooseProject();
+
+  // --- Isolated workspaces and the changes review ---------------------------------------------
   const [isolate, setIsolate] = useState(false);
-  const [isolateError, setIsolateError] = useState<string>();
+  const [addError, setAddError] = useState<string>();
   const createWorkspace = useCreateWorkspace();
   const changesQuery = useChangesWorkspaces(active);
   const workspaces = changesQuery.data ?? undefined;
   const changesOffered = workspaces !== undefined;
+  // A session brought back from the last launch whose isolated worktree was removed since (from
+  // the Changes panel) has nowhere to run: close it once the list of worktrees is known.
+  const checkedRestored = useRef(opening.restoredIsolated.size === 0);
+  useEffect(() => {
+    if (checkedRestored.current || workspaces === undefined) return;
+    checkedRestored.current = true;
+    const ids = new Set(workspaces.map((w) => w.id));
+    for (const session of state.sessions) {
+      if (!opening.restoredIsolated.has(session.key)) continue;
+      if (session.workspace && !ids.has(session.workspace)) {
+        dispatch({ type: 'close', key: session.key });
+      }
+    }
+  }, [workspaces, state.sessions, opening.restoredIsolated]);
   const workspaceById = useMemo(
     () => new Map((workspaces ?? []).map((w) => [w.id, w])),
     [workspaces],
   );
   const [changesOpen, setChangesOpen] = useState(false);
   const [changesId, setChangesId] = useState<string>();
-
-  const place = (kind: PaneKind, workspace?: string) => {
-    const key = next.current++;
-    setPanes((current) => [...current, { key, kind, ...(workspace ? { workspace } : {}) }]);
-    setFocused(key);
+  const showChanges = (id?: string) => {
+    if (id) setChangesId(id);
+    setChangesOpen(true);
   };
+
   const add = (kind: PaneKind) => {
-    setIsolateError(undefined);
+    setAddError(undefined);
+    setView('terminals');
+    const label = kindMeta(kind).label;
     if (!isolate || !changesOffered) {
-      place(kind);
+      dispatch({ type: 'open', kind, label });
       return;
     }
-    // Each isolated pane gets a fresh worktree on its own branch before its terminal starts.
-    createWorkspace.mutate(kindMeta(kind).label, {
-      onSuccess: (workspace) => place(kind, workspace.id),
-      onError: (error) => setIsolateError(errorMessage(error)),
+    // Each isolated session gets a fresh worktree on its own branch before its terminal starts.
+    createWorkspace.mutate(label, {
+      onSuccess: (workspace) => dispatch({ type: 'open', kind, label, workspace: workspace.id }),
+      onError: (error) => setAddError(errorMessage(error)),
     });
   };
-  const close = (key: number) => {
-    const remaining = panes.filter((pane) => pane.key !== key);
-    setPanes(remaining);
-    const last = remaining.at(-1);
-    if (key === focused && last) setFocused(last.key);
+  /** A split opens a shell beside the pane, in the same folder (its worktree, when isolated). */
+  const split = (near: number, direction: SplitDirection) => {
+    const source = state.sessions.find((s) => s.key === near);
+    dispatch({
+      type: 'open',
+      kind: 'shell',
+      label: kindMeta('shell').label,
+      workspace: source?.workspace,
+      split: { near, direction },
+    });
   };
+  const select = (key: number) => {
+    setView('terminals');
+    dispatch({ type: 'focus', key });
+  };
+
   const onWriter = useCallback((key: number, writer: ((data: string) => void) | undefined) => {
     if (writer) writers.current.set(key, writer);
     else writers.current.delete(key);
   }, []);
+  const onLive = useCallback((key: number, live: boolean) => {
+    setLiveKeys((current) => {
+      if (current.has(key) === live) return current;
+      const next = new Set(current);
+      if (live) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
 
-  // The orchestrator is offered only when the gateway has one and an agent CLI is installed.
+  // --- Orchestrator -----------------------------------------------------------------------------
+  // Offered only when the gateway has one and an agent CLI is installed.
   const agentsQuery = useOrchestratorAgents();
   const availability = agentsQuery.data ?? null;
   const offered = orchestratorOffered(availability);
@@ -301,46 +321,56 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
   const [chosenAgents, setChosenAgents] = useState<OrchestratorAgent[]>();
   const selection = chosenAgents ?? availableAgents(availability);
   const [planner, setPlanner] = useState<OrchestratorAgent>();
-  const [panelOpen, setPanelOpen] = useState(false);
+  const [access, setAccess] = useState<OrchestratorAccess>(opening.access);
+
+  // The app keeps the sessions, the layout and both preferences for the next launch. Only names
+  // and layout are saved, never what runs in a terminal.
+  useEffect(() => {
+    const store = workspaceBridge();
+    if (!store) return;
+    const saved = savedWorkspace(state, { sidebar: sidebar === 'on', access });
+    const timer = window.setTimeout(() => {
+      store.save(saved).catch(() => {
+        /* Not saved: the next launch opens with a shell, nothing else is lost. */
+      });
+    }, SAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [state, sidebar, access]);
   const [runId, setRunId] = useState<string>();
   const [startError, setStartError] = useState<string>();
   const shownRun = runs.find((r) => r.id === runId) ?? runs[0];
-  const busy = runs.some(isActiveRun);
-  const panel = offered && panelOpen && !changesOpen;
-  const showChanges = (id?: string) => {
-    if (id) setChangesId(id);
-    setChangesOpen(true);
-    setPanelOpen(false);
-  };
+  const busyRun = runs.find(isActiveRun);
 
   const orchestrate = () => {
     const lead = planner ?? availableAgents(availability)[0];
-    const input = startRequest(message, selection, availability, lead);
+    const input = startRequest(message, selection, availability, lead, access);
     if (!input || start.isPending) return;
     setStartError(undefined);
     start.mutate(input, {
       onSuccess: (run) => {
         setMessage('');
         setRunId(run.id);
-        setPanelOpen(true);
-        setChangesOpen(false);
+        setView('run');
       },
       onError: (error) => setStartError(errorMessage(error)),
     });
   };
 
-  const agents = panes.filter((pane) => pane.kind !== 'shell');
-  const targets = agents.length > 0 ? agents : panes;
-  const send = (event: FormEvent) => {
-    event.preventDefault();
-    if (mode === 'orchestrate') {
-      orchestrate();
-      return;
-    }
+  // --- Sending to panes -------------------------------------------------------------------------
+  const [target, setTarget] = useState<Target>('agents');
+  const agentSessions = state.sessions.filter((s) => s.kind !== 'shell');
+  const focusedSession = state.sessions.find((s) => s.key === state.focused);
+  const recipients =
+    target === 'focused' && focusedSession
+      ? [focusedSession]
+      : agentSessions.length > 0
+        ? agentSessions
+        : state.sessions;
+  const broadcast = () => {
     const text = message.trim();
     if (!text) return;
-    for (const pane of targets) {
-      const write = writers.current.get(pane.key);
+    for (const session of recipients) {
+      const write = writers.current.get(session.key);
       if (!write) continue;
       write(text);
       // Agent TUIs treat text and Enter in one chunk as a paste, which would not submit it.
@@ -348,186 +378,463 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
     }
     setMessage('');
   };
+  const send = () => (mode === 'orchestrate' ? orchestrate() : broadcast());
+
+  // --- Keyboard ---------------------------------------------------------------------------------
+  const shortcut = useRef<(event: KeyboardEvent) => void>(() => {});
+  shortcut.current = (event) => {
+    const action = workspaceAction(event);
+    if (!action) return;
+    if (action === 'sidebar') {
+      event.preventDefault();
+      setSidebar(sidebar === 'on' ? 'off' : 'on');
+      return;
+    }
+    const key = state.focused;
+    if (view !== 'terminals' || key === undefined) return;
+    event.preventDefault();
+    if (action === 'split-right') split(key, 'right');
+    else if (action === 'split-down') split(key, 'down');
+    else if (action === 'minimize') dispatch({ type: 'minimize', key });
+    else if (action === 'zoom') dispatch({ type: 'zoom', key });
+    else dispatch({ type: 'close', key });
+  };
+  useEffect(() => {
+    if (!active) return;
+    const onKeyDown = (event: KeyboardEvent) => shortcut.current(event);
+    // Capture: the terminal's own key handling must not see these first.
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [active]);
+
+  // --- Rendering --------------------------------------------------------------------------------
+  const rects = useMemo(() => paneRects(state.layout), [state.layout]);
+  const lines = useMemo(() => dividers(state.layout), [state.layout]);
+  const terminals = view === 'terminals';
+  const shownCount =
+    state.zoomed !== undefined ? 1 : state.sessions.filter((s) => !s.minimized).length;
+  const sidebarSessions: SidebarSession[] = state.sessions.map((s) => ({
+    key: s.key,
+    kind: s.kind,
+    name: s.name,
+    minimized: s.minimized,
+    live: liveKeys.has(s.key),
+    branch: s.workspace
+      ? shortBranch(workspaceById.get(s.workspace)?.branch ?? 'isolated')
+      : undefined,
+  }));
+  const changesCount = changedFileCount(workspaces);
+  const rows = Math.min(6, Math.max(1, message.split('\n').length));
 
   return (
-    <div id="terminal-workspace" className="flex h-full flex-col">
-      <header className="flex h-10 shrink-0 items-center gap-1 border-b border-zinc-800 px-3 font-mono text-xs">
-        <BrandMark className="mr-2 size-5" />
+    <div id="terminal-workspace" className="flex h-full">
+      {sidebar === 'on' && (
+        <SessionSidebar
+          projectName={project}
+          onChooseProject={pickProject}
+          sessions={sidebarSessions}
+          focused={state.focused}
+          showingRun={!terminals}
+          onSelectSession={select}
+          onRenameSession={(key, name) => dispatch({ type: 'rename', key, name })}
+          onToggleMinimize={(key) => {
+            const session = state.sessions.find((s) => s.key === key);
+            if (session?.minimized) select(key);
+            else dispatch({ type: 'minimize', key });
+          }}
+          onCloseSession={(key) => dispatch({ type: 'close', key })}
+          onAdd={add}
+          isolateOffered={changesOffered}
+          isolate={isolate}
+          onIsolate={setIsolate}
+          creating={createWorkspace.isPending}
+          addError={addError}
+          runsOffered={offered}
+          runs={runs}
+          runId={shownRun?.id}
+          onSelectRun={(id) => {
+            setRunId(id);
+            setView('run');
+          }}
+          onNewRun={() => {
+            setChosenMode('orchestrate');
+            setView('run');
+            composer.current?.focus();
+          }}
+          changesOffered={changesOffered || changesQuery.isError}
+          changesCount={changesCount}
+          onShowChanges={() => (changesOpen ? setChangesOpen(false) : showChanges())}
+          onCollapse={() => setSidebar('off')}
+        />
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-10 shrink-0 items-center gap-2 border-b border-zinc-800 px-2 font-mono text-[11px]">
+          {sidebar === 'off' && (
+            <button
+              type="button"
+              aria-label="Show the sidebar"
+              title="Show the sidebar (Ctrl+Shift+B)"
+              onClick={() => setSidebar('on')}
+              className="rounded p-1 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
+            >
+              <PanelLeftOpen aria-hidden className="size-3.5" />
+            </button>
+          )}
+          <fieldset className="flex items-center rounded border border-zinc-800 p-0.5">
+            <legend className="sr-only">View</legend>
+            <button
+              type="button"
+              aria-pressed={terminals}
+              onClick={() => setView('terminals')}
+              className={cn(
+                'flex h-6 items-center gap-1.5 rounded-sm px-2',
+                terminals ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200',
+              )}
+            >
+              Terminals
+              <span className="tabular-nums text-zinc-500">{state.sessions.length}</span>
+            </button>
+            {offered && (
+              <button
+                type="button"
+                aria-pressed={!terminals}
+                onClick={() => setView('run')}
+                title="What the orchestrator and each of its agents are doing"
+                className={cn(
+                  'flex h-6 items-center gap-1.5 rounded-sm px-2',
+                  !terminals ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200',
+                )}
+              >
+                Orchestrator
+                {busyRun && (
+                  <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-white" />
+                )}
+              </button>
+            )}
+          </fieldset>
+          {terminals && state.zoomed !== undefined && (
+            <button
+              type="button"
+              onClick={() =>
+                state.zoomed !== undefined && dispatch({ type: 'zoom', key: state.zoomed })
+              }
+              className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:border-zinc-500 hover:text-white"
+            >
+              Zoomed · show all {state.sessions.filter((s) => !s.minimized).length}
+            </button>
+          )}
+          {!terminals && busyRun && shownRun && busyRun.id !== shownRun.id && (
+            <button
+              type="button"
+              onClick={() => setRunId(busyRun.id)}
+              className="rounded border border-zinc-700 px-2 py-0.5 text-zinc-300 hover:border-zinc-500 hover:text-white"
+            >
+              Another run is in progress · show it
+            </button>
+          )}
+          <span className="ml-auto flex items-center gap-1 text-zinc-500">
+            {terminals && state.zoomed === undefined && shownCount > 1 && (
+              <button
+                type="button"
+                aria-label="Even out the panes"
+                title="Even out the panes"
+                onClick={() => dispatch({ type: 'balance' })}
+                className="rounded p-1 hover:bg-zinc-900 hover:text-zinc-100"
+              >
+                <Columns3 aria-hidden className="size-3.5" />
+              </button>
+            )}
+            {(changesOffered || changesQuery.isError) && (
+              <button
+                type="button"
+                aria-label={changesOpen ? 'Hide changes' : 'Review changes'}
+                aria-expanded={changesOpen}
+                aria-controls="changes-panel"
+                title="Review changes, commit, push and open a pull request"
+                onClick={() => (changesOpen ? setChangesOpen(false) : showChanges())}
+                className={cn(
+                  'flex h-6 items-center gap-1 rounded px-1.5 hover:bg-zinc-900 hover:text-zinc-100',
+                  changesOpen && 'text-zinc-200',
+                )}
+              >
+                <GitCompareArrows aria-hidden className="size-3.5" />
+                {changesCount > 0 && <span className="tabular-nums">{changesCount}</span>}
+              </button>
+            )}
+          </span>
+        </header>
+
+        <div className="flex min-h-0 flex-1">
+          <div className="relative min-h-0 min-w-0 flex-1">
+            {/* The terminals stay mounted behind the orchestrator view: hiding must not kill them. */}
+            <div
+              ref={area}
+              className={cn('absolute inset-0.5', !terminals && 'invisible')}
+              aria-hidden={!terminals}
+            >
+              {state.sessions.map((session) => {
+                const shown = isShown(state, session.key);
+                const rect =
+                  state.zoomed === session.key
+                    ? { left: 0, top: 0, width: 1, height: 1 }
+                    : rects.get(session.key);
+                return (
+                  <div
+                    key={session.key}
+                    className={cn('absolute p-0.5', (!shown || !rect) && 'hidden')}
+                    style={
+                      rect
+                        ? {
+                            left: `${rect.left * 100}%`,
+                            top: `${rect.top * 100}%`,
+                            width: `${rect.width * 100}%`,
+                            height: `${rect.height * 100}%`,
+                          }
+                        : undefined
+                    }
+                  >
+                    <Pane
+                      session={session}
+                      bridge={bridge}
+                      visible={active && terminals && shown}
+                      focused={session.key === state.focused}
+                      zoomed={state.zoomed === session.key}
+                      workspace={
+                        session.workspace ? workspaceById.get(session.workspace) : undefined
+                      }
+                      onFocus={() => dispatch({ type: 'focus', key: session.key })}
+                      onClose={() => dispatch({ type: 'close', key: session.key })}
+                      onRename={(name) => dispatch({ type: 'rename', key: session.key, name })}
+                      onSplit={(direction) => split(session.key, direction)}
+                      onMinimize={() => dispatch({ type: 'minimize', key: session.key })}
+                      onZoom={() => dispatch({ type: 'zoom', key: session.key })}
+                      onWriter={onWriter}
+                      onLive={onLive}
+                      onShowChanges={() => showChanges(session.workspace)}
+                    />
+                  </div>
+                );
+              })}
+              {state.zoomed === undefined &&
+                lines.map((divider) => (
+                  <DividerHandle
+                    key={`${divider.path.join('.')}:${divider.index}`}
+                    divider={divider}
+                    layout={state.layout}
+                    area={area}
+                    onResize={(layout) => dispatch({ type: 'layout', layout })}
+                    onReset={() => dispatch({ type: 'balance' })}
+                  />
+                ))}
+              {shownCount === 0 && (
+                <EmptyTerminals
+                  minimized={state.sessions.length}
+                  onAdd={add}
+                  onRestoreAll={() => {
+                    for (const session of state.sessions) {
+                      dispatch({ type: 'restore', key: session.key });
+                    }
+                  }}
+                />
+              )}
+            </div>
+            {!terminals && (
+              <div className="absolute inset-0">
+                {shownRun ? (
+                  <RunThread
+                    key={shownRun.id}
+                    run={shownRun}
+                    onOpenTerminals={() => setView('terminals')}
+                  />
+                ) : (
+                  <EmptyOrchestrator />
+                )}
+              </div>
+            )}
+          </div>
+          {changesOpen && (changesOffered || changesQuery.isError) && (
+            <ChangesPanel
+              workspaces={workspaces}
+              error={changesQuery.isError ? errorMessage(changesQuery.error) : undefined}
+              selectedId={changesId}
+              onSelect={setChangesId}
+              onClose={() => setChangesOpen(false)}
+              agents={availableAgents(availability)}
+            />
+          )}
+        </div>
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            send();
+          }}
+          className="shrink-0 border-t border-zinc-800 p-2"
+        >
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950 focus-within:border-zinc-600">
+            <div className="flex items-start gap-2 px-3 pt-2">
+              <span aria-hidden className="pt-0.5 font-mono text-xs text-zinc-500">
+                ›
+              </span>
+              {/* One field for both modes, so switching never drops focus or the text typed so far. */}
+              <textarea
+                ref={composer}
+                rows={rows}
+                aria-label={
+                  mode === 'orchestrate'
+                    ? 'Objective for the orchestrator'
+                    : 'Message for the agent panes'
+                }
+                aria-describedby={startError ? 'composer-error' : undefined}
+                value={message}
+                onChange={(event) => {
+                  setMessage(event.target.value);
+                  setStartError(undefined);
+                }}
+                onKeyDown={(event) => {
+                  // Enter sends; Shift+Enter is a new line. Not while an IME is composing.
+                  if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing)
+                    return;
+                  event.preventDefault();
+                  send();
+                }}
+                placeholder={
+                  mode === 'orchestrate'
+                    ? start.isPending
+                      ? 'Starting the run…'
+                      : 'Describe an objective. DaveCode plans it and splits it across your agents; you watch each one work.'
+                    : recipients.length === 0
+                      ? 'Open a session first'
+                      : target === 'focused' && focusedSession
+                        ? `Send to ${focusedSession.name}`
+                        : agentSessions.length > 1
+                          ? `Send to all ${agentSessions.length} agents`
+                          : `Send to ${recipients[0]?.name ?? 'the pane'}`
+                }
+                className="min-w-0 flex-1 resize-none bg-transparent font-mono text-xs leading-relaxed text-zinc-100 outline-none placeholder:text-zinc-600"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 px-2 py-1.5">
+              {offered && <ModeSwitch mode={mode} onChange={setChosenMode} />}
+              {mode === 'orchestrate' && availability && (
+                <>
+                  <PlannerPicker
+                    installed={availableAgents(availability)}
+                    planner={planner}
+                    onChange={setPlanner}
+                  />
+                  <AgentChips
+                    agents={availability}
+                    selection={selection}
+                    onToggle={(agent) => setChosenAgents(toggleAgent(selection, agent))}
+                  />
+                  <AccessToggle access={access} onChange={setAccess} />
+                </>
+              )}
+              {mode === 'broadcast' && (
+                <label className="flex items-center gap-1 font-mono text-[11px] text-zinc-500">
+                  to
+                  <select
+                    aria-label="Who receives the message"
+                    value={target}
+                    onChange={(event) => setTarget(event.target.value as Target)}
+                    className="h-6 max-w-48 rounded border border-zinc-800 bg-black px-1 font-mono text-[11px] text-zinc-200 outline-none hover:border-zinc-600 focus:border-zinc-500"
+                  >
+                    <option value="agents">
+                      {agentSessions.length > 0
+                        ? `all agents (${agentSessions.length})`
+                        : `every pane (${state.sessions.length})`}
+                    </option>
+                    {focusedSession && <option value="focused">{focusedSession.name}</option>}
+                  </select>
+                </label>
+              )}
+              {startError && (
+                <p
+                  id="composer-error"
+                  role="alert"
+                  title={startError}
+                  className="min-w-0 flex-1 truncate font-mono text-[11px] text-red-400"
+                >
+                  {startError}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={!message.trim() || start.isPending}
+                aria-label={mode === 'orchestrate' ? 'Start the run' : 'Send'}
+                title="Enter to send, Shift+Enter for a new line"
+                className="ml-auto flex h-6 items-center gap-1.5 rounded border border-zinc-500 bg-zinc-100 px-2 font-mono text-[11px] text-black hover:bg-white disabled:border-zinc-800 disabled:bg-transparent disabled:text-zinc-600"
+              >
+                <SendHorizontal aria-hidden className="size-3" />
+                {mode === 'orchestrate' ? 'Run' : 'Send'}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EmptyTerminals({
+  minimized,
+  onAdd,
+  onRestoreAll,
+}: {
+  /** Sessions that still run, off the grid. */
+  minimized: number;
+  onAdd: (kind: PaneKind) => void;
+  onRestoreAll: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-4 font-mono text-xs text-zinc-500">
+      <p>
+        {minimized > 0
+          ? `${minimized === 1 ? '1 session is' : `${minimized} sessions are`} minimized and still running.`
+          : 'No session is open.'}
+      </p>
+      {minimized > 0 && (
+        <button
+          type="button"
+          onClick={onRestoreAll}
+          className="rounded border border-zinc-600 px-3 py-1 text-zinc-200 hover:border-zinc-400 hover:text-white"
+        >
+          Bring {minimized === 1 ? 'it' : 'them'} back
+        </button>
+      )}
+      <div className="flex flex-wrap justify-center gap-1">
         {KINDS.map(({ kind, label, accent }) => (
           <button
             key={kind}
             type="button"
-            onClick={() => add(kind)}
-            className="flex h-7 items-center gap-1.5 rounded px-2 text-zinc-300 hover:bg-zinc-900 hover:text-white"
+            onClick={() => onAdd(kind)}
+            className="flex h-7 items-center gap-1.5 rounded border border-zinc-800 px-2 text-zinc-300 hover:border-zinc-600 hover:text-white"
           >
             <Plus aria-hidden className="size-3" style={{ color: accent }} />
             {label}
           </button>
         ))}
-        {changesOffered && (
-          <button
-            type="button"
-            aria-pressed={isolate}
-            onClick={() => setIsolate((on) => !on)}
-            title="New panes get their own git worktree and branch, so agents never step on each other"
-            className={cn(
-              'ml-1 flex h-7 items-center gap-1.5 rounded border px-2',
-              isolate
-                ? 'border-zinc-600 bg-zinc-900 text-zinc-100'
-                : 'border-zinc-800 text-zinc-500 hover:text-zinc-200',
-            )}
-          >
-            <GitBranch aria-hidden className="size-3" />
-            {createWorkspace.isPending ? 'Creating…' : 'Isolated'}
-          </button>
-        )}
-        {isolateError && (
-          <span
-            role="alert"
-            title={isolateError}
-            className="ml-2 max-w-[30%] truncate text-red-400"
-          >
-            {isolateError}
-          </span>
-        )}
-        <nav aria-label="DaveCode" className="ml-auto flex items-center gap-3 text-zinc-500">
-          <Link to="/accounts" className="hover:text-zinc-100">
-            Connections
-          </Link>
-          <Link to="/overview" className="hover:text-zinc-100">
-            Dashboard
-          </Link>
-          <Link to="/settings" className="hover:text-zinc-100">
-            Settings
-          </Link>
-        </nav>
-      </header>
-      <div className="flex min-h-0 flex-1">
-        {panes.length === 0 ? (
-          <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center font-mono text-sm text-zinc-500">
-            Open a shell or an agent from the bar above.
-          </div>
-        ) : (
-          <main
-            className="grid min-h-0 min-w-0 flex-1 gap-1 p-1"
-            style={{
-              gridTemplateColumns: `repeat(${gridColumns(panes.length)}, minmax(0, 1fr))`,
-              gridAutoRows: 'minmax(0, 1fr)',
-            }}
-          >
-            {panes.map((pane) => (
-              <Pane
-                key={pane.key}
-                pane={pane}
-                bridge={bridge}
-                active={active}
-                focused={pane.key === focused}
-                workspace={pane.workspace ? workspaceById.get(pane.workspace) : undefined}
-                onFocus={() => setFocused(pane.key)}
-                onClose={() => close(pane.key)}
-                onWriter={onWriter}
-                onShowChanges={() => showChanges(pane.workspace)}
-              />
-            ))}
-          </main>
-        )}
-        {changesOpen && (changesOffered || changesQuery.isError) && (
-          <ChangesPanel
-            workspaces={workspaces}
-            error={changesQuery.isError ? errorMessage(changesQuery.error) : undefined}
-            selectedId={changesId}
-            onSelect={setChangesId}
-            onClose={() => setChangesOpen(false)}
-            agents={availableAgents(availability)}
-          />
-        )}
-        {panel && (
-          <OrchestratorPanel
-            runs={runs}
-            run={shownRun}
-            onSelectRun={setRunId}
-            onClose={() => setPanelOpen(false)}
-          />
-        )}
       </div>
-      <form
-        onSubmit={send}
-        className="flex h-10 shrink-0 items-center border-t border-zinc-800 px-3"
-      >
-        {offered && <ModeSwitch mode={mode} onChange={setChosenMode} />}
-        <span aria-hidden className="mr-2 font-mono text-xs text-zinc-500">
-          ›
-        </span>
-        {/* One input for both modes, so switching never drops focus or the text typed so far. */}
-        <input
-          aria-label={
-            mode === 'orchestrate'
-              ? 'Objective for the orchestrator'
-              : 'Send a message to every agent'
-          }
-          aria-describedby={
-            mode === 'orchestrate' && startError ? 'orchestrator-start-error' : undefined
-          }
-          value={message}
-          onChange={(event) => {
-            setMessage(event.target.value);
-            setStartError(undefined);
-          }}
-          placeholder={
-            mode === 'orchestrate'
-              ? start.isPending
-                ? 'Starting the run…'
-                : 'Describe an objective; DaveCode plans it and splits it across your agents'
-              : agents.length > 1
-                ? `Send to all ${agents.length} agents`
-                : agents.length === 1
-                  ? 'Send to the agent'
-                  : 'Send to every pane'
-          }
-          className="min-w-0 flex-1 bg-transparent font-mono text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
-        />
-        {mode === 'orchestrate' && startError && (
-          <p
-            id="orchestrator-start-error"
-            role="alert"
-            title={startError}
-            className="ml-2 max-w-[40%] truncate font-mono text-[11px] text-red-400"
-          >
-            {startError}
-          </p>
-        )}
-        {mode === 'orchestrate' && availability && (
-          <PlannerPicker
-            installed={availableAgents(availability)}
-            planner={planner}
-            onChange={setPlanner}
-          />
-        )}
-        {mode === 'orchestrate' && availability && (
-          <AgentChips
-            agents={availability}
-            selection={selection}
-            onToggle={(agent) => setChosenAgents(toggleAgent(selection, agent))}
-          />
-        )}
-        {(changesOffered || changesQuery.isError) && (
-          <ChangesToggle
-            open={changesOpen}
-            count={changedFileCount(workspaces)}
-            onToggle={() => (changesOpen ? setChangesOpen(false) : showChanges())}
-          />
-        )}
-        {offered && (
-          <PanelToggle
-            open={panel}
-            busy={busy}
-            onToggle={() => {
-              setPanelOpen(!panel);
-              setChangesOpen(false);
-            }}
-          />
-        )}
-      </form>
+    </div>
+  );
+}
+
+function EmptyOrchestrator() {
+  return (
+    <div className="flex h-full items-center justify-center p-6 font-mono text-xs text-zinc-500">
+      <div className="max-w-md space-y-3 leading-relaxed">
+        <p className="text-zinc-200">One objective, several agents, nothing hidden.</p>
+        <p>
+          Type an objective below. The lead agent splits it into tasks, each task runs in its own
+          git worktree, and every agent gets a live card here showing what it reads, edits and runs.
+        </p>
+        <p>
+          The results land on a <code className="text-zinc-300">davecode/run-…</code> branch. Your
+          files change only when you press Apply.
+        </p>
+      </div>
     </div>
   );
 }

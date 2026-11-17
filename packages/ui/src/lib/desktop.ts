@@ -16,14 +16,35 @@ export interface TerminalBridge {
   onExit(listener: (id: string, code: number) => void): () => void;
 }
 
-/** Present only inside the desktop app; a browser tab cannot open local terminals. */
-export function terminalBridge(): TerminalBridge | undefined {
-  return (window as unknown as { davecodeDesktop?: { terminal?: TerminalBridge } }).davecodeDesktop
-    ?.terminal;
+/** Keeps the project's sessions and pane layout across launches (the app owns the file). */
+export interface WorkspaceBridge {
+  /** The state saved for the open project, already validated by the app, or nothing. */
+  load(): Promise<unknown>;
+  save(state: unknown): Promise<unknown>;
 }
 
-/** Columns of the pane grid: one pane fills the window, then 2 × 2, then 3 across. */
-export function gridColumns(panes: number): number {
-  if (panes <= 1) return 1;
-  return panes <= 4 ? 2 : 3;
+interface DesktopBridge {
+  terminal?: TerminalBridge;
+  chooseProject?: () => Promise<void>;
+  workspace?: WorkspaceBridge;
+}
+
+function desktop(): DesktopBridge | undefined {
+  return (window as unknown as { davecodeDesktop?: DesktopBridge }).davecodeDesktop;
+}
+
+/** Present only inside the desktop app; a browser tab cannot open local terminals. */
+export function terminalBridge(): TerminalBridge | undefined {
+  return desktop()?.terminal;
+}
+
+/** Absent in a browser tab and in desktop apps older than 0.8. */
+export function workspaceBridge(): WorkspaceBridge | undefined {
+  return desktop()?.workspace;
+}
+
+/** Opens the desktop app's folder picker to switch projects; absent in a browser tab. */
+export function chooseProject(): (() => void) | undefined {
+  const choose = desktop()?.chooseProject;
+  return choose ? () => void choose() : undefined;
 }

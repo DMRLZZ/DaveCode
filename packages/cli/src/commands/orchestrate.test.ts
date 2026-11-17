@@ -82,6 +82,11 @@ describe('startInput', () => {
     expect(() => startInput(['x'], { planner: 'gpt' })).toThrow(/Unknown agent/);
   });
 
+  it('asks for full access only with --full-access', () => {
+    expect(startInput(['x'], {})).toEqual({ objective: 'x' });
+    expect(startInput(['x'], { fullAccess: true })).toEqual({ objective: 'x', access: 'full' });
+  });
+
   it('refuses an empty objective and out-of-range limits', () => {
     expect(() => startInput([' '], {})).toThrow(/Describe the objective/);
     expect(() => startInput(['x'], { maxTasks: 9 })).toThrow(/between 1 and 8/);
@@ -116,6 +121,7 @@ describe('formatting', () => {
         runId: 'r1',
         taskId: 't1',
         output: { kind: 'tool', text: 'Edit src/server.ts\n' },
+        seq: 0,
         ts: TS,
       }),
       ...progress({
@@ -123,6 +129,7 @@ describe('formatting', () => {
         runId: 'r1',
         taskId: 't1',
         output: { kind: 'text', text: 'Thinking about it' },
+        seq: 0,
         ts: TS,
       }),
       ...progress({
@@ -130,6 +137,7 @@ describe('formatting', () => {
         runId: 'other',
         taskId: 't1',
         output: { kind: 'error', text: 'not ours' },
+        seq: 0,
         ts: TS,
       }),
       ...progress(
@@ -265,6 +273,7 @@ function fakeService(events: EventBus, final: OrchestratorRun['status'] = 'done'
     }),
     get: vi.fn((id: string) => runs.get(id)),
     list: vi.fn(() => [...runs.values()]),
+    transcript: vi.fn(() => undefined),
     cancel: vi.fn((id: string) => {
       const current = runs.get(id);
       if (!current || cancelled) return false;

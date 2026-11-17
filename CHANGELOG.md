@@ -6,6 +6,61 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-16
+
+This release rebuilds the desktop workspace around a sidebar of sessions and panes you can
+split, rename, maximize and minimize, and turns the orchestrator from a side panel into a thread
+where every agent's work is on screen.
+
+### Added
+
+- **Session sidebar.** The project, every session with its state, and every orchestrator run.
+  Rename a session by double-clicking its name (or F2), minimize it (it keeps running) and
+  close it from there. Hide the sidebar with `Ctrl+Shift+B`.
+- **Tiling panes.** Split any pane to the right or downwards without resizing the others, drag
+  any border, maximize one pane and swap which one is maximized, even them out. Shortcuts:
+  `Ctrl+Shift+D` and `Ctrl+Shift+E` split, `Ctrl+Shift+Enter` maximizes, `Ctrl+Shift+M`
+  minimizes, `Ctrl+Shift+W` closes. A split opens a shell in the same folder, also inside an
+  isolated worktree.
+- **Orchestrator thread.** A run shows your objective, the plan as a list of tasks and one live
+  card per agent, all visible at once, each with what the agent reads, edits and runs, its
+  summary, changed files and branch. The view no longer hides the terminals: both keep running.
+- **Kept transcripts.** What each agent printed is stored with its run and served by
+  `GET /api/orchestrator/runs/:id/output`, so a run opened later, or after restarting the app,
+  still shows what happened. `orchestrator.output` events carry a `seq` to line up with it.
+- **Access for a run** (`access`, `--full-access`, the **edits only / runs commands** button).
+  With **runs commands**, Claude Code may run shell commands such as your tests, and Codex gets
+  network access in its sandbox, both with your own permissions. The default stays **edits
+  only**.
+- **The workspace comes back.** Each project reopens with its sessions, their names, the pane
+  layout and sizes, what was minimized, the sidebar and the access choice. The terminals start
+  fresh; nothing typed in them is stored.
+- **Send to one pane.** "Send to panes" can target only the pane you are in. The message box
+  takes several lines (`Shift+Enter`).
+- **Signing, when certificates exist.** The installers are signed and the macOS app notarized
+  when CI has the certificates; without them the build is unchanged.
+  [docs/SIGNING.md](docs/SIGNING.md) explains the download warning and what removes it.
+
+### Fixed
+
+- An agent that was cut off at the end of its task (a dropped connection, a CLI that died) lost
+  all its work and the task failed. It is now started once more in the same worktree, which
+  still holds what it wrote. Signed-out agents, quota and rate limits are not retried.
+- With **edits only**, Claude Code kept retrying shell commands that are always refused in a
+  headless run, wasting minutes per task. It is now told up front and names the command to
+  verify with instead.
+- Codex's activity showed the shell it used (`"C:\…\powershell.exe" -Command 'npm test'`)
+  instead of the command (`npm test`).
+- Agents' replies were full of links and paths into their temporary worktree. They are now
+  relative to the task's folder.
+- The planner's card showed its raw JSON reply; it shows the list of tasks.
+
+### Changed
+
+- The orchestrator's side panel and its History list are gone; runs live in the sidebar.
+- The fixed pane grid is gone: new panes still land where the grid would have put them, but
+  every border can be moved.
+
 ## [0.7.1] - 2026-11-09
 
 ### Fixed

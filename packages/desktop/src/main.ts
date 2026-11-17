@@ -27,6 +27,7 @@ import {
   withRetry,
 } from './startup';
 import { Terminals } from './terminals';
+import { readWorkspaceState, workspaceStateFile, writeWorkspaceState } from './workspace-state';
 
 let window: BrowserWindow | undefined;
 let backend: ChildProcess | undefined;
@@ -351,6 +352,17 @@ else {
     });
     ipcMain.handle('terminal:copy', (event, text: unknown) => {
       if (fromGateway(event) && typeof text === 'string') clipboard.writeText(text);
+    });
+    // The page's own storage does not survive a launch (its port changes), so the sessions and
+    // the pane layout of each project are kept here, validated on the way in and out.
+    ipcMain.handle('workspace:load', (event) => {
+      if (!fromGateway(event) || !project) return undefined;
+      return readWorkspaceState(workspaceStateFile(app.getPath('userData'), project));
+    });
+    ipcMain.handle('workspace:save', (event, state: unknown) => {
+      // An acceptance run must leave nothing behind in its profile.
+      if (!fromGateway(event) || !project || smokeOutput) return false;
+      return writeWorkspaceState(workspaceStateFile(app.getPath('userData'), project), state);
     });
     // A reload or a project switch replaces the page that owned the panes.
     window.webContents.on('did-navigate', () => terminals.closeAll());

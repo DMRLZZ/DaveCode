@@ -20,11 +20,13 @@ export type {
   LoginProvider,
   LoginStatus,
   LoginUser,
+  OrchestratorAccess,
   OrchestratorAgent,
   OrchestratorRun,
   OrchestratorRunStatus,
   OrchestratorTask,
   OrchestratorTaskStatus,
+  RunTranscript,
   ShipInput,
   ShipResult,
   ShipStep,
@@ -400,6 +402,8 @@ export type DaveEvent =
       runId: string;
       taskId: string;
       output: AgentOutput;
+      /** Position of this chunk in its task's stream, from 0; lines up with the transcript. */
+      seq: number;
       ts: number;
     }
   | { type: 'log'; level: LogLevel; scope: string; message: string; ts: number };

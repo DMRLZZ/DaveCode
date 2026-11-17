@@ -9,9 +9,12 @@ import {
   cancelOrchestratorRun,
   defaultTaskId,
   EMPTY_ORCHESTRATOR_STATE,
+  EMPTY_STREAM,
   fetchOrchestratorAgents,
   getOrchestratorRun,
+  getOrchestratorTranscript,
   hydrateRuns,
+  hydrateTranscript,
   isOrchestratorEvent,
   listOrchestratorRuns,
   MAX_OUTPUT_LINES,
@@ -21,11 +24,15 @@ import {
   outputLines,
   planElapsedMs,
   planStatus,
+  runChangedFiles,
+  runElapsedMs,
+  runProgress,
   sortedRuns,
   startOrchestratorRun,
   startRequest,
   taskElapsedMs,
   toggleAgent,
+  withoutPlanReply,
 } from './orchestrator';
 import type { AgentOutput, DaveEvent, OrchestratorRun, OrchestratorTask } from './types';
 
@@ -59,11 +66,19 @@ function run(overrides: Partial<OrchestratorRun> = {}): OrchestratorRun {
 }
 
 const runEvent = (r: OrchestratorRun): DaveEvent => ({ type: 'orchestrator.run', run: r, ts: 1 });
-const outputEvent = (taskId: string, output: AgentOutput, runId = 'r1'): DaveEvent => ({
+// Positions only have to grow within a stream, so one counter serves every test.
+let nextSeq = 0;
+const outputEvent = (
+  taskId: string,
+  output: AgentOutput,
+  runId = 'r1',
+  seq = nextSeq++,
+): DaveEvent => ({
   type: 'orchestrator.output',
   runId,
   taskId,
   output,
+  seq,
   ts: 1,
 });
 
@@ -327,7 +342,7 @@ describe('applyOrchestratorEvent', () => {
 
   it('caps a single chunk with many lines', () => {
     const big = Array.from({ length: 600 }, (_, i) => `l${i}`).join('\n');
-    const stream = appendOutput({ lines: [], open: false, next: 0 }, { kind: 'text', text: big });
+    const stream = appendOutput(EMPTY_STREAM, { kind: 'text', text: big });
     expect(stream.lines).toHaveLength(MAX_OUTPUT_LINES);
     expect(stream.lines.at(-1)?.text).toBe('l599');
     expect(stream.open).toBe(true);
@@ -461,5 +476,180 @@ describe('view helpers', () => {
     expect(
       planElapsedMs(run({ tasks: [task({ startedAt: '2026-11-07T10:00:20.000Z' })] }), now),
     ).toBe(20_000);
+  });
+});
+
+describe('transcript', () => {
+  const chunk = (text: string, kind: AgentOutput['kind'] = 'tool'): AgentOutput => ({ kind, text });
+  const lines = (state: OrchestratorState, taskId = 't1') =>
+    outputLines(state, 'r1', taskId).map((l) => l.text);
+
+  it('ignores a chunk it already has and accepts the next ones', () => {
+    const first = feed([
+      outputEvent('t1', chunk('a'), 'r1', 0),
+      outputEvent('t1', chunk('b'), 'r1', 1),
+    ]);
+    const again = applyOrchestratorEvent(first, outputEvent('t1', chunk('b'), 'r1', 1));
+    expect(again).toBe(first);
+    expect(lines(feed([outputEvent('t1', chunk('c'), 'r1', 2)], again))).toEqual(['a', 'b', 'c']);
+  });
+
+  it('fills in what was printed before the page was listening', () => {
+    // The page opened mid-run: its first live chunk is number 2.
+    const live = feed([outputEvent('t1', chunk('c'), 'r1', 2)]);
+    const merged = hydrateTranscript(live, 'r1', {
+      t1: { from: 0, chunks: [chunk('a'), chunk('b'), chunk('c')] },
+      plan: { from: 0, chunks: [chunk('Planning', 'status')] },
+    });
+    expect(lines(merged)).toEqual(['a', 'b', 'c']);
+    expect(lines(merged, 'plan')).toEqual(['Planning']);
+    // The live stream goes on from where the two meet.
+    const next = feed([outputEvent('t1', chunk('d'), 'r1', 3)], merged);
+    expect(lines(next)).toEqual(['a', 'b', 'c', 'd']);
+    expect(applyOrchestratorEvent(next, outputEvent('t1', chunk('c'), 'r1', 2))).toBe(next);
+  });
+
+  it('keeps live chunks that are newer than the fetched copy', () => {
+    const live = feed([
+      outputEvent('t1', chunk('c'), 'r1', 2),
+      outputEvent('t1', chunk('d'), 'r1', 3),
+    ]);
+    const merged = hydrateTranscript(live, 'r1', {
+      t1: { from: 0, chunks: [chunk('a'), chunk('b'), chunk('c')] },
+    });
+    expect(lines(merged)).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('changes nothing when the live stream already has it all', () => {
+    const live = feed([
+      outputEvent('t1', chunk('a'), 'r1', 0),
+      outputEvent('t1', chunk('b'), 'r1', 1),
+    ]);
+    expect(hydrateTranscript(live, 'r1', { t1: { from: 0, chunks: [chunk('a')] } })).toBe(live);
+    expect(hydrateTranscript(live, 'r1', {})).toBe(live);
+  });
+
+  it('joins text chunks of a fetched transcript into lines', () => {
+    const merged = hydrateTranscript(EMPTY_ORCHESTRATOR_STATE, 'r1', {
+      t1: { from: 7, chunks: [chunk('Hel', 'text'), chunk('lo\n', 'text'), chunk('Edit a.ts')] },
+    });
+    expect(lines(merged)).toEqual(['Hello', 'Edit a.ts']);
+  });
+
+  it('fetches the transcript and treats an older gateway as having none', async () => {
+    const fetchMock = vi.fn(async (_url: string) =>
+      Response.json({ output: { plan: { from: 0, chunks: [chunk('Planning', 'status')] } } }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await getOrchestratorTranscript('http://gw/', 'tok', 'r 1')).toEqual({
+      plan: { from: 0, chunks: [{ kind: 'status', text: 'Planning' }] },
+    });
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://gw/api/orchestrator/runs/r%201/output');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ error: { code: 'not_found' } }, { status: 404 })),
+    );
+    expect(await getOrchestratorTranscript('http://gw', 'tok', 'r1')).toBeNull();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ output: 'nope' })),
+    );
+    await expect(getOrchestratorTranscript('http://gw', 'tok', 'r1')).rejects.toThrow(
+      /Unexpected orchestrator response/,
+    );
+  });
+});
+
+describe('run helpers', () => {
+  it('asks for full access only when chosen', () => {
+    const agents = [{ agent: 'claude' as const, available: true }];
+    expect(startRequest('Ship it', ['claude'], agents, undefined, 'edit')).toEqual({
+      objective: 'Ship it',
+      agents: ['claude'],
+    });
+    expect(startRequest('Ship it', ['claude'], agents, undefined, 'full')).toEqual({
+      objective: 'Ship it',
+      agents: ['claude'],
+      access: 'full',
+    });
+  });
+
+  it('summarizes progress, time and changed files', () => {
+    const r = run({
+      status: 'done',
+      createdAt: '2026-11-07T10:00:00.000Z',
+      updatedAt: '2026-11-07T10:02:00.000Z',
+      tasks: [
+        task({ id: 't1', status: 'done', changedFiles: ['b.ts', 'a.ts'] }),
+        task({ id: 't2', status: 'done', changedFiles: ['a.ts'] }),
+        task({ id: 't3', status: 'failed', changedFiles: ['z.ts'] }),
+      ],
+    });
+    expect(runProgress(r)).toBe('2/3');
+    expect(runProgress(run({ tasks: [] }))).toBe('');
+    expect(runElapsedMs(r, 0)).toBe(120_000);
+    expect(runElapsedMs(run({ status: 'running' }), Date.parse('2026-11-07T10:00:30.000Z'))).toBe(
+      30_000,
+    );
+    expect(runChangedFiles(r)).toEqual(['a.ts', 'b.ts']);
+    // Applying a run later moves `updatedAt`; the time the work took does not change.
+    const applied = run({
+      status: 'done',
+      createdAt: '2026-11-07T10:00:00.000Z',
+      updatedAt: '2026-11-07T11:30:00.000Z',
+      appliedAt: '2026-11-07T11:30:00.000Z',
+      tasks: [
+        task({ id: 't1', status: 'done', finishedAt: '2026-11-07T10:01:00.000Z' }),
+        task({ id: 't2', status: 'done', finishedAt: '2026-11-07T10:01:30.000Z' }),
+      ],
+    });
+    expect(runElapsedMs(applied, 0)).toBe(90_000);
+  });
+});
+
+describe('withoutPlanReply', () => {
+  const line = (id: number, kind: AgentOutput['kind'], text: string) => ({ id, kind, text });
+
+  it('drops the JSON plan and keeps what the planner did and said', () => {
+    const lines = [
+      line(0, 'status', 'Planning with claude…'),
+      line(1, 'tool', 'Read package.json'),
+      line(2, 'text', 'The project is small.'),
+      line(3, 'tool', 'Read math.js'),
+      line(4, 'text', '{"tasks":[{"title":"A","agent":"claude","prompt":"Do A","dependsOn":[]}]}'),
+    ];
+    expect(withoutPlanReply(lines).map((l) => l.id)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('drops a fenced, multi-line plan and a repaired one', () => {
+    const lines = [
+      line(0, 'text', '```json'),
+      line(1, 'text', '{'),
+      line(2, 'text', '  "tasks": []'),
+      line(3, 'text', '}'),
+      line(4, 'text', '```'),
+      line(
+        5,
+        'status',
+        'The plan was not usable (the plan has no tasks); asking claude to fix it.',
+      ),
+      line(6, 'text', '{ "tasks": [{ "title": "A" }] }'),
+    ];
+    expect(withoutPlanReply(lines).map((l) => l.id)).toEqual([5]);
+  });
+
+  it('returns the same lines when there is no plan in them', () => {
+    const lines = [line(0, 'text', '{ not a plan }'), line(1, 'text', 'The "tasks" are easy.')];
+    expect(withoutPlanReply(lines)).toBe(lines);
+  });
+
+  it('keeps what the planner said before the JSON in the same reply', () => {
+    const lines = [
+      line(0, 'text', 'Here is the plan:'),
+      line(1, 'text', '```json'),
+      line(2, 'text', '{"tasks":[{"title":"A…'),
+    ];
+    expect(withoutPlanReply(lines).map((l) => l.id)).toEqual([0]);
+    expect(withoutPlanReply([])).toEqual([]);
   });
 });

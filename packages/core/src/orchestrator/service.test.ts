@@ -858,3 +858,175 @@ describe('persistence and events', () => {
     expect(all.every((e) => typeof e.ts === 'number')).toBe(true);
   });
 });
+
+describe('access', () => {
+  it('runs tasks with edit access unless the run asks for more', async () => {
+    const service = makeService();
+    const run = await service.start({ objective: 'x', agents: ['claude'] });
+    expect(run.access).toBe('edit');
+    (await runner.plan()).resolve(plan([{ title: 'A' }]));
+    const task = await runner.task('t1');
+    expect(task.request.access).toBe('edit');
+    expect(task.request.prompt).toMatch(/cannot run shell commands/);
+    task.resolve(ok());
+    await settle(service, run.id);
+  });
+
+  it('passes full access to the task agents, never to the planner', async () => {
+    const service = makeService();
+    const run = await service.start({ objective: 'x', agents: ['claude'], access: 'full' });
+    expect(run.access).toBe('full');
+    const planning = await runner.plan();
+    expect(planning.request.access).toBeUndefined();
+    planning.resolve(plan([{ title: 'A' }]));
+    const task = await runner.task('t1');
+    expect(task.request.access).toBe('full');
+    expect(task.request.prompt).toMatch(/run the tests or the build/);
+    task.resolve(ok());
+    const final = await settle(service, run.id);
+    expect(final.access).toBe('full');
+    expect(makeService().get(run.id)?.access).toBe('full');
+  });
+
+  it('rejects an unknown access', async () => {
+    const service = makeService();
+    await expect(
+      service.start({ objective: 'x', access: 'everything' as unknown as 'full' }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('retrying a task', () => {
+  it('starts the agent once more in the same worktree after a failure that may be transient', async () => {
+    const service = makeService();
+    const run = await service.start({ objective: 'x', agents: ['agy'] });
+    (await runner.plan()).resolve(plan([{ title: 'A' }]));
+    const first = await runner.task('t1');
+    expect(first.request.prompt).not.toMatch(/cut off/);
+    first.resolve({ ok: false, text: '', error: 'connection reset', retryable: true });
+    const second = await runner.task('t1');
+    expect(second.request.cwd).toBe(first.request.cwd);
+    expect(second.request.prompt).toMatch(/first attempt at this task was cut off/);
+    second.resolve(ok('Finished it.'));
+    const final = await settle(service, run.id);
+    expect(final.tasks[0]).toMatchObject({ status: 'done', summary: 'Finished it.' });
+    expect(final.tasks[0]?.error).toBeUndefined();
+    expect(runner.editCalls()).toHaveLength(2);
+    expect(workspace.log.filter((l) => l.startsWith('create t1'))).toHaveLength(1);
+    expect(
+      outputEvents().some((e) => e.taskId === 't1' && e.output.text.includes('connection reset')),
+    ).toBe(true);
+  });
+
+  it('gives up after the second failure', async () => {
+    const service = makeService();
+    const run = await service.start({ objective: 'x', agents: ['agy'] });
+    (await runner.plan()).resolve(plan([{ title: 'A' }]));
+    (await runner.task('t1')).resolve({ ok: false, text: '', error: 'reset', retryable: true });
+    (await runner.task('t1')).resolve({
+      ok: false,
+      text: 'half',
+      error: 'reset again',
+      retryable: true,
+    });
+    const final = await settle(service, run.id);
+    expect(final.tasks[0]).toMatchObject({ status: 'failed', error: 'reset again' });
+    expect(runner.editCalls()).toHaveLength(2);
+  });
+
+  it('does not retry what a second try cannot fix', async () => {
+    const service = makeService();
+    const run = await service.start({ objective: 'x', agents: ['codex'] });
+    (await runner.plan()).resolve(plan([{ title: 'A' }]));
+    (await runner.task('t1')).resolve({
+      ok: false,
+      text: '',
+      error: 'codex is not signed in',
+      retryable: false,
+    });
+    const final = await settle(service, run.id);
+    expect(final.tasks[0]).toMatchObject({ status: 'failed', error: 'codex is not signed in' });
+    expect(runner.editCalls()).toHaveLength(1);
+  });
+});
+
+describe('transcript', () => {
+  it('numbers the output of each stream and keeps it for later', async () => {
+    const service = makeService();
+    const run = await service.start({ objective: 'x', agents: ['claude'] });
+    const planning = await runner.plan();
+    planning.request.onOutput({ kind: 'tool', text: 'Read package.json' });
+    planning.resolve(plan([{ title: 'A' }]));
+    const task = await runner.task('t1');
+    task.request.onOutput({ kind: 'text', text: 'Working' });
+    task.request.onOutput({ kind: 'tool', text: 'Edit src/a.ts' });
+
+    const live = service.transcript(run.id);
+    expect(live?.plan).toEqual({
+      from: 0,
+      chunks: [
+        { kind: 'status', text: 'Planning with claude…' },
+        { kind: 'tool', text: 'Read package.json' },
+      ],
+    });
+    expect(live?.t1?.chunks.map((c) => c.text)).toEqual([
+      'Starting claude on davecode/run-r1-t1',
+      'Working',
+      'Edit src/a.ts',
+    ]);
+    const seqs = outputEvents()
+      .filter((e) => e.taskId === 't1')
+      .map((e) => e.seq);
+    expect(seqs).toEqual([0, 1, 2]);
+    // A copy: changing it does not change what the service keeps.
+    live?.t1?.chunks.pop();
+    expect(service.transcript(run.id)?.t1?.chunks).toHaveLength(3);
+
+    task.resolve(ok());
+    await settle(service, run.id);
+    // A new process reads it back from disk.
+    const reloaded = makeService();
+    expect(reloaded.transcript(run.id)).toEqual(service.transcript(run.id));
+    expect(reloaded.transcript('nope')).toBeUndefined();
+  });
+
+  it('keeps only the newest chunks of a long stream and says where they start', async () => {
+    const service = makeService();
+    const run = await service.start({ objective: 'x', agents: ['claude'] });
+    const planning = await runner.plan();
+    const max = ORCHESTRATOR_LIMITS.transcriptMaxChunks;
+    // The service itself already wrote "Planning with claude…" as chunk 0.
+    for (let i = 1; i < max + 5; i++)
+      planning.request.onOutput({ kind: 'text', text: `line ${i}` });
+    const stream = service.transcript(run.id)?.plan;
+    expect(stream?.chunks).toHaveLength(max);
+    expect(stream?.from).toBe(5);
+    expect(stream?.chunks[0]?.text).toBe('line 5');
+    expect(outputEvents().at(-1)?.seq).toBe(max + 4);
+    service.cancel(run.id);
+    await settle(service, run.id);
+  });
+
+  it('returns an empty transcript for a run that printed nothing', () => {
+    const path = orchestratorRunsPath(home, PROJECT);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(
+      path,
+      JSON.stringify({
+        version: 1,
+        runs: [
+          {
+            id: 'quiet',
+            objective: 'x',
+            status: 'done',
+            agents: ['claude'],
+            tasks: [],
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    expect(makeService().transcript('quiet')).toEqual({});
+  });
+});

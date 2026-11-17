@@ -263,6 +263,10 @@ function registerOrchestrate(program: Command, run: Runner): void {
         },
       ),
     )
+    .option(
+      '--full-access',
+      'let the agents run shell commands (tests, builds) with your permissions',
+    )
     .option('--apply', 'merge the results into your branch when the run is done')
     .option('--list', 'recent runs of this repository')
     .option('--apply-run <id>', 'merge a finished run into the branch it started from')
@@ -273,6 +277,8 @@ function registerOrchestrate(program: Command, run: Runner): void {
 Each agent uses the CLI you already signed in to (claude, codex, agy) and works in its own
 git worktree. Results are merged into the branch davecode/run-<id>; your working tree is not
 touched until you apply, and nothing is ever pushed. Ctrl+C cancels the run.
+Without --full-access Claude Code only edits files (it has no sandbox to run commands in);
+Codex and Antigravity run commands inside their own sandbox either way.
 Exit codes: 0 the run is done (and applied with --apply), 1 otherwise.
 
 Examples:

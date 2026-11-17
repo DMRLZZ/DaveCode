@@ -634,6 +634,7 @@ are sent with `Cache-Control: no-store`.
 | `GET`  | `/api/orchestrator/runs`            | —               | `{ "runs": OrchestratorRun[] }` (newest first) |
 | `POST` | `/api/orchestrator/runs`            | `StartRunInput` | `202 OrchestratorRun` (in `planning`)          |
 | `GET`  | `/api/orchestrator/runs/:id`        | —               | `OrchestratorRun`                              |
+| `GET`  | `/api/orchestrator/runs/:id/output` | —               | `{ "output": RunTranscript }`                  |
 | `POST` | `/api/orchestrator/runs/:id/cancel` | —               | `204`                                          |
 | `POST` | `/api/orchestrator/runs/:id/apply`  | —               | `OrchestratorRun` (with `appliedAt`)           |
 
@@ -645,12 +646,32 @@ interface StartRunInput {
   agents?: ('claude' | 'codex' | 'agy')[]; // 1–3; default: every available agent
   maxTasks?: number; // 1–8, default 5
   planner?: 'claude' | 'codex' | 'agy'; // must be installed; default: first allowed of claude, codex, agy
+  access?: 'edit' | 'full'; // default 'edit'; recorded on the run as `access`
 }
 interface AgentAvailability {
   agent: 'claude' | 'codex' | 'agy';
   available: boolean; // its CLI is on PATH (sign-in is not checked)
 }
+// Keyed by task id; the planner's stream is under "plan".
+type RunTranscript = Record<string, { from: number; chunks: { kind: string; text: string }[] }>;
 ```
+
+Access (`OrchestratorAccess`) says what the task agents may do besides editing files in their
+worktree. With `edit`, Codex and Antigravity still run commands inside their own OS sandbox,
+but Claude Code has no such sandbox and runs no shell command at all (its prompt says so, and
+asks for the command to verify with instead). With `full`, Claude Code gets its shell tools
+(`--allowedTools Bash`, plus `PowerShell` on Windows) and Codex gets network access inside its
+sandbox, so the agents can run tests, builds and installs **with the user's own permissions**.
+The planner never writes or runs anything, whatever the access.
+
+A task whose agent fails in a way that may be transient (a dropped connection, a CLI that died
+mid-turn) is started once more in the same worktree, which still holds what the first attempt
+wrote. Not being signed in, quota and rate limits, and timeouts are not retried.
+
+The transcript is everything each agent printed, as the same `{ kind, text }` chunks the
+`orchestrator.output` events carry. At most 400 chunks are kept per stream (the oldest are
+dropped); `from` is the position of `chunks[0]` in the stream, so chunk `i` has the `seq`
+`from + i`. Transcripts are stored per run next to the runs file and removed with their run.
 
 Errors use the `/api` envelope with these codes:
 
@@ -683,12 +704,13 @@ removes its worktrees but keeps the branches, so nothing an agent did is lost.
 Progress is streamed on `/api/events` as:
 
 - `orchestrator.run` (`{ run: OrchestratorRun }`): a full snapshot after every change.
-- `orchestrator.output` (`{ runId, taskId, output: { kind, text } }`, `kind` one of `text`,
-  `tool`, `status`, `error`): live activity of one task, or of the planner with `taskId`
-  `"plan"`, already reduced to plain text.
+- `orchestrator.output` (`{ runId, taskId, output: { kind, text }, seq }`, `kind` one of
+  `text`, `tool`, `status`, `error`): live activity of one task, or of the planner with `taskId`
+  `"plan"`, already reduced to plain text. `seq` counts the chunks of that stream from 0 and
+  lines up with the transcript, so a client can merge the two without repeating a line.
 
 From the terminal: `davecode orchestrate "<objective>" [--agents claude,codex,agy]
-[--max-tasks <n>] [--apply]`, `davecode orchestrate --list` and
+[--max-tasks <n>] [--full-access] [--apply]`, `davecode orchestrate --list` and
 `davecode orchestrate --apply-run <id>` run the same service in-process.
 
 ### Changes review

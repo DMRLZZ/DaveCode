@@ -10,6 +10,7 @@ import {
   type AgentOutput,
   type AgentRunner,
   type AgentRunResult,
+  type AgentTranscript,
   ORCHESTRATOR_AGENTS,
   ORCHESTRATOR_LIMITS,
   type OrchestratorAgent,
@@ -18,6 +19,7 @@ import {
   type OrchestratorService,
   type OrchestratorTask,
   type OrchestratorWorkspace,
+  type RunTranscript,
   type StartRunInput,
   startRunSchema,
   type TaskWorkspace,
@@ -30,7 +32,7 @@ import {
   parsePlan,
   pickPlanner,
 } from './plan';
-import { OrchestratorStore } from './store';
+import { OrchestratorStore, TranscriptStore } from './store';
 
 export interface OrchestratorServiceOptions {
   /** Absolute project root. */
@@ -108,6 +110,11 @@ class OrchestratorEngine implements OrchestratorService {
   private readonly now: () => Date;
   private readonly newId: () => string;
   private readonly store: OrchestratorStore;
+  private readonly transcripts: TranscriptStore;
+  /** What each run's agents printed, by run id; loaded from disk on first use. */
+  private readonly outputs = new Map<string, RunTranscript>();
+  /** Runs whose transcript changed since it was last written. */
+  private readonly unsaved = new Set<string>();
   /** Newest first. */
   private runs: OrchestratorRun[];
   private readonly active = new Map<string, ActiveRun>();
@@ -121,8 +128,10 @@ class OrchestratorEngine implements OrchestratorService {
     this.now = options.now ?? (() => new Date());
     this.newId = options.newId ?? (() => randomBytes(6).toString('hex'));
     this.store = new OrchestratorStore(options.home, options.projectDir);
+    this.transcripts = new TranscriptStore(options.home, options.projectDir);
     this.runs = this.store.load();
     this.recoverInterrupted();
+    this.transcripts.prune(new Set(this.runs.map((run) => run.id)));
   }
 
   // --- Public API ------------------------------------------------------------------------------
@@ -183,6 +192,7 @@ class OrchestratorEngine implements OrchestratorService {
         status: 'planning',
         agents,
         planner,
+        access: input.access ?? 'edit',
         baseBranch: head.branch,
         baseCommit: head.commit,
         integrationBranch,
@@ -217,6 +227,11 @@ class OrchestratorEngine implements OrchestratorService {
 
   list(): OrchestratorRun[] {
     return this.runs.map((run) => structuredClone(run));
+  }
+
+  transcript(id: string): RunTranscript | undefined {
+    if (!this.find(id)) return undefined;
+    return structuredClone(this.streams(id));
   }
 
   cancel(id: string): boolean {
@@ -264,7 +279,9 @@ class OrchestratorEngine implements OrchestratorService {
     const pending = [...this.active.values()];
     for (const active of pending) active.controller.abort();
     await Promise.all(pending.map((active) => active.done));
-    await this.store.flush();
+    for (const id of this.unsaved) void this.transcripts.save(id, this.streams(id));
+    this.unsaved.clear();
+    await Promise.all([this.store.flush(), this.transcripts.flush()]);
   }
 
   // --- Run lifecycle ---------------------------------------------------------------------------
@@ -409,16 +426,34 @@ class OrchestratorEngine implements OrchestratorService {
         kind: 'status',
         text: `Starting ${task.agent} on ${ws.branch}`,
       });
-      const result = await runner.run({
-        agent: task.agent,
-        cwd: ws.path,
-        prompt: buildTaskPrompt({ objective: run.objective, task, tasks: run.tasks }),
-        mode: 'edit',
-        signal,
-        timeoutMs: ORCHESTRATOR_LIMITS.taskTimeoutMs,
-        onOutput: (chunk) => this.output(run.id, task.id, chunk),
-      });
-      if (signal.aborted) throw signal.reason;
+      const access = run.access ?? 'edit';
+      let result: AgentRunResult | undefined;
+      for (let attempt = 1; attempt <= ORCHESTRATOR_LIMITS.taskAttempts; attempt++) {
+        result = await runner.run({
+          agent: task.agent,
+          cwd: ws.path,
+          prompt: buildTaskPrompt({
+            objective: run.objective,
+            task,
+            tasks: run.tasks,
+            access,
+            retry: attempt > 1,
+          }),
+          mode: 'edit',
+          access,
+          signal,
+          timeoutMs: ORCHESTRATOR_LIMITS.taskTimeoutMs,
+          onOutput: (chunk) => this.output(run.id, task.id, chunk),
+        });
+        if (signal.aborted) throw signal.reason;
+        if (result.ok || !result.retryable || attempt === ORCHESTRATOR_LIMITS.taskAttempts) break;
+        // The worktree keeps what the first attempt wrote, so the second one picks it up.
+        this.output(run.id, task.id, {
+          kind: 'status',
+          text: `${task.agent} stopped (${result.error ?? 'no reason given'}); trying once more.`,
+        });
+      }
+      if (!result) throw new Error('The task was never started.');
       if (result.text.trim())
         task.summary = clip(result.text, ORCHESTRATOR_LIMITS.summaryMaxLength);
       if (!result.ok) {
@@ -545,12 +580,27 @@ class OrchestratorEngine implements OrchestratorService {
     if (this.runs.length <= RUNS_KEPT) return;
     const keep = new Set(this.runs.slice(0, RUNS_KEPT));
     this.runs = this.runs.filter((run) => keep.has(run) || this.active.has(run.id));
+    const ids = new Set(this.runs.map((run) => run.id));
+    for (const id of this.outputs.keys()) if (!ids.has(id)) this.outputs.delete(id);
+    this.transcripts.prune(ids);
+  }
+
+  /** The run's transcript, read from disk the first time it is needed. */
+  private streams(runId: string): RunTranscript {
+    let streams = this.outputs.get(runId);
+    if (!streams) {
+      streams = this.transcripts.load(runId) ?? {};
+      this.outputs.set(runId, streams);
+    }
+    return streams;
   }
 
   /** Records a state change: bump `updatedAt`, persist, emit a snapshot. */
   private changed(run: OrchestratorRun): void {
     run.updatedAt = this.stamp();
     void this.store.save(this.runs);
+    // Every state change is a good moment to put what the agents printed so far on disk.
+    if (this.unsaved.delete(run.id)) void this.transcripts.save(run.id, this.streams(run.id));
     this.options.events.emit({
       type: 'orchestrator.run',
       run: structuredClone(run),
@@ -562,11 +612,24 @@ class OrchestratorEngine implements OrchestratorService {
     const text =
       chunk.text.length > OUTPUT_MAX_LENGTH ? chunk.text.slice(0, OUTPUT_MAX_LENGTH) : chunk.text;
     if (!text && chunk.kind !== 'error') return;
+    const output: AgentOutput = { kind: chunk.kind, text };
+    const streams = this.streams(runId);
+    const stream: AgentTranscript = streams[taskId] ?? { from: 0, chunks: [] };
+    streams[taskId] = stream;
+    const seq = stream.from + stream.chunks.length;
+    stream.chunks.push(output);
+    const extra = stream.chunks.length - ORCHESTRATOR_LIMITS.transcriptMaxChunks;
+    if (extra > 0) {
+      stream.chunks.splice(0, extra);
+      stream.from += extra;
+    }
+    this.unsaved.add(runId);
     this.options.events.emit({
       type: 'orchestrator.output',
       runId,
       taskId,
-      output: { kind: chunk.kind, text },
+      output,
+      seq,
       ts: this.now().getTime(),
     });
   }

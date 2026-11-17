@@ -57,10 +57,10 @@ jobs:
           DaveCode desktop for Windows, macOS and Linux.
 
           - **Windows (x64):** download `DaveCode-Setup-x64.exe`, run it and choose where to install. It adds DaveCode to the Start menu and the desktop.
-          - **macOS (Apple silicon):** open `DaveCode-macOS-arm64.dmg` and drag DaveCode to Applications. The app is not notarized yet: the first time, right-click it and choose Open.
+          - **macOS (Apple silicon):** open `DaveCode-macOS-arm64.dmg` and drag DaveCode to Applications. If macOS says it cannot verify the app, open it once, then choose **Open Anyway** in **System Settings → Privacy & Security**.
           - **Linux (x64):** download `DaveCode-Linux-x86_64.AppImage`, make it executable (`chmod +x`) and run it.
 
-          Node.js is included. Claude Code, Codex, Antigravity and Git are installed separately when you connect them. Installers are unsigned previews; checksums are in `SHA256SUMS`.
+          Node.js is included. Claude Code, Codex, Antigravity and Git are installed separately when you connect them. Windows and macOS warn about installers that are not signed with a vendor certificate; on Windows choose **More info → Run anyway**. Checksums are in `SHA256SUMS`, and [docs/SIGNING.md](https://github.com/DMRLZZ/DaveCode/blob/main/docs/SIGNING.md) explains the warning.
 
           Each installer passed lint, typecheck, the full test suite and a packaged acceptance run on its own platform (workspace, authenticated gateway, clean shutdown).
           NOTES

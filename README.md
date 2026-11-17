@@ -30,9 +30,10 @@ everything on your machine.
 | :----------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
 | [DaveCode-Setup-x64.exe](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Setup-x64.exe) | [DaveCode-macOS-arm64.dmg](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-macOS-arm64.dmg) | [DaveCode-Linux-x86_64.AppImage](https://github.com/DMRLZZ/DaveCode/releases/latest/download/DaveCode-Linux-x86_64.AppImage) |
 
-The installers are not code-signed by a vendor yet: on Windows choose **More info → Run anyway**;
-on macOS open the app once, then choose **Open Anyway** in **System Settings → Privacy &
-Security**; on Linux `chmod +x` the AppImage.
+Windows and macOS warn about the installers because they are not signed with a vendor
+certificate yet ([why, and what removes it](docs/SIGNING.md)): on Windows choose **More info →
+Run anyway**; on macOS open the app once, then choose **Open Anyway** in **System Settings →
+Privacy & Security**; on Linux `chmod +x` the AppImage.
 
 **Terminal** (Node.js 22.12 or later):
 
@@ -45,10 +46,13 @@ The first run shows the logo, lets you pick a dark or light look, signs you in t
 account in the browser (Google, GitHub or email) and connects your first agent with its official
 login.
 
-The desktop app opens on real terminals: add Shell, Claude Code, Codex or Antigravity panes side
-by side in your project, using the logins those CLIs already have. **Orchestrate** splits one
-objective across them, each in its own git worktree, and applies the result only when you say so.
-**Isolated** panes and the **Changes** panel let several agents work on one project and ship it.
+The desktop app opens on real terminals: open Shell, Claude Code, Codex or Antigravity sessions
+in your project, using the logins those CLIs already have. Split, resize, rename, maximize and
+minimize the panes like in a tiling terminal; the sidebar keeps every session in reach.
+**Orchestrate** splits one objective across your agents, each in its own git worktree, shows
+what every one of them is doing in a live card, and applies the result only when you say so.
+**Isolated** sessions and the **Changes** panel let several agents work on one project and ship
+it.
 New here? Read the [guide](docs/GUIDE.md).
 
 ![The DaveCode desktop terminal](docs/assets/desktop.png)

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { RunnerAction } from './api';
 import {
   createWorkspace,
@@ -16,6 +16,7 @@ import {
   cancelOrchestratorRun,
   fetchOrchestratorAgents,
   getOrchestratorRun,
+  getOrchestratorTranscript,
   listOrchestratorRuns,
   startOrchestratorRun,
 } from './orchestrator';
@@ -412,6 +413,34 @@ export function useOrchestratorRuns(enabled: boolean) {
     if (open && enabled) void refetch();
   }, [open, enabled, refetch]);
   return runs;
+}
+
+/**
+ * Loads what a run's agents printed before this page was listening (an older run, or one that
+ * was already going when the app opened) and puts it under the live output.
+ */
+export function useOrchestratorTranscript(runId: string | undefined) {
+  const { sourceKey, connection, orchestrator } = useData();
+  const { base, token } = useGateway();
+  const transcript = useQuery({
+    queryKey: qk(sourceKey, 'orchestrator', 'transcript', runId ?? ''),
+    queryFn: () => getOrchestratorTranscript(base, token, runId ?? ''),
+    enabled: Boolean(runId) && connection.mode === 'live',
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+  useEffect(() => {
+    if (runId && transcript.data) orchestrator.hydrateTranscript(runId, transcript.data);
+  }, [runId, transcript.data, orchestrator]);
+  // After a dropped stream the missed output is only in the gateway's copy.
+  const open = connection.stream.state === 'open';
+  const { refetch } = transcript;
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    if (open && !wasOpen.current && runId) void refetch();
+    wasOpen.current = open;
+  }, [open, runId, refetch]);
+  return transcript;
 }
 
 export function useStartOrchestratorRun() {

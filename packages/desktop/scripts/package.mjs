@@ -1,6 +1,7 @@
 import { cp } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Arch, build, Platform } from 'electron-builder';
+import { dropEmptySigningVariables, macSigning, signingSummary, winSigning } from './signing.mjs';
 import { prepare, root } from './stage.mjs';
 
 // The bundled Node.js and SQLite are native, so each installer is built on its own platform.
@@ -13,6 +14,13 @@ const host = TARGETS[process.platform];
 if (!host) throw new Error(`No desktop installer for ${process.platform}.`);
 if (process.arch !== host.arch)
   throw new Error(`Build the ${process.platform} installer with a ${host.arch} Node.js runtime.`);
+
+// Signing is decided by the environment alone: no certificate, no change from an unsigned build.
+dropEmptySigningVariables(process.env);
+const mac = macSigning(process.env, root);
+const win = winSigning(process.env);
+const signing = { darwin: mac.mode, win32: win.mode }[process.platform] ?? 'unsigned';
+console.log(`Signing: ${signingSummary(process.platform, signing)}`);
 
 const stage = await prepare();
 await build({
@@ -49,6 +57,7 @@ await build({
       icon: join(root, 'assets/icon.ico'),
       // biome-ignore lint/suspicious/noTemplateCurlyInString: electron-builder expands these macros.
       artifactName: 'DaveCode-Setup-${arch}.${ext}',
+      ...win.config,
     },
     nsis: {
       oneClick: false,
@@ -63,12 +72,9 @@ await build({
       target: 'dmg',
       icon: join(root, 'assets/icon.png'),
       category: 'public.app-category.developer-tools',
-      // No Apple Developer ID yet, so the app is signed ad hoc. Unsigned, the signature Electron
-      // ships with breaks once the bundle is assembled, and a downloaded copy is then reported as
-      // "damaged" with no way to open it. Ad hoc, macOS offers Privacy & Security → Open Anyway.
-      identity: '-',
-      // Hardened runtime would reject Electron's frameworks, which carry another team's signature.
-      hardenedRuntime: false,
+      // Ad hoc without a Developer ID certificate (macOS then offers Privacy & Security → Open
+      // Anyway); signed with the hardened runtime and notarized when CI has the certificate.
+      ...mac.config,
       // biome-ignore lint/suspicious/noTemplateCurlyInString: electron-builder expands these macros.
       artifactName: 'DaveCode-macOS-${arch}.${ext}',
     },

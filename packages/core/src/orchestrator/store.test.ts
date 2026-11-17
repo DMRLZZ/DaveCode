@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OrchestratorRun } from './contract';
-import { ORCHESTRATOR_RUNS_KEPT, OrchestratorStore, orchestratorRunsPath } from './store';
+import {
+  ORCHESTRATOR_RUNS_KEPT,
+  OrchestratorStore,
+  orchestratorRunsPath,
+  TranscriptStore,
+} from './store';
 
 let home: string;
 
@@ -92,5 +97,47 @@ describe('OrchestratorStore', () => {
     );
     expect(store.load().map((r) => r.id)).toEqual(['ok']);
     expect(JSON.parse(await readFile(store.path, 'utf8')).runs).toHaveLength(2);
+  });
+});
+
+describe('TranscriptStore', () => {
+  const project = '/projects/app';
+  const transcript = {
+    plan: { from: 0, chunks: [{ kind: 'status' as const, text: 'Planning with claude…' }] },
+    t1: { from: 3, chunks: [{ kind: 'tool' as const, text: 'Edit src/a.ts' }] },
+  };
+
+  it('round-trips a transcript next to the runs file', async () => {
+    const store = new TranscriptStore(home, project);
+    await store.save('abc123', transcript);
+    const dir = dirname(orchestratorRunsPath(home, project));
+    expect(await readdir(dir)).toEqual(['output-abc123.json']);
+    expect(new TranscriptStore(home, project).load('abc123')).toEqual(transcript);
+  });
+
+  it('yields nothing for a missing or corrupt file and never leaves the folder', async () => {
+    const store = new TranscriptStore(home, project);
+    expect(store.load('missing')).toBeUndefined();
+    const dir = dirname(orchestratorRunsPath(home, project));
+    mkdirSync(dir, { recursive: true });
+    await writeFile(join(dir, 'output-bad.json'), '{{{');
+    expect(store.load('bad')).toBeUndefined();
+    // An id that is not a plain token is never turned into a path.
+    await store.save('../escape', transcript);
+    await store.flush();
+    expect(store.load('../escape')).toBeUndefined();
+    expect(await readdir(dir)).toEqual(['output-bad.json']);
+  });
+
+  it('writes the newest snapshot of a run and removes what is no longer kept', async () => {
+    const store = new TranscriptStore(home, project);
+    void store.save('one', { plan: { from: 0, chunks: [] } });
+    void store.save('one', transcript);
+    void store.save('two', transcript);
+    await store.flush();
+    expect(store.load('one')).toEqual(transcript);
+    store.prune(new Set(['two']));
+    const dir = dirname(orchestratorRunsPath(home, project));
+    expect(await readdir(dir)).toEqual(['output-two.json']);
   });
 });
