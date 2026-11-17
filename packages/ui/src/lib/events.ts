@@ -34,6 +34,9 @@ export const EVENT_TYPES: readonly DaveEventType[] = [
   'goal.log',
   'orchestrator.run',
   'orchestrator.output',
+  'chat.session',
+  'chat.removed',
+  'chat.output',
   'log',
 ];
 

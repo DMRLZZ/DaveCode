@@ -12,8 +12,9 @@ import {
 } from 'react';
 import { errorMessage } from '../../lib/api';
 import { changedFileCount, shortBranch } from '../../lib/changes';
+import { isChatAgent, isChatBusy, sortedChats } from '../../lib/chat';
 import { cn } from '../../lib/cn';
-import { useOrchestratorRunMap } from '../../lib/data';
+import { useChatMap, useOrchestratorRunMap } from '../../lib/data';
 import {
   chooseProject,
   onNotificationClick,
@@ -40,9 +41,11 @@ import {
   startRequest,
   toggleAgent,
 } from '../../lib/orchestrator';
-import { usePreferences } from '../../lib/preferences';
+import { getPreferences, usePreferences } from '../../lib/preferences';
 import {
   useChangesWorkspaces,
+  useChats,
+  useCreateChat,
   useCreateWorkspace,
   useOrchestratorAgents,
   useOrchestratorRuns,
@@ -62,13 +65,14 @@ import {
   workspaceReducer,
 } from '../../lib/workspace';
 import { ChangesPanel } from './Changes';
+import { ChatView } from './ChatView';
 import { KINDS, kindMeta } from './kinds';
 import { AccessToggle, AgentChips, type BarMode, ModeSwitch, PlannerPicker } from './Orchestrator';
 import { Pane, type PaneAttention } from './Pane';
 import { RunThread } from './RunThread';
 import { SessionSidebar, type SidebarSession } from './SessionSidebar';
 
-type View = 'terminals' | 'run';
+type View = 'terminals' | 'run' | 'chat';
 type Target = 'agents' | 'focused';
 
 /** How long the page waits for the saved workspace before it opens a fresh one. */
@@ -83,11 +87,23 @@ interface Opening {
   access: OrchestratorAccess;
   /** Isolated sessions brought back from the last launch, whose worktree may be gone since. */
   restoredIsolated: ReadonlySet<number>;
+  /** In chat mode, the first-run setup asks for a chat with this agent. */
+  firstChat?: OrchestratorAgent | undefined;
 }
 
 function freshOpening(): Opening {
   // Right after the first-run setup, the chosen agent opens instead of a plain shell.
   const agent = takeFirstSession();
+  // In chat mode the agent answers in a chat instead, next to a plain shell.
+  if (agent && getPreferences().workMode === 'chat' && isChatAgent(agent)) {
+    return {
+      state: initialWorkspace(),
+      sidebar: true,
+      access: 'edit',
+      restoredIsolated: new Set(),
+      firstChat: agent,
+    };
+  }
   const state = agent
     ? workspaceReducer(EMPTY_WORKSPACE, { type: 'open', kind: agent, label: kindMeta(agent).label })
     : initialWorkspace();
@@ -274,6 +290,50 @@ function Workspace({
     setChangesOpen(true);
   };
 
+  const preferences = usePreferences();
+  const installed = useInstalled('agents');
+
+  // --- Chats ----------------------------------------------------------------------------------
+  const chatsQuery = useChats(true);
+  const chatsOffered = chatsQuery.data !== null && chatsQuery.data !== undefined;
+  const chatMap = useChatMap();
+  const chats = useMemo(() => sortedChats({ sessions: chatMap }), [chatMap]);
+  const [chatId, setChatId] = useState<string>();
+  const shownChat = chats.find((c) => c.id === chatId) ?? chats[0];
+  const createChat = useCreateChat();
+  const [chatError, setChatError] = useState<string>();
+  const openChat = (agent: OrchestratorAgent) => {
+    setChatError(undefined);
+    createChat.mutate(agent, {
+      onSuccess: (session) => {
+        setChatId(session.id);
+        setView('chat');
+      },
+      onError: (error) => setChatError(errorMessage(error)),
+    });
+  };
+  const chatAgents = (['claude', 'codex', 'agy'] as const)
+    .filter((agent) => installed === undefined || installed.get(agent))
+    .sort(
+      (a, b) => Number(b === preferences.defaultAgent) - Number(a === preferences.defaultAgent),
+    );
+  // Right after a setup in chat mode, the chosen agent's chat opens once the chats are known.
+  const firstChat = useRef(opening.firstChat);
+  const openChatRef = useRef(openChat);
+  openChatRef.current = openChat;
+  useEffect(() => {
+    const agent = firstChat.current;
+    if (!agent || !chatsQuery.isFetched) return;
+    firstChat.current = undefined;
+    if (chatsOffered) openChatRef.current(agent);
+  }, [chatsQuery.isFetched, chatsOffered]);
+
+  /** In chat mode an agent that can chat opens a chat; everything else opens a terminal. */
+  const newAgent = (kind: PaneKind) => {
+    if (preferences.workMode === 'chat' && chatsOffered && isChatAgent(kind)) openChat(kind);
+    else add(kind);
+  };
+
   const add = (kind: PaneKind) => {
     setAddError(undefined);
     setView('terminals');
@@ -308,8 +368,6 @@ function Workspace({
     if (writer) writers.current.set(key, writer);
     else writers.current.delete(key);
   }, []);
-  const preferences = usePreferences();
-  const installed = useInstalled('agents');
 
   // --- Attention: a pane that finished or asked for the person while they looked elsewhere ----
   const [attention, setAttention] = useState<ReadonlySet<number>>(() => new Set());
@@ -418,6 +476,26 @@ function Workspace({
     }
   }, [runs, view, shownRunId]);
 
+  // An answer that arrives while the person looks elsewhere is worth a notification too.
+  const chatStatus = useRef(new Map<string, boolean>());
+  const shownChatId = shownChat?.id;
+  useEffect(() => {
+    for (const chat of chats) {
+      const was = chatStatus.current.get(chat.id);
+      const now = isChatBusy(chat);
+      chatStatus.current.set(chat.id, now);
+      if (was !== true || now) continue;
+      if (document.hasFocus() && view === 'chat' && shownChatId === chat.id) continue;
+      const turn = chat.turns.at(-1);
+      const label = kindMeta(chat.agent).label;
+      notifyUser(`chat:${chat.id}`, {
+        title: turn?.status === 'failed' ? `${label} stopped` : `${label} answered`,
+        body: chat.title,
+        target: { kind: 'chat', id: chat.id },
+      });
+    }
+  }, [chats, view, shownChatId]);
+
   // A click on a notification brings up what it was about.
   useEffect(
     () =>
@@ -426,6 +504,11 @@ function Workspace({
           setView('terminals');
           dispatch({ type: 'focus', key: target.key });
         } else {
+          if (target.kind === 'chat') {
+            setChatId(target.id);
+            setView('chat');
+            return;
+          }
           setRunId(target.id);
           setView('run');
         }
@@ -483,7 +566,7 @@ function Workspace({
     }
     if (action === 'new-agent') {
       event.preventDefault();
-      add(preferences.defaultAgent);
+      newAgent(preferences.defaultAgent);
       return;
     }
     const key = state.focused;
@@ -558,6 +641,17 @@ function Workspace({
             setView('run');
             composer.current?.focus();
           }}
+          chatsOffered={chatsOffered}
+          chats={chats}
+          chatId={shownChat?.id}
+          showingChat={view === 'chat'}
+          chatAgents={[...chatAgents]}
+          creatingChat={createChat.isPending}
+          onSelectChat={(id) => {
+            setChatId(id);
+            setView('chat');
+          }}
+          onNewChat={openChat}
           changesOffered={changesOffered || changesQuery.isError}
           changesCount={changesCount}
           onShowChanges={() => (changesOpen ? setChangesOpen(false) : showChanges())}
@@ -565,6 +659,10 @@ function Workspace({
           installed={installed}
           defaultAgent={preferences.defaultAgent}
           yolo={preferences.yolo}
+          onNewDefault={() => newAgent(preferences.defaultAgent)}
+          defaultIsChat={
+            preferences.workMode === 'chat' && chatsOffered && isChatAgent(preferences.defaultAgent)
+          }
         />
       )}
 
@@ -595,15 +693,36 @@ function Workspace({
               Terminals
               <span className="tabular-nums text-zinc-500">{state.sessions.length}</span>
             </button>
+            {chatsOffered && (
+              <button
+                type="button"
+                aria-pressed={view === 'chat'}
+                onClick={() => setView('chat')}
+                title="Talk to an agent and see its edits as diffs"
+                className={cn(
+                  'flex h-6 items-center gap-1.5 rounded-sm px-2',
+                  view === 'chat'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-200',
+                )}
+              >
+                Chats
+                {chats.some(isChatBusy) && (
+                  <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-white" />
+                )}
+              </button>
+            )}
             {offered && (
               <button
                 type="button"
-                aria-pressed={!terminals}
+                aria-pressed={view === 'run'}
                 onClick={() => setView('run')}
                 title="What the orchestrator and each of its agents are doing"
                 className={cn(
                   'flex h-6 items-center gap-1.5 rounded-sm px-2',
-                  !terminals ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200',
+                  view === 'run'
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-200',
                 )}
               >
                 Orchestrator
@@ -741,7 +860,27 @@ function Workspace({
                 />
               )}
             </div>
-            {!terminals && (
+            {view === 'chat' && (
+              <div className="absolute inset-0">
+                {shownChat ? (
+                  <ChatView
+                    key={shownChat.id}
+                    session={shownChat}
+                    defaultAccess={preferences.yolo ? 'full' : 'edit'}
+                    onOpenTerminals={() => setView('terminals')}
+                    onRemoved={() => setChatId(undefined)}
+                  />
+                ) : (
+                  <EmptyChats
+                    agents={[...chatAgents]}
+                    creating={createChat.isPending}
+                    error={chatError}
+                    onNew={openChat}
+                  />
+                )}
+              </div>
+            )}
+            {view === 'run' && (
               <div className="absolute inset-0">
                 {shownRun ? (
                   <RunThread
@@ -768,6 +907,7 @@ function Workspace({
         </div>
 
         <form
+          hidden={view === 'chat'}
           onSubmit={(event) => {
             event.preventDefault();
             send();
@@ -940,6 +1080,56 @@ function EmptyOrchestrator() {
           The results land on a <code className="text-zinc-300">davecode/run-…</code> branch. Your
           files change only when you press Apply.
         </p>
+      </div>
+    </div>
+  );
+}
+
+function EmptyChats({
+  agents,
+  creating,
+  error,
+  onNew,
+}: {
+  agents: OrchestratorAgent[];
+  creating: boolean;
+  error: string | undefined;
+  onNew: (agent: OrchestratorAgent) => void;
+}) {
+  return (
+    <div className="flex h-full items-center justify-center p-6 font-mono text-xs text-zinc-500">
+      <div className="max-w-md space-y-4 text-center leading-relaxed">
+        <p className="text-sm text-zinc-200">Talk to an agent, see every edit.</p>
+        <p>
+          A chat runs the agent in this project with its own login. Each answer shows what it read,
+          ran and edited, and the diff of every file it changed.
+        </p>
+        {agents.length === 0 ? (
+          <p>Install Claude Code, Codex or Antigravity to chat with it.</p>
+        ) : (
+          <div className="flex flex-wrap justify-center gap-2">
+            {agents.map((agent) => {
+              const meta = kindMeta(agent);
+              return (
+                <button
+                  key={agent}
+                  type="button"
+                  disabled={creating}
+                  onClick={() => onNew(agent)}
+                  className="flex h-8 items-center gap-2 rounded border border-zinc-800 px-3 text-zinc-200 hover:border-zinc-600 disabled:opacity-50"
+                >
+                  <Plus aria-hidden className="size-3" style={{ color: meta.accent }} />
+                  Chat with {meta.label}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {error && (
+          <p role="alert" className="text-red-400">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -28,7 +28,10 @@ export interface WorkspaceBridge {
 }
 
 /** What a click on a desktop notification brings up. */
-export type NotificationTarget = { kind: 'pane'; key: number } | { kind: 'run'; id: string };
+export type NotificationTarget =
+  | { kind: 'pane'; key: number }
+  | { kind: 'run'; id: string }
+  | { kind: 'chat'; id: string };
 
 export interface DesktopNotification {
   title: string;
@@ -112,8 +115,8 @@ export function onNotificationClick(listener: (target: NotificationTarget) => vo
     const value = target as Record<string, unknown>;
     if (value.kind === 'pane' && typeof value.key === 'number') {
       listener({ kind: 'pane', key: value.key });
-    } else if (value.kind === 'run' && typeof value.id === 'string') {
-      listener({ kind: 'run', id: value.id });
+    } else if ((value.kind === 'run' || value.kind === 'chat') && typeof value.id === 'string') {
+      listener({ kind: value.kind, id: value.id });
     }
   });
 }

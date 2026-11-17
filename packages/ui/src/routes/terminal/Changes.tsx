@@ -374,7 +374,7 @@ function FileList({
 
 // --- Diff -------------------------------------------------------------------------------------
 
-function DiffView({ patch, truncated }: { patch: string; truncated: boolean }) {
+export function DiffView({ patch, truncated }: { patch: string; truncated: boolean }) {
   const files = useMemo(() => parsePatch(patch), [patch]);
   const [budget, setBudget] = useState(LINE_BUDGET);
   if (files.length === 0) return <p className="p-3 text-zinc-600">No textual changes.</p>;

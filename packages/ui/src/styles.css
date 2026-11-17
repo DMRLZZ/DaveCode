@@ -374,3 +374,7 @@
   --color-amber-300: #b45309;
   --color-sky-300: #0369a1;
 }
+[data-theme="light"] .ws-invert {
+  --color-emerald-100: #065f46;
+  --color-red-100: #991b1b;
+}

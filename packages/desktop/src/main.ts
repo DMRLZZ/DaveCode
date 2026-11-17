@@ -80,7 +80,10 @@ const notificationSchema = z.object({
   target: z
     .union([
       z.object({ kind: z.literal('pane'), key: z.number().int().min(1).max(1_000_000) }),
-      z.object({ kind: z.literal('run'), id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) }),
+      z.object({
+        kind: z.enum(['run', 'chat']),
+        id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+      }),
     ])
     .optional(),
 });

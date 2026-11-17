@@ -10,6 +10,16 @@ import {
   shipWorkspace,
   suggestText,
 } from './changes';
+import {
+  cancelChat,
+  chatPatch,
+  chatTranscript,
+  createChat,
+  listChats,
+  removeChat,
+  renameChat,
+  sendChat,
+} from './chat';
 import { qk, upsertGoal, useData } from './data';
 import {
   applyOrchestratorRun,
@@ -28,6 +38,8 @@ import type {
   ChangesSuggestion,
   Goal,
   GoalStart,
+  OrchestratorAccess,
+  OrchestratorAgent,
   RoutesUpdate,
   RunnerStatus,
   ShipInput,
@@ -543,4 +555,103 @@ export function useSuggestText() {
     mutationFn: (input: { id: string; agent?: ChangesSuggestion['by'] }) =>
       suggestText(base, token, input.id, input.agent),
   });
+}
+
+// --- Agent chats -------------------------------------------------------------------------------
+
+/**
+ * The project's chats, put into the chat store. `data` is null when this gateway has no chats.
+ * Fetched again when the event stream reopens, since snapshots sent meanwhile are not replayed.
+ */
+export function useChats(enabled: boolean) {
+  const { sourceKey, connection, chat } = useData();
+  const { base, token } = useGateway();
+  const query = useQuery({
+    queryKey: qk(sourceKey, 'chat', 'sessions'),
+    queryFn: () => listChats(base, token),
+    enabled: enabled && connection.mode === 'live',
+    retry: false,
+  });
+  useEffect(() => {
+    if (query.data) chat.hydrate(query.data);
+  }, [query.data, chat]);
+  const open = connection.stream.state === 'open';
+  const { refetch } = query;
+  useEffect(() => {
+    if (open && enabled) void refetch();
+  }, [open, enabled, refetch]);
+  return query;
+}
+
+/** What a chat's agent printed before this page was listening. */
+export function useChatTranscript(id: string | undefined) {
+  const { sourceKey, connection, chat } = useData();
+  const { base, token } = useGateway();
+  const query = useQuery({
+    queryKey: qk(sourceKey, 'chat', 'transcript', id ?? ''),
+    queryFn: () => chatTranscript(base, token, id ?? ''),
+    enabled: Boolean(id) && connection.mode === 'live',
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+  useEffect(() => {
+    if (id && query.data) chat.hydrateTranscript(id, query.data);
+  }, [id, query.data, chat]);
+  return query;
+}
+
+/** The diff of one finished turn, fetched when it is opened. */
+export function useChatPatch(id: string, turn: string, enabled: boolean) {
+  const { sourceKey, connection } = useData();
+  const { base, token } = useGateway();
+  return useQuery({
+    queryKey: qk(sourceKey, 'chat', 'patch', id, turn),
+    queryFn: () => chatPatch(base, token, id, turn),
+    enabled: enabled && connection.mode === 'live',
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
+}
+
+export function useCreateChat() {
+  const { chat } = useData();
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: (agent: OrchestratorAgent) => createChat(base, token, agent),
+    onSuccess: (session) => chat.upsert(session),
+  });
+}
+
+export function useSendChat() {
+  const { chat } = useData();
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: (input: { id: string; text: string; access: OrchestratorAccess }) =>
+      sendChat(base, token, input.id, input.text, input.access),
+    onSuccess: (session) => chat.upsert(session),
+  });
+}
+
+export function useRenameChat() {
+  const { chat } = useData();
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: (input: { id: string; title: string }) =>
+      renameChat(base, token, input.id, input.title),
+    onSuccess: (session) => chat.upsert(session),
+  });
+}
+
+export function useRemoveChat() {
+  const { chat } = useData();
+  const { base, token } = useGateway();
+  return useMutation({
+    mutationFn: (id: string) => removeChat(base, token, id),
+    onSuccess: (_result, id) => chat.remove(id),
+  });
+}
+
+export function useCancelChat() {
+  const { base, token } = useGateway();
+  return useMutation({ mutationFn: (id: string) => cancelChat(base, token, id) });
 }
