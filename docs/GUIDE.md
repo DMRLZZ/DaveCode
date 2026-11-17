@@ -10,7 +10,9 @@ This guide covers what you can do with it and what each part costs. For the HTTP
 ## Contents
 
 - [Install and sign in](#install-and-sign-in)
+- [First-run setup](#first-run-setup)
 - [The desktop workspace](#the-desktop-workspace)
+- [Chats](#chats)
 - [Orchestrate: one objective, several agents](#orchestrate-one-objective-several-agents)
 - [Isolated panes and the Changes panel](#isolated-panes-and-the-changes-panel)
 - [The DaveCode chat](#the-davecode-chat)
@@ -34,6 +36,32 @@ certificate yet; nothing is wrong with the download. On Windows choose **More in
 anyway**. On macOS open the app once, then choose **Open Anyway** in **System Settings → Privacy
 & Security**. [SIGNING.md](SIGNING.md) explains the warning and what removes it. The macOS build
 is for Apple silicon only.
+
+## First-run setup
+
+The first time the desktop app opens a project it asks five things. Every choice applies at
+once, and all of them are in **Settings → Workspace** later. **Set up later** keeps the defaults.
+
+1. **How you work with agents.** **Terminal** opens each agent in its own CLI, exactly as it
+   ships; it works with every agent. **Chat** opens Claude Code, Codex and Antigravity in a
+   conversation with their edits shown as diffs (other agents still open in a terminal).
+2. **Your default agent.** DaveCode finds the agent CLIs installed on your computer: Claude
+   Code, Codex, Antigravity, OpenCode, Gemini CLI, GitHub Copilot, Qwen Code, Cursor CLI, Amp,
+   Aider, Crush. The default one opens with **New** and `Ctrl+Shift+T`, and leads orchestrator
+   runs when it can. **YOLO mode** starts agents with their own flag to run commands and edit
+   files without asking (for example `claude --dangerously-skip-permissions`,
+   `codex --dangerously-bypass-approvals-and-sandbox`); agents without such a flag ask as usual.
+   Use it only on projects you trust.
+3. **Look.** Dark, light or the system's mode, and a terminal theme for each mode.
+4. **The Windows terminal** (Windows only). The shell new sessions open in: Windows PowerShell,
+   PowerShell 7, Command Prompt, Git Bash or WSL (agents must then be installed inside WSL). And
+   what a right click does: copy the selection or paste, or open a menu (`Ctrl` + right click
+   always opens it).
+5. **Notifications.** A system notification and a sound when an agent finishes or asks for you
+   while you look elsewhere, when a chat answers and when an orchestrator run ends. Clicking it
+   brings up that session. A session that finished also gets a dot in the sidebar.
+
+The app remembers all of this, and that you chose **Continue on this device** at sign-in.
 
 ## The desktop workspace
 
@@ -71,6 +99,21 @@ for a new line, `Enter` to send). Choose what it does:
 - **Orchestrate** splits an objective across your agents (next section).
 - **Send to panes** types the same message into every agent pane you have open, or only into
   the pane you are in: pick the receiver next to **to**.
+
+## Chats
+
+**Chats** (a tab at the top, and a section of the sidebar) talk to Claude Code, Codex or
+Antigravity in a conversation instead of a terminal. Each message runs the agent in the project
+folder with its own login and continues the same conversation, so it remembers what came before.
+
+Every answer shows how long the agent worked and its steps (what it read, ran and edited; open
+them to read all of it), its reply, and **Edited …** with the files it changed in that turn and
+their diff. Only that turn's changes are shown, not what you had pending before. **Stop** ends
+the turn; the trash button deletes the chat but not the files the agent changed.
+
+The **edits only / runs commands** button under the message box works as for the orchestrator:
+with **edits only**, Claude Code changes files but runs no command; with **runs commands** it
+runs them with your permissions. YOLO mode makes **runs commands** the default.
 
 ## Orchestrate: one objective, several agents
 

@@ -1,15 +1,15 @@
 # DaveCode: project state
 
-_Last updated: 2026-11-16_
+_Last updated: 2026-11-17_
 
 ## Current focus
 
-**v0.8.0 prepared on `feat/workspace-threads`** (v0.7.1 on `main`): a desktop workspace with a session sidebar, tiling panes (split, resize, rename, maximize, minimize) and an orchestrator thread with one live card per agent; isolated panes (one git worktree and branch per pane) with a Changes panel that reviews diffs and commits, pushes, opens pull requests or merges a pane back; the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
+**v0.9.0 prepared on `feat/onboarding`** (v0.8.0 released): a first-run setup, every major CLI agent with YOLO mode, agent chats with per-turn diffs, terminal themes, light mode, the Windows shell choice, right-click paste and notifications, on top of a desktop workspace with a session sidebar, tiling panes (split, resize, rename, maximize, minimize) and an orchestrator thread with one live card per agent; isolated panes (one git worktree and branch per pane) with a Changes panel that reviews diffs and commits, pushes, opens pull requests or merges a pane back; the orchestrator (one objective split across Claude Code, Codex and Antigravity in git worktrees, applied on demand), real terminal panes in the desktop app, plus the monochrome terminal and desktop workspace with the bird mark, first-run
 setup, DaveCode accounts on Cloudflare (`davecode-auth` + D1 at `auth.davecode.app`),
 official vendor sign-in for Claude Code, Codex and Antigravity (`agy`), desktop installers
 for Windows, macOS and Linux, and the public site at `davecode.app` served from the
-`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.7.1`
-(installed command `davecode`); 0.8.0 is not released yet.
+`davecode-site` Cloudflare Worker. The CLI is published on npm as `@dmrlzz/davecode@0.8.0`
+(installed command `davecode`); 0.9.0 is not released yet.
 
 ## In progress
 
@@ -59,6 +59,13 @@ for Windows, macOS and Linux, and the public site at `davecode.app` served from 
   (`/api/orchestrator/runs/:id/output`). Verified live in the dev desktop app via CDP: splits,
   border drag, rename, minimize, maximize, send to panes, and a 3-agent run (3 of 3 tasks) whose
   output survived a restart.
+- **Setup and chats** (v0.9.0): `packages/desktop/src/{preferences,agents,shells}.ts` (app-kept
+  preferences, agent registry with YOLO flags, Windows shells), `packages/ui/src/routes/onboarding/`,
+  `packages/core/src/chat/` (headless turns that resume the agent's own session; per-turn diff from
+  `git stash create`), `/api/chat/*`. Verified live: the setup end to end (Codex with YOLO in Git
+  Bash, light mode, GitHub Light theme), right-click paste, a pane notification, a restart that
+  remembered everything, and a Claude Code chat that created a file, showed its diff and remembered
+  it in a follow-up.
 - **Desktop terminals**: real PTY panes (`@lydell/node-pty` + xterm.js) for a shell, Claude Code,
   Codex, Antigravity and DaveCode; the desktop opens on them and reopens the last project.
 
@@ -108,6 +115,9 @@ None.
 | 2026-11-16 | Orchestrator runs default to `access: edit`; running commands unsandboxed (`full`) is the user's explicit choice per run |
 | 2026-11-16 | A split opens a shell in the pane's folder; other session kinds are opened from the sidebar |
 | 2026-11-16 | Signing is driven only by CI secrets; a build without them is identical to the unsigned build |
+| 2026-11-17 | Preferences live in the desktop app's data folder: the page's own storage changes origin every launch |
+| 2026-11-17 | YOLO flags come only from the app's registry, checked against each CLI's help; agents without one keep their settings |
+| 2026-11-17 | Chats run in the project checkout, not a worktree; each turn's diff is computed from a `git stash create` snapshot |
 
 ## Activity log
 
@@ -138,3 +148,6 @@ None.
   one retry for cut-off tasks, kept transcripts, and signing that turns on when CI has
   certificates. A live run before the change finished 2 of 3 tasks (Antigravity lost its work to
   a dropped connection; Claude Code was refused `npm test` five times); after it, 3 of 3.
+- 2026-11-17: v0.8.0 released (GitHub and npm). v0.9.0 prepared: first-run setup, twelve agents,
+  YOLO mode, chats with diffs, themes and light mode, Windows shell choice, right click,
+  notifications.

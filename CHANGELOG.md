@@ -6,6 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-17
+
+This release adds a first-run setup, every major CLI agent, a chat mode with diffs, and the
+comfort of a terminal app: themes, light mode, your shell, right-click paste and notifications.
+
+### Added
+
+- **First-run setup** in five steps: terminal or chat, default agent and YOLO mode, color mode
+  and terminal theme, the Windows shell and right click, notifications and their sound. All of
+  it lives in **Settings → Workspace** too. Finishing opens the chosen agent.
+- **Every CLI agent.** Besides Claude Code, Codex and Antigravity: OpenCode, Gemini CLI, GitHub
+  Copilot, Qwen Code, Cursor CLI, Amp, Aider and Crush. The ones installed are found on PATH and
+  listed first.
+- **YOLO mode**: agents start with their own flag to work without asking, checked against each
+  CLI's help. Shown as a YOLO tag in the sidebar.
+- **Chats**: a conversation with Claude Code, Codex or Antigravity that continues the agent's own
+  session, with each step, the reply and the exact diff of what every turn changed.
+  `/api/chat/*`, `chat.*` events.
+- **Thirteen terminal themes** (one for dark mode, one for light mode) and a **light mode** for
+  the whole workspace.
+- **Shell choice on Windows**: Windows PowerShell, PowerShell 7, Command Prompt, Git Bash or WSL.
+- **Right click** copies or pastes like Windows Terminal, or opens a menu.
+- **Notifications** with a choice of sound when an agent finishes or asks for you, a chat answers
+  or an orchestrator run ends. A finished session also gets a dot in the sidebar.
+
+### Fixed
+
+- The desktop app forgot every page preference on each launch, including **Continue on this
+  device**: without a DaveCode account it asked to sign in every time.
+- CI never ran the UI's own tests; the root test command now does.
+
 ## [0.8.0] - 2026-11-16
 
 This release rebuilds the desktop workspace around a sidebar of sessions and panes you can
