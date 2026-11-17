@@ -16,7 +16,7 @@
     "desktop": "pnpm --filter @davecode/desktop start",
     "desktop:package": "pnpm build && pnpm --filter @davecode/desktop package",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run",
+    "test": "vitest run && pnpm --filter @davecode/ui test",
     "test:watch": "vitest",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",

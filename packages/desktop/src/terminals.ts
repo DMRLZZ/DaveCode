@@ -1,33 +1,43 @@
-import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import type { IPty, spawn as ptySpawn } from '@lydell/node-pty';
-import { type PaneKind, paneEnv, shellPlan } from './panes';
+import { agentCommand } from './agents';
+import { type PaneKind, paneEnv } from './panes';
+import {
+  locateWindowsShells,
+  posixShellPlan,
+  resolveShell,
+  type ShellId,
+  type ShellLocations,
+  type ShellPlan,
+  windowsShellPlan,
+} from './shells';
 
 type Pty = { spawn: typeof ptySpawn };
-
-function defaultShell(): string {
-  if (process.platform !== 'win32') return process.env.SHELL || '/bin/bash';
-  const found = spawnSync('where.exe', ['pwsh.exe'], { windowsHide: true, encoding: 'utf8' });
-  return found.status === 0 ? 'pwsh.exe' : 'powershell.exe';
-}
 
 export interface TerminalEvents {
   data(id: string, data: string): void;
   exit(id: string, code: number): void;
 }
 
+/** How new panes start; read from the preferences each time a pane opens. */
+export interface LaunchOptions {
+  shell: ShellId;
+  yolo: boolean;
+}
+
 /** Owns the pseudo-terminals behind the panes. All of them die with the project or the window. */
 export class Terminals {
   private readonly panes = new Map<string, IPty>();
   private module: Pty | undefined;
-  private shell: string | undefined;
+  private windowsShells: ShellLocations | undefined;
 
   constructor(
     /** The bundled runtime carries the native module, outside the app's asar archive. */
     private readonly runtimeDir: string,
     private readonly events: TerminalEvents,
+    private readonly launch: () => LaunchOptions,
   ) {}
 
   private load(): Pty {
@@ -35,9 +45,24 @@ export class Terminals {
     return this.module;
   }
 
+  /** The Windows shells found on this machine, looked up once. */
+  shells(): ShellLocations {
+    this.windowsShells ??= process.platform === 'win32' ? locateWindowsShells() : {};
+    return this.windowsShells;
+  }
+
+  plan(kind: PaneKind): ShellPlan {
+    const { shell, yolo } = this.launch();
+    const command = kind === 'shell' ? undefined : agentCommand(kind, yolo);
+    if (process.platform !== 'win32') {
+      return posixShellPlan(process.env.SHELL || '/bin/bash', command);
+    }
+    const found = this.shells();
+    return windowsShellPlan(resolveShell(shell, found), found, command);
+  }
+
   open(kind: PaneKind, cwd: string, cols: number, rows: number): string {
-    this.shell ??= defaultShell();
-    const plan = shellPlan(kind, process.platform, this.shell);
+    const plan = this.plan(kind);
     const pty = this.load().spawn(plan.file, plan.args, {
       name: 'xterm-256color',
       cols,

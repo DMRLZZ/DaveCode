@@ -38,6 +38,9 @@ export async function verifyWindow(
     rendered = await window.webContents.executeJavaScript(`(() => {
       const button = [...document.querySelectorAll('button')].find(node => node.textContent === 'Continue on this device');
       if (button) button.click();
+      // A fresh profile opens the first-run setup; skipping it must land on a working shell.
+      const later = [...document.querySelectorAll('button')].find(node => node.textContent === 'Set up later');
+      if (later) later.click();
       return Boolean(document.querySelector('[data-pane-live="true"] .xterm-rows'));
     })()`);
     if (rendered) break;
@@ -82,7 +85,7 @@ export async function verifyWindow(
     join(output, 'result.json'),
     JSON.stringify({
       status: 'passed',
-      version: '0.8.0',
+      version: '0.9.0',
       url: gateway,
       terminal: true,
       authenticated: true,
