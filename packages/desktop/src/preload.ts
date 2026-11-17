@@ -10,6 +10,10 @@ function subscribe<T extends unknown[]>(channel: string, listener: (...args: T) 
 
 contextBridge.exposeInMainWorld('davecodeDesktop', {
   chooseProject: () => ipcRenderer.invoke('desktop:choose-project'),
+  workspace: {
+    load: () => ipcRenderer.invoke('workspace:load'),
+    save: (state: unknown) => ipcRenderer.invoke('workspace:save', state),
+  },
   terminal: {
     open: (request: unknown) => ipcRenderer.invoke('terminal:open', request),
     write: (request: unknown) => ipcRenderer.invoke('terminal:write', request),

@@ -1,16 +1,18 @@
+import { z } from 'zod';
 import type { PaneKind } from './desktop';
 import {
   addPane,
   balance,
   EMPTY_LAYOUT,
   type Layout,
+  type LayoutNode,
   layoutKeys,
   neighbour,
   removePane,
   type SplitDirection,
   splitPane,
 } from './layout';
-import { cleanSessionName, uniqueSessionName } from './sessions';
+import { cleanSessionName, SESSION_NAME_MAX_LENGTH, uniqueSessionName } from './sessions';
 
 /**
  * State of the terminal workspace: the sessions (one pane each), where the visible ones sit,
@@ -179,4 +181,131 @@ export function workspaceReducer(state: WorkspaceState, event: WorkspaceEvent): 
 export function isShown(state: WorkspaceState, key: number): boolean {
   if (state.zoomed !== undefined) return state.zoomed === key;
   return layoutKeys(state.layout).includes(key);
+}
+
+// --- Keeping the workspace across launches ----------------------------------------------------
+
+/** Most sessions kept for a project; the app refuses a larger state. */
+export const SAVED_SESSIONS_MAX = 64;
+const LAYOUT_DEPTH_MAX = 12;
+
+export interface SavedWorkspace {
+  version: 1;
+  sessions: WorkspaceSession[];
+  layout: Layout;
+  focused?: number | undefined;
+  zoomed?: number | undefined;
+  /** The sidebar is shown. */
+  sidebar: boolean;
+  /** What the agents of the next orchestrator run may do. */
+  access: 'edit' | 'full';
+}
+
+const savedKey = z.number().int().min(1).max(1_000_000);
+
+function savedNode(depth: number): z.ZodType<LayoutNode> {
+  const pane = z.object({ kind: z.literal('pane'), key: savedKey });
+  if (depth >= LAYOUT_DEPTH_MAX) return pane;
+  return z.union([
+    pane,
+    z.object({
+      kind: z.literal('split'),
+      direction: z.enum(['row', 'column']),
+      children: z
+        .array(
+          z.object({
+            node: z.lazy(() => savedNode(depth + 1)),
+            weight: z.number().positive().max(1_000_000),
+          }),
+        )
+        .min(1)
+        .max(SAVED_SESSIONS_MAX),
+    }),
+  ]);
+}
+
+const savedSchema = z.object({
+  version: z.literal(1),
+  sessions: z
+    .array(
+      z.object({
+        key: savedKey,
+        kind: z.enum(['shell', 'claude', 'codex', 'agy', 'davecode']),
+        name: z.string().min(1).max(SESSION_NAME_MAX_LENGTH),
+        workspace: z
+          .string()
+          .regex(/^[a-z0-9]{4,24}$/)
+          .optional(),
+        minimized: z.boolean(),
+      }),
+    )
+    .max(SAVED_SESSIONS_MAX),
+  layout: z.object({ root: savedNode(0).optional() }),
+  focused: savedKey.optional(),
+  zoomed: savedKey.optional(),
+  sidebar: z.boolean(),
+  access: z.enum(['edit', 'full']),
+});
+
+/** What the app handed back, if it is a saved workspace; anything else is ignored. */
+export function parseSavedWorkspace(value: unknown): SavedWorkspace | undefined {
+  const parsed = savedSchema.safeParse(value);
+  return parsed.success ? (parsed.data as SavedWorkspace) : undefined;
+}
+
+/** What is worth keeping of the workspace, in the shape the app stores. */
+export function savedWorkspace(
+  state: WorkspaceState,
+  prefs: Pick<SavedWorkspace, 'sidebar' | 'access'>,
+): SavedWorkspace {
+  return {
+    version: 1,
+    sessions: state.sessions.slice(0, SAVED_SESSIONS_MAX).map((s) => ({
+      key: s.key,
+      kind: s.kind,
+      name: s.name,
+      minimized: s.minimized,
+      ...(s.workspace ? { workspace: s.workspace } : {}),
+    })),
+    layout: state.layout,
+    ...(state.focused !== undefined ? { focused: state.focused } : {}),
+    ...(state.zoomed !== undefined ? { zoomed: state.zoomed } : {}),
+    sidebar: prefs.sidebar,
+    access: prefs.access,
+  };
+}
+
+/**
+ * The workspace a saved state describes, repaired where it disagrees with itself: repeated
+ * sessions are dropped, the grid holds exactly the sessions that are not minimized, and focus and
+ * zoom point at a pane that is on it. Undefined when nothing is left to open.
+ */
+export function restoreWorkspace(saved: SavedWorkspace): WorkspaceState | undefined {
+  const seen = new Set<number>();
+  const sessions = saved.sessions.filter((session) => {
+    if (seen.has(session.key)) return false;
+    seen.add(session.key);
+    return true;
+  });
+  if (sessions.length === 0) return undefined;
+  const onGrid = new Set(sessions.filter((s) => !s.minimized).map((s) => s.key));
+  const keys = layoutKeys(saved.layout);
+  // A pane listed twice means the layout cannot be trusted: lay the grid out again.
+  let layout = new Set(keys).size === keys.length ? saved.layout : EMPTY_LAYOUT;
+  for (const key of layoutKeys(layout)) if (!onGrid.has(key)) layout = removePane(layout, key);
+  for (const key of onGrid) layout = addPane(layout, key);
+  const placed = new Set(layoutKeys(layout));
+  const zoomed = saved.zoomed !== undefined && placed.has(saved.zoomed) ? saved.zoomed : undefined;
+  const focused =
+    zoomed ??
+    (saved.focused !== undefined && placed.has(saved.focused)
+      ? saved.focused
+      : layoutKeys(layout)[0]);
+  return {
+    sessions,
+    layout,
+    focused,
+    zoomed,
+    nextKey: Math.max(...sessions.map((s) => s.key)) + 1,
+  };
 }

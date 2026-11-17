@@ -60,6 +60,11 @@ Open a project folder. The workspace has two views, switched at the top: **Termi
 | Rename                                 | Double-click the name in the pane's bar or in the sidebar.                                                                          |
 | Close                                  | The **×** button or `Ctrl+Shift+W`. This ends the session.                                                                          |
 
+**Next time you open the project** the workspace comes back as you left it: the same
+sessions with their names, the same panes and sizes, minimized ones still minimized, and the
+sidebar and the access choice below. What ran inside them starts again fresh: a shell opens a
+new prompt and an agent a new conversation. Each project keeps its own workspace.
+
 **The message box** at the bottom takes one message, several lines if you like (`Shift+Enter`
 for a new line, `Enter` to send). Choose what it does:
 

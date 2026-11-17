@@ -32,6 +32,9 @@ where every agent's work is on screen.
   With **runs commands**, Claude Code may run shell commands such as your tests, and Codex gets
   network access in its sandbox, both with your own permissions. The default stays **edits
   only**.
+- **The workspace comes back.** Each project reopens with its sessions, their names, the pane
+  layout and sizes, what was minimized, the sidebar and the access choice. The terminals start
+  fresh; nothing typed in them is stored.
 - **Send to one pane.** "Send to panes" can target only the pane you are in. The message box
   takes several lines (`Shift+Enter`).
 - **Signing, when certificates exist.** The installers are signed and the macOS app notarized

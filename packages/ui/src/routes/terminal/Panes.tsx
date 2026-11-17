@@ -14,7 +14,12 @@ import { errorMessage } from '../../lib/api';
 import { changedFileCount, shortBranch } from '../../lib/changes';
 import { cn } from '../../lib/cn';
 import { useOrchestratorRunMap } from '../../lib/data';
-import { chooseProject, type PaneKind, type TerminalBridge } from '../../lib/desktop';
+import {
+  chooseProject,
+  type PaneKind,
+  type TerminalBridge,
+  workspaceBridge,
+} from '../../lib/desktop';
 import {
   type Divider,
   dividers,
@@ -41,7 +46,15 @@ import {
 } from '../../lib/queries';
 import { workspaceAction } from '../../lib/sessions';
 import type { OrchestratorAccess, OrchestratorAgent } from '../../lib/types';
-import { initialWorkspace, isShown, workspaceReducer } from '../../lib/workspace';
+import {
+  initialWorkspace,
+  isShown,
+  parseSavedWorkspace,
+  restoreWorkspace,
+  savedWorkspace,
+  type WorkspaceState,
+  workspaceReducer,
+} from '../../lib/workspace';
 import { ChangesPanel } from './Changes';
 import { KINDS, kindMeta } from './kinds';
 import { AccessToggle, AgentChips, type BarMode, ModeSwitch, PlannerPicker } from './Orchestrator';
@@ -52,32 +65,64 @@ import { SessionSidebar, type SidebarSession } from './SessionSidebar';
 type View = 'terminals' | 'run';
 type Target = 'agents' | 'focused';
 
-/** A yes/no or one-of-a-few choice remembered between launches; storage may be unavailable. */
-function useStored<T extends string>(key: string, initial: T, allowed: readonly T[]) {
-  const [value, setValue] = useState<T>(() => {
-    try {
-      const saved = window.localStorage.getItem(key) as T | null;
-      return saved !== null && allowed.includes(saved) ? saved : initial;
-    } catch {
-      return initial;
-    }
-  });
-  const set = useCallback(
-    (next: T) => {
-      setValue(next);
-      try {
-        window.localStorage.setItem(key, next);
-      } catch {
-        /* The choice still holds for this session. */
-      }
-    },
-    [key],
-  );
-  return [value, set] as const;
+/** How long the page waits for the saved workspace before it opens a fresh one. */
+const LOAD_TIMEOUT_MS = 3000;
+/** A burst of changes (a border being dragged) is saved once it settles. */
+const SAVE_DELAY_MS = 300;
+
+/** What the workspace opens with: the last launch's sessions and preferences, or a shell. */
+interface Opening {
+  state: WorkspaceState;
+  sidebar: boolean;
+  access: OrchestratorAccess;
+  /** Isolated sessions brought back from the last launch, whose worktree may be gone since. */
+  restoredIsolated: ReadonlySet<number>;
 }
 
-const ON_OFF = ['on', 'off'] as const;
-const ACCESS = ['edit', 'full'] as const;
+function freshOpening(): Opening {
+  return { state: initialWorkspace(), sidebar: true, access: 'edit', restoredIsolated: new Set() };
+}
+
+/**
+ * The terminal workspace. It first asks the app for the project's last sessions and layout, so
+ * no terminal starts only to be replaced a moment later.
+ */
+export function Panes({ bridge, active }: { bridge: TerminalBridge; active: boolean }) {
+  const [opening, setOpening] = useState<Opening>();
+  useEffect(() => {
+    let settled = false;
+    const finish = (value: Opening) => {
+      if (settled) return;
+      settled = true;
+      setOpening(value);
+    };
+    const timer = window.setTimeout(() => finish(freshOpening()), LOAD_TIMEOUT_MS);
+    const store = workspaceBridge();
+    if (!store) finish(freshOpening());
+    else {
+      store.load().then(
+        (value) => {
+          const saved = parseSavedWorkspace(value);
+          if (!saved) return finish(freshOpening());
+          const state = restoreWorkspace(saved) ?? initialWorkspace();
+          finish({
+            state,
+            sidebar: saved.sidebar,
+            access: saved.access,
+            restoredIsolated: new Set(state.sessions.filter((s) => s.workspace).map((s) => s.key)),
+          });
+        },
+        () => finish(freshOpening()),
+      );
+    }
+    return () => {
+      settled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+  if (!opening) return <div aria-busy="true" className="h-full bg-black" />;
+  return <Workspace bridge={bridge} active={active} opening={opening} />;
+}
 
 /** A border between two panes that can be dragged. */
 function DividerHandle({
@@ -165,11 +210,19 @@ function DividerHandle({
   );
 }
 
-export function Panes({ bridge, active }: { bridge: TerminalBridge; active: boolean }) {
-  const [state, dispatch] = useReducer(workspaceReducer, undefined, initialWorkspace);
+function Workspace({
+  bridge,
+  active,
+  opening,
+}: {
+  bridge: TerminalBridge;
+  active: boolean;
+  opening: Opening;
+}) {
+  const [state, dispatch] = useReducer(workspaceReducer, opening.state);
   const [view, setView] = useState<View>('terminals');
   const [liveKeys, setLiveKeys] = useState<ReadonlySet<number>>(() => new Set());
-  const [sidebar, setSidebar] = useStored('davecode.workspace.sidebar', 'on', ON_OFF);
+  const [sidebar, setSidebar] = useState<'on' | 'off'>(opening.sidebar ? 'on' : 'off');
   const writers = useRef(new Map<number, (data: string) => void>());
   const area = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -185,6 +238,20 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
   const changesQuery = useChangesWorkspaces(active);
   const workspaces = changesQuery.data ?? undefined;
   const changesOffered = workspaces !== undefined;
+  // A session brought back from the last launch whose isolated worktree was removed since (from
+  // the Changes panel) has nowhere to run: close it once the list of worktrees is known.
+  const checkedRestored = useRef(opening.restoredIsolated.size === 0);
+  useEffect(() => {
+    if (checkedRestored.current || workspaces === undefined) return;
+    checkedRestored.current = true;
+    const ids = new Set(workspaces.map((w) => w.id));
+    for (const session of state.sessions) {
+      if (!opening.restoredIsolated.has(session.key)) continue;
+      if (session.workspace && !ids.has(session.workspace)) {
+        dispatch({ type: 'close', key: session.key });
+      }
+    }
+  }, [workspaces, state.sessions, opening.restoredIsolated]);
   const workspaceById = useMemo(
     () => new Map((workspaces ?? []).map((w) => [w.id, w])),
     [workspaces],
@@ -254,11 +321,21 @@ export function Panes({ bridge, active }: { bridge: TerminalBridge; active: bool
   const [chosenAgents, setChosenAgents] = useState<OrchestratorAgent[]>();
   const selection = chosenAgents ?? availableAgents(availability);
   const [planner, setPlanner] = useState<OrchestratorAgent>();
-  const [access, setAccess] = useStored<OrchestratorAccess>(
-    'davecode.orchestrator.access',
-    'edit',
-    ACCESS,
-  );
+  const [access, setAccess] = useState<OrchestratorAccess>(opening.access);
+
+  // The app keeps the sessions, the layout and both preferences for the next launch. Only names
+  // and layout are saved, never what runs in a terminal.
+  useEffect(() => {
+    const store = workspaceBridge();
+    if (!store) return;
+    const saved = savedWorkspace(state, { sidebar: sidebar === 'on', access });
+    const timer = window.setTimeout(() => {
+      store.save(saved).catch(() => {
+        /* Not saved: the next launch opens with a shell, nothing else is lost. */
+      });
+    }, SAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [state, sidebar, access]);
   const [runId, setRunId] = useState<string>();
   const [startError, setStartError] = useState<string>();
   const shownRun = runs.find((r) => r.id === runId) ?? runs[0];

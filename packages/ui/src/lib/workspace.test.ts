@@ -5,6 +5,9 @@ import {
   EMPTY_WORKSPACE,
   initialWorkspace,
   isShown,
+  parseSavedWorkspace,
+  restoreWorkspace,
+  savedWorkspace,
   type WorkspaceEvent,
   type WorkspaceState,
   workspaceReducer,
@@ -188,5 +191,98 @@ describe('layout', () => {
     const state = initialWorkspace();
     expect(workspaceReducer(state, { type: 'focus', key: 1 })).toBe(state);
     expect(workspaceReducer(EMPTY_WORKSPACE, { type: 'focus', key: 1 })).toBe(EMPTY_WORKSPACE);
+  });
+});
+
+describe('keeping the workspace across launches', () => {
+  const prefs = { sidebar: false, access: 'full' as const };
+
+  it('saves what a later launch needs and restores the same workspace', () => {
+    const state = play([
+      open('claude', 'Claude Code', { workspace: 'abcd12' }),
+      open('codex', 'Codex', { split: { near: 2, direction: 'down' } }),
+      { type: 'rename', key: 1, name: 'api server' },
+      { type: 'minimize', key: 3 },
+      { type: 'zoom', key: 2 },
+    ]);
+    const saved = savedWorkspace(state, prefs);
+    expect(saved).toMatchObject({
+      version: 1,
+      sidebar: false,
+      access: 'full',
+      focused: 2,
+      zoomed: 2,
+    });
+    // Through the app and back, as plain data.
+    const parsed = parseSavedWorkspace(JSON.parse(JSON.stringify(saved)));
+    expect(parsed).toEqual(saved);
+    const restored = restoreWorkspace(parsed as NonNullable<typeof parsed>);
+    expect(restored).toEqual(state);
+    // New sessions never reuse a key from the last launch.
+    expect(restored?.nextKey).toBe(4);
+  });
+
+  it('starts over with nothing to restore', () => {
+    expect(restoreWorkspace(savedWorkspace(EMPTY_WORKSPACE, prefs))).toBeUndefined();
+  });
+
+  it('puts every pane that is not minimized on the grid, and only those', () => {
+    const saved = savedWorkspace(play([open('codex', 'Codex')]), prefs);
+    // The layout lost pane 2 and holds a pane with no session.
+    const broken = {
+      ...saved,
+      layout: {
+        root: {
+          kind: 'split' as const,
+          direction: 'row' as const,
+          children: [
+            { node: { kind: 'pane' as const, key: 1 }, weight: 1 },
+            { node: { kind: 'pane' as const, key: 9 }, weight: 1 },
+          ],
+        },
+      },
+      focused: 9,
+    };
+    const restored = restoreWorkspace(broken);
+    expect(layoutShape(restored?.layout ?? EMPTY_WORKSPACE.layout)).toBe('[1|2]');
+    expect(restored?.focused).toBe(1);
+  });
+
+  it('lays the grid out again when a pane is listed twice, and drops repeated sessions', () => {
+    const saved = savedWorkspace(play([open('codex', 'Codex')]), prefs);
+    const restored = restoreWorkspace({
+      ...saved,
+      sessions: [...saved.sessions, { ...saved.sessions[0]!, name: 'copy' }],
+      layout: {
+        root: {
+          kind: 'split',
+          direction: 'row',
+          children: [
+            { node: { kind: 'pane', key: 1 }, weight: 1 },
+            { node: { kind: 'pane', key: 1 }, weight: 1 },
+          ],
+        },
+      },
+      zoomed: 5,
+    });
+    expect(names(restored ?? EMPTY_WORKSPACE)).toEqual(['Shell', 'Codex']);
+    expect(layoutShape(restored?.layout ?? EMPTY_WORKSPACE.layout)).toBe('[1|2]');
+    expect(restored?.zoomed).toBeUndefined();
+  });
+
+  it('ignores anything that is not a saved workspace', () => {
+    const good = savedWorkspace(initialWorkspace(), prefs);
+    for (const value of [
+      undefined,
+      null,
+      'x',
+      { ...good, version: 2 },
+      { ...good, access: 'root' },
+      { ...good, sessions: [{ ...good.sessions[0], kind: 'rm -rf /' }] },
+      { ...good, sessions: [{ ...good.sessions[0], workspace: '../etc' }] },
+      { ...good, sessions: [{ ...good.sessions[0], name: '' }] },
+    ]) {
+      expect(parseSavedWorkspace(value)).toBeUndefined();
+    }
   });
 });

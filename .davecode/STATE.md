@@ -77,7 +77,8 @@ None.
   Artifact Signing or a CA certificate for Windows.
 - With `access: edit` (the default) Claude Code runs no shell command in orchestrator tasks;
   `full` lets it, with the user's own permissions and no sandbox.
-- Sessions and the pane layout are not restored when the app restarts.
+- Restored sessions start fresh: the app brings back their names, panes and folders, not what
+  ran in them (an agent starts a new conversation).
 - Codex CLI, Claude Code and Antigravity (`agy`) passed live adapter completion checks on Windows.
 - Gemini CLI 0.65.0 completed official Google OAuth in an isolated home, but Code Assist rejected
   the client with `UNSUPPORTED_CLIENT`. Use `antigravity-cli` (`agy`) or a Gemini API key instead.
