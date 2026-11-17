@@ -9,6 +9,7 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { createHttpClient, type DaveClient, isApiError } from './api';
+import { type ChatState, ChatStore, chatOutputLines, isChatEvent } from './chat';
 import type { StreamStatus } from './events';
 import { type LiveState, LiveStore } from './live';
 import { getMockClient } from './mock';
@@ -48,6 +49,8 @@ interface DataContextValue {
   live: LiveStore;
   /** Pane-orchestrator runs and their live output, fed by `orchestrator.*` events. */
   orchestrator: OrchestratorStore;
+  /** Agent chats and their live output, fed by `chat.*` events. */
+  chat: ChatStore;
   connection: Connection;
   retry: () => void;
 }
@@ -126,6 +129,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const live = useMemo(() => new LiveStore(), [sourceKey]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new store per source key
   const orchestrator = useMemo(() => new OrchestratorStore(), [sourceKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new store per source key
+  const chat = useMemo(() => new ChatStore(), [sourceKey]);
 
   // Subscribe to the event stream (skipped while probing).
   useEffect(() => {
@@ -135,6 +140,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       onEvent: (event) => {
         // Agent output is high-volume and has its own store; it would flood the activity feed.
         if (isOrchestratorEvent(event)) orchestrator.ingest(event);
+        else if (isChatEvent(event)) chat.ingest(event);
         else if (live.ingest(event)) patchQueryCache(queryClient, sourceKey, event);
       },
       onStatus: (status) => setStream(status),
@@ -154,8 +160,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       unsubscribe();
       live.dispose();
       orchestrator.dispose();
+      chat.dispose();
     };
-  }, [client, live, orchestrator, queryClient, sourceKey, source.mode]);
+  }, [client, live, orchestrator, chat, queryClient, sourceKey, source.mode]);
 
   const value = useMemo<DataContextValue>(
     () => ({
@@ -163,6 +170,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       sourceKey,
       live,
       orchestrator,
+      chat,
       connection: {
         mode: source.mode,
         reason: source.reason,
@@ -175,7 +183,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
         queryClient.invalidateQueries();
       },
     }),
-    [client, sourceKey, live, orchestrator, source, stream, probeError, unauthorized, queryClient],
+    [
+      client,
+      sourceKey,
+      live,
+      orchestrator,
+      chat,
+      source,
+      stream,
+      probeError,
+      unauthorized,
+      queryClient,
+    ],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -206,6 +225,22 @@ export function useOrchestratorRunMap(): OrchestratorState['runs'] {
   const { orchestrator } = useData();
   const runs = () => orchestrator.getState().runs;
   return useSyncExternalStore(orchestrator.subscribe, runs, runs);
+}
+
+/** The chats, without their output, so streaming output does not re-render the caller. */
+export function useChatMap(): ChatState['sessions'] {
+  const { chat } = useData();
+  const sessions = () => chat.getState().sessions;
+  return useSyncExternalStore(chat.subscribe, sessions, sessions);
+}
+
+const NO_CHAT_LINES: OutputLine[] = [];
+
+/** Live output of one chat turn. */
+export function useChatOutput(sessionId: string, turnId: string): OutputLine[] {
+  const { chat } = useData();
+  const lines = () => chatOutputLines(chat.getState(), sessionId, turnId, NO_CHAT_LINES);
+  return useSyncExternalStore(chat.subscribe, lines, lines);
 }
 
 /** Query key helper: every key is scoped to the active data source. */

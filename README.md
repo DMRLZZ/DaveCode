@@ -46,8 +46,11 @@ The first run shows the logo, lets you pick a dark or light look, signs you in t
 account in the browser (Google, GitHub or email) and connects your first agent with its official
 login.
 
-The desktop app opens on real terminals: open Shell, Claude Code, Codex or Antigravity sessions
-in your project, using the logins those CLIs already have. Split, resize, rename, maximize and
+The desktop app opens on real terminals: open a shell or any agent CLI you use (Claude Code,
+Codex, Antigravity, OpenCode, Gemini CLI, Copilot and more) in your project, with the logins
+those CLIs already have, or talk to Claude Code, Codex or Antigravity in a **chat** that shows the
+diff of every edit. A first-run setup picks your default agent, YOLO mode, theme, shell and
+notifications. Split, resize, rename, maximize and
 minimize the panes like in a tiling terminal; the sidebar keeps every session in reach.
 **Orchestrate** splits one objective across your agents, each in its own git worktree, shows
 what every one of them is doing in a live card, and applies the result only when you say so.

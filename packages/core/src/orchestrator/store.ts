@@ -169,8 +169,9 @@ export class TranscriptStore {
   private readonly queued = new Map<string, string>();
   private writing: Promise<void> | undefined;
 
-  constructor(home: string, projectDir: string) {
-    this.dir = dirname(orchestratorRunsPath(home, projectDir));
+  /** `dir` overrides the folder (the chat keeps its transcripts apart from the orchestrator's). */
+  constructor(home: string, projectDir: string, dir?: string) {
+    this.dir = dir ?? dirname(orchestratorRunsPath(home, projectDir));
   }
 
   private file(runId: string): string | undefined {

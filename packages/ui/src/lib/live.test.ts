@@ -89,6 +89,9 @@ describe('event stream helpers', () => {
       'goal.log': true,
       'orchestrator.run': true,
       'orchestrator.output': true,
+      'chat.session': true,
+      'chat.removed': true,
+      'chat.output': true,
       log: true,
     };
     expect([...EVENT_TYPES].sort()).toEqual(Object.keys(required).sort());

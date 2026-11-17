@@ -17,6 +17,9 @@ export type {
   ChangesDiff,
   ChangesSuggestion,
   ChangesWorkspace,
+  ChatFileChange,
+  ChatSession,
+  ChatTurn,
   LoginProvider,
   LoginStatus,
   LoginUser,
@@ -33,7 +36,7 @@ export type {
   StartRunInput,
 } from '@davecode/core';
 
-import type { AgentOutput, OrchestratorRun } from '@davecode/core';
+import type { AgentOutput, ChatSession, OrchestratorRun } from '@davecode/core';
 
 // ---------------------------------------------------------------------------
 // Mirrored from packages/core/src/types.ts
@@ -403,6 +406,18 @@ export type DaveEvent =
       taskId: string;
       output: AgentOutput;
       /** Position of this chunk in its task's stream, from 0; lines up with the transcript. */
+      seq: number;
+      ts: number;
+    }
+  /** Full snapshot of an agent chat, sent on every change. */
+  | { type: 'chat.session'; session: ChatSession; ts: number }
+  | { type: 'chat.removed'; sessionId: string; ts: number }
+  /** Live activity of one chat turn; `seq` lines up with the chat's transcript. */
+  | {
+      type: 'chat.output';
+      sessionId: string;
+      turnId: string;
+      output: AgentOutput;
       seq: number;
       ts: number;
     }

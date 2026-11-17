@@ -12,10 +12,21 @@ import {
   type IpcMainInvokeEvent,
   ipcMain,
   Menu,
+  Notification,
   shell,
 } from 'electron';
+import { z } from 'zod';
+import { detectAgents } from './agents';
 import { openSchema, paneWorkspaceDir, resizeSchema, writeSchema } from './panes';
 import { backendErrorSchema, externalUrl, readySchema, sameOrigin } from './policy';
+import {
+  DEFAULT_PREFERENCES,
+  type Preferences,
+  preferencesFile,
+  readPreferences,
+  writePreferences,
+} from './preferences';
+import { SHELL_IDS } from './shells';
 import { verifyWindow } from './smoke';
 import {
   appendStartupLog,
@@ -42,10 +53,42 @@ const nodeBinary = join(bundle, 'node', process.platform === 'win32' ? 'node.exe
 const home = process.env.DAVECODE_HOME ?? join(homedir(), '.davecode');
 const welcome = pathToFileURL(join(__dirname, 'welcome.html')).href;
 const smokeOutput = process.env.DAVECODE_DESKTOP_SMOKE_DIR;
-const terminals = new Terminals(runtimeDir, {
-  data: (id, data) => window?.webContents.send('terminal:data', id, data),
-  exit: (id, code) => window?.webContents.send('terminal:exit', id, code),
+let preferences: Preferences | undefined;
+/** Read once, then kept in step with every save. An acceptance run always uses the defaults. */
+function currentPreferences(): Preferences {
+  preferences ??= smokeOutput
+    ? structuredClone(DEFAULT_PREFERENCES)
+    : readPreferences(preferencesFile(app.getPath('userData')));
+  return preferences;
+}
+const terminals = new Terminals(
+  runtimeDir,
+  {
+    data: (id, data) => window?.webContents.send('terminal:data', id, data),
+    exit: (id, code) => window?.webContents.send('terminal:exit', id, code),
+  },
+  () => {
+    const { shell, yolo } = currentPreferences();
+    return { shell, yolo };
+  },
+);
+
+const notificationSchema = z.object({
+  title: z.string().min(1).max(120),
+  body: z.string().max(300),
+  /** What a click on the notification should bring up in the workspace. */
+  target: z
+    .union([
+      z.object({ kind: z.literal('pane'), key: z.number().int().min(1).max(1_000_000) }),
+      z.object({
+        kind: z.enum(['run', 'chat']),
+        id: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+      }),
+    ])
+    .optional(),
 });
+/** Shown notifications, kept so a click still reaches its handler after garbage collection. */
+const shownNotifications = new Set<Notification>();
 const lastProjectFile = () => join(app.getPath('userData'), 'last-project.json');
 
 /** The folder to reopen on launch, if it still exists. */
@@ -353,6 +396,51 @@ else {
     ipcMain.handle('terminal:copy', (event, text: unknown) => {
       if (fromGateway(event) && typeof text === 'string') clipboard.writeText(text);
     });
+    // Right-click paste reads the clipboard here; the page itself has no clipboard permission.
+    ipcMain.handle('terminal:read-clipboard', (event) =>
+      fromGateway(event) ? clipboard.readText() : '',
+    );
+    ipcMain.handle('preferences:load', (event) =>
+      fromGateway(event) ? currentPreferences() : undefined,
+    );
+    ipcMain.handle('preferences:save', (event, value: unknown) => {
+      if (!fromGateway(event)) return undefined;
+      if (smokeOutput) return currentPreferences();
+      const saved = writePreferences(preferencesFile(app.getPath('userData')), value);
+      if (saved) preferences = saved;
+      return saved;
+    });
+    ipcMain.handle('agents:detect', (event) => (fromGateway(event) ? detectAgents() : []));
+    ipcMain.handle('shells:detect', (event) => {
+      if (!fromGateway(event) || process.platform !== 'win32') return [];
+      const found = terminals.shells();
+      return SHELL_IDS.filter((id) => id !== 'auto').map((id) => ({
+        id,
+        installed: Boolean(found[id]),
+      }));
+    });
+    ipcMain.handle('desktop:notify', (event, request: unknown) => {
+      if (!fromGateway(event) || !Notification.isSupported()) return false;
+      const parsed = notificationSchema.safeParse(request);
+      if (!parsed.success) return false;
+      const { title, body, target } = parsed.data;
+      // The page plays the chosen sound itself, so the system one stays off.
+      const notification = new Notification({ title, body, silent: true });
+      shownNotifications.add(notification);
+      const forget = () => shownNotifications.delete(notification);
+      notification.on('click', () => {
+        forget();
+        if (!window) return;
+        if (window.isMinimized()) window.restore();
+        window.show();
+        window.focus();
+        if (target) window.webContents.send('notification:click', target);
+      });
+      notification.on('close', forget);
+      notification.show();
+      if (!window?.isFocused()) window?.flashFrame(true);
+      return true;
+    });
     // The page's own storage does not survive a launch (its port changes), so the sessions and
     // the pane layout of each project are kept here, validated on the way in and out.
     ipcMain.handle('workspace:load', (event) => {
@@ -406,6 +494,7 @@ else {
         },
       ]),
     );
+    window.on('focus', () => window?.flashFrame(false));
     window.once('ready-to-show', () => window?.show());
     await window.loadURL(welcome);
     checkpoint('welcome-loaded');

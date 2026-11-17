@@ -2,6 +2,7 @@ import type {
   Account,
   AccountControl,
   ChangesService,
+  ChatService,
   ClearableTaskField,
   Goal,
   GoalArtifact,
@@ -116,6 +117,11 @@ export interface GatewayOptions {
    * commit, push and pull request. Inject it only when the gateway and the user share a machine.
    */
   changes?: ChangesService;
+  /**
+   * Agent chats in the served project (`/api/chat/*`). Inject it only when the gateway and the
+   * user share a machine: it runs the vendor CLIs the user is signed in to, in the project.
+   */
+  chat?: ChatService;
   /** SSE heartbeat interval for `/api/events` (default 15 000 ms). */
   heartbeatMs?: number;
   /** Bind address, used to decide which Host headers are expected (set by `startGateway`). */
