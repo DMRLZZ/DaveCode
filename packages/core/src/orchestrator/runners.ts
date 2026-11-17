@@ -94,18 +94,28 @@ export const AGY_PLAN_NOTE =
   "see the repository's files. Answer from the information in this message only and do not " +
   'create files.';
 
+/** A conversation id the CLIs return (UUIDs and similar): never anything a shell could read. */
+const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+
+export function isSessionId(value: unknown): value is string {
+  return typeof value === 'string' && SESSION_ID.test(value);
+}
+
 /**
  * The CLI arguments for an agent and mode (prompt excluded: it always goes on stdin). `access`
  * only matters for `edit` runs: `full` lets Claude Code use its shell tools (it has no OS sandbox,
  * so they run with the user's permissions) and gives Codex network access inside its sandbox.
+ * `resume` continues one of the agent's own conversations.
  */
 export function agentArgs(
   agent: OrchestratorAgent,
   mode: AgentRunRequest['mode'],
   access: OrchestratorAccess = 'edit',
   platform: NodeJS.Platform = process.platform,
+  resume?: string,
 ): string[] {
   const full = mode === 'edit' && access === 'full';
+  const session = isSessionId(resume) ? resume : undefined;
   switch (agent) {
     case 'claude':
       if (full) {
@@ -116,9 +126,22 @@ export function agentArgs(
           '--verbose',
           '--permission-mode',
           'acceptEdits',
+          ...(session ? ['--resume', session] : []),
+          // A list option: it stays last so it cannot swallow the options after it.
           '--allowedTools',
           'Bash',
           ...(platform === 'win32' ? ['PowerShell'] : []),
+        ];
+      }
+      if (mode === 'edit') {
+        return [
+          '-p',
+          '--output-format',
+          'stream-json',
+          '--verbose',
+          '--permission-mode',
+          'acceptEdits',
+          ...(session ? ['--resume', session] : []),
         ];
       }
       return mode === 'plan'
@@ -146,6 +169,7 @@ export function agentArgs(
         '-c',
         'approval_policy=never',
         ...(full ? ['-c', 'sandbox_workspace_write.network_access=true'] : []),
+        ...(session ? ['resume', session] : []),
         '-',
       ];
     case 'agy':
@@ -156,6 +180,7 @@ export function agentArgs(
         'stream-json',
         '--sandbox',
         '--disable-slash-commands',
+        ...(session ? ['--conversation', session] : []),
         '--print=',
       ];
   }
@@ -278,6 +303,8 @@ interface ParseState {
   /** Failure reported in-stream. */
   failure?: string;
   tokens?: number;
+  /** The CLI's own conversation id. */
+  session?: string;
 }
 
 interface StreamParser {
@@ -298,6 +325,7 @@ function claudeParser(emit: Emit, cwd: string): StreamParser {
       if (!isRecord(raw)) return;
       const type = asString(raw.type);
       if (type === 'system' && raw.subtype === 'init') {
+        if (isSessionId(raw.session_id)) state.session = raw.session_id;
         const model = asString(raw.model);
         emit({
           kind: 'status',
@@ -458,6 +486,7 @@ function codexParser(emit: Emit, cwd: string): StreamParser {
       const ev = isRecord(raw.msg) ? raw.msg : raw;
       const type = asString(ev.type) ?? '';
       if (type === 'thread.started') {
+        if (isSessionId(ev.thread_id)) state.session = ev.thread_id;
         emit({ kind: 'status', text: 'Codex started' });
         return;
       }
@@ -536,6 +565,7 @@ function agyParser(emit: Emit, cwd: string): StreamParser {
       if (!isRecord(raw)) return;
       const event = asString(raw.event);
       if (event === 'init') {
+        if (isSessionId(raw.conversation_id)) state.session = raw.conversation_id;
         emit({ kind: 'status', text: 'Antigravity started' });
         return;
       }
@@ -651,7 +681,13 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
     if (request.signal.aborted) throw abortError();
     const info = AGENTS[request.agent];
     const { command, prefix } = resolveBinary(request.agent);
-    const args = agentArgs(request.agent, request.mode, request.access);
+    const args = agentArgs(
+      request.agent,
+      request.mode,
+      request.access,
+      process.platform,
+      request.resume,
+    );
     if (needsShell(command) && ![...prefix, ...args].every(isShellSafeArg)) {
       return { ok: false, text: '', error: `${info.label}: unsafe argument for the Windows shell` };
     }
@@ -729,6 +765,7 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
       if (state.completed && !state.failure && exit.code === 0) {
         return {
           ok: true,
+          ...(state.session ? { session: state.session } : {}),
           text: tidy(state.text),
           ...(state.tokens !== undefined ? { tokens: state.tokens } : {}),
         };
@@ -740,6 +777,7 @@ export function createCliAgentRunner(options: CliAgentRunnerOptions = {}): Agent
           (exit.code === 0 ? 'the CLI ended without a final result' : 'no output'));
       return {
         ok: false,
+        ...(state.session ? { session: state.session } : {}),
         text: tidy(state.text),
         ...failure(info, detail, `${detail}\n${tail(exit.stderr)}`, exit.code),
         ...(state.tokens !== undefined ? { tokens: state.tokens } : {}),

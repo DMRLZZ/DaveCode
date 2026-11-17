@@ -358,6 +358,7 @@ export {
 export { AccountStore, accountFile } from './account/store';
 export { BRAND_MARK_SVG, brandLogo } from './brand';
 export * from './changes';
+export * from './chat';
 // --- goal mode ---
 export {
   type GoalTaskRunner,

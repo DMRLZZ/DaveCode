@@ -37,7 +37,7 @@ process.stdin.on('end', () => {
     const usage = { input_tokens: 10, cache_creation_input_tokens: 2, cache_read_input_tokens: 3, output_tokens: 5 };
     if (scenario === 'echo') return out({ type: 'result', subtype: 'success', is_error: false, result: echo(), usage });
     if (scenario === 'ok') {
-      out({ type: 'system', subtype: 'init', model: 'claude-fake' });
+      out({ type: 'system', subtype: 'init', model: 'claude-fake', session_id: 'claude-session-1' });
       out({ type: 'assistant', message: { content: [
         { type: 'thinking', thinking: '' },
         { type: 'text', text: 'Looking at the code.' },
@@ -231,7 +231,12 @@ describe('createCliAgentRunner: claude', () => {
   it('reduces the stream to text and tool lines and returns the final result', async () => {
     const req = request('claude');
     const res = await runner('claude', 'ok').run(req);
-    expect(res).toEqual({ ok: true, text: 'Done: edited src/x.ts', tokens: 20 });
+    expect(res).toEqual({
+      ok: true,
+      text: 'Done: edited src/x.ts',
+      tokens: 20,
+      session: 'claude-session-1',
+    });
     expect(req.outputs[0]).toEqual({ kind: 'status', text: 'Claude Code started (claude-fake)' });
     expect(req.outputs).toContainEqual({ kind: 'text', text: 'Looking at the code.' });
     expect(req.outputs).toContainEqual({ kind: 'tool', text: 'Edit src/x.ts' });
@@ -306,7 +311,7 @@ describe('createCliAgentRunner: codex', () => {
   it('parses items, tolerates unknown and transient error events, keeps the last message', async () => {
     const req = request('codex');
     const res = await runner('codex', 'ok').run(req);
-    expect(res).toEqual({ ok: true, text: 'All done.', tokens: 120 });
+    expect(res).toEqual({ ok: true, text: 'All done.', tokens: 120, session: 't' });
     const tools = req.outputs.filter((o) => o.kind === 'tool').map((o) => o.text);
     expect(tools).toEqual(['Run rg -n foo', 'Edit a.ts, b.ts', 'Search vitest docs']);
     expect(req.outputs).toContainEqual({ kind: 'text', text: 'Working on it.' });
@@ -360,7 +365,7 @@ describe('createCliAgentRunner: agy', () => {
   it('coalesces text deltas per step and announces each tool step once', async () => {
     const req = request('agy');
     const res = await runner('agy', 'ok').run(req);
-    expect(res).toEqual({ ok: true, text: 'Hello there\nFinished.', tokens: 12 });
+    expect(res).toEqual({ ok: true, text: 'Hello there\nFinished.', tokens: 12, session: 'c' });
     expect(req.outputs).toEqual([
       { kind: 'status', text: 'Antigravity started' },
       { kind: 'text', text: 'Hello there' },
@@ -539,5 +544,54 @@ describe('relativePaths', () => {
     const edit = await runner('claude', 'echo').run(request('claude', { mode: 'edit' }));
     // The echo reply contains its own working directory: in an edit run it comes back as ".".
     expect(JSON.parse(edit.text).cwd).toBe('.');
+  });
+});
+
+describe('continuing a conversation', () => {
+  it('passes the conversation id each CLI takes', () => {
+    expect(agentArgs('claude', 'edit', 'edit', 'linux', 'abc-123')).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--permission-mode',
+      'acceptEdits',
+      '--resume',
+      'abc-123',
+    ]);
+    // The tool list stays last, so it cannot take the resume option as a tool name.
+    expect(agentArgs('claude', 'edit', 'full', 'win32', 'abc-123').slice(-5)).toEqual([
+      '--resume',
+      'abc-123',
+      '--allowedTools',
+      'Bash',
+      'PowerShell',
+    ]);
+    expect(agentArgs('codex', 'edit', 'edit', 'linux', 'abc-123').slice(-3)).toEqual([
+      'resume',
+      'abc-123',
+      '-',
+    ]);
+    expect(agentArgs('agy', 'edit', 'edit', 'linux', 'abc-123').slice(-3)).toEqual([
+      '--conversation',
+      'abc-123',
+      '--print=',
+    ]);
+  });
+
+  it('ignores an id that is not a plain token', () => {
+    for (const bad of ['', 'a b', '$(rm -rf)', '-x', 'a;b', '"q"', 'x'.repeat(200)]) {
+      for (const agent of ['claude', 'codex', 'agy'] as const) {
+        expect(agentArgs(agent, 'edit', 'edit', 'linux', bad)).toEqual(agentArgs(agent, 'edit'));
+      }
+    }
+    for (const agent of ['claude', 'codex', 'agy'] as const) {
+      expect(agentArgs(agent, 'edit', 'full', 'win32', 'abc-123').every(isShellSafeArg)).toBe(true);
+    }
+  });
+
+  it('returns the conversation id the CLI reported', async () => {
+    const res = await runner('agy', 'ok').run(request('agy'));
+    expect(res.session).toBe('c');
   });
 });

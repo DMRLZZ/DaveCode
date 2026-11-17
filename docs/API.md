@@ -713,6 +713,73 @@ From the terminal: `davecode orchestrate "<objective>" [--agents claude,codex,ag
 [--max-tasks <n>] [--full-access] [--apply]`, `davecode orchestrate --list` and
 `davecode orchestrate --apply-run <id>` run the same service in-process.
 
+### Agent chats
+
+A conversation with one vendor CLI the user is signed in to (`claude`, `codex` or `agy`), in
+the project's own folder. Each message runs the agent headlessly and continues the agent's own
+conversation (`--resume`, `exec resume`, `--conversation`), so it remembers the earlier
+messages. The contract lives in `packages/core/src/chat/contract.ts`.
+
+The routes exist only when the gateway was given a `ChatService`; the runtime builds one for its
+project when it binds to loopback. Without one every route answers `404 not_found`.
+
+| Method   | Path                                       | Body                | Response                                        |
+| :------- | :----------------------------------------- | :------------------ | :---------------------------------------------- |
+| `GET`    | `/api/chat/sessions`                       | —                   | `{ "sessions": ChatSession[] }` (newest first)  |
+| `POST`   | `/api/chat/sessions`                       | `{ agent, title? }` | `201 ChatSession`                               |
+| `GET`    | `/api/chat/sessions/:id`                   | —                   | `ChatSession`                                   |
+| `PATCH`  | `/api/chat/sessions/:id`                   | `{ title }`         | `ChatSession`                                   |
+| `DELETE` | `/api/chat/sessions/:id`                   | —                   | `204`                                           |
+| `POST`   | `/api/chat/sessions/:id/messages`          | `{ text, access? }` | `202 ChatSession` (with the new turn `running`) |
+| `POST`   | `/api/chat/sessions/:id/cancel`            | —                   | `204`                                           |
+| `GET`    | `/api/chat/sessions/:id/output`            | —                   | `{ "output": RunTranscript }` keyed by turn id  |
+| `GET`    | `/api/chat/sessions/:id/turns/:turn/patch` | —                   | `{ "patch": string }`                           |
+
+```ts
+interface ChatSession {
+  id: string;
+  agent: 'claude' | 'codex' | 'agy';
+  title: string; // the first message's first line until renamed
+  agentSession?: string; // the agent's own conversation id
+  turns: ChatTurn[];
+  createdAt: string;
+  updatedAt: string;
+}
+interface ChatTurn {
+  id: string; // m1, m2, …
+  prompt: string;
+  status: 'running' | 'done' | 'failed' | 'cancelled';
+  access: 'edit' | 'full'; // as for the orchestrator
+  reply?: string;
+  error?: string; // short and redacted
+  files?: {
+    path: string;
+    status: 'added' | 'modified' | 'deleted';
+    additions: number;
+    deletions: number;
+  }[];
+  patchTruncated?: boolean;
+  tokens?: number;
+  startedAt: string;
+  finishedAt?: string;
+}
+```
+
+Errors: `400 invalid_body`, `404 not_found`, `409 busy` (a message while the previous one is
+still running, or deleting a chat that is working), `409 no_agent` (the CLI is not installed),
+`409 not_active` (cancel with nothing running).
+
+What a turn changed comes from git: before the turn `git stash create` records the working tree
+as a commit without touching it (or `HEAD` when nothing is pending), and afterwards the diff from
+that commit plus the files the turn created is the turn's patch, at most 300 KB. Changes that were
+pending before the turn are not attributed to it. Projects that are not git repositories get
+replies without files. Chats are stored in `<DAVECODE_HOME>/chat/<project key>/` (at most 50
+chats, 200 turns each); a turn still running when DaveCode stops is marked `failed`.
+
+Progress is streamed on `/api/events` as `chat.session` (`{ session }`, a full snapshot on every
+change), `chat.removed` (`{ sessionId }`) and `chat.output` (`{ sessionId, turnId, output, seq }`,
+the same chunks and numbering as `orchestrator.output`).
+
 ### Changes review
 
 Review what the agents changed and ship it. Every desktop pane runs either in the project's own

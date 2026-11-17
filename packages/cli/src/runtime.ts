@@ -10,8 +10,10 @@ import {
   type AccountControl,
   type AutonomousRunner,
   type ChangesService,
+  type ChatService,
   createAccountControl,
   createChangesService,
+  createChatService,
   createCliAgentRunner,
   createEngine,
   createGitWorkspace,
@@ -229,6 +231,11 @@ export interface RuntimeOptions {
    * gateway binds to loopback.
    */
   changes?: ChangesService | false;
+  /**
+   * Agent chats to serve (closed with the runtime), or false for none. By default one is built
+   * for the project when the gateway binds to loopback.
+   */
+  chat?: ChatService | false;
   /** Non-fatal startup problems (default: only a `log` event on the engine's bus). */
   onWarning?: (message: string) => void;
 }
@@ -243,6 +250,8 @@ export interface Runtime {
   orchestrator: OrchestratorService | undefined;
   /** The changes review, when this runtime serves one. */
   changes: ChangesService | undefined;
+  /** The agent chats, when this runtime serves them. */
+  chat: ChatService | undefined;
   /** Address to connect to, e.g. `http://127.0.0.1:4040`. */
   url: string;
   host: string;
@@ -277,6 +286,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
   let account: AccountControl | undefined;
   let orchestrator: OrchestratorService | undefined;
   let changes: ChangesService | undefined;
+  let chat: ChatService | undefined;
 
   try {
     const project = projectRoot
@@ -336,11 +346,24 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       });
     }
 
+    // Chats run the CLIs signed in on this machine, in the project folder.
+    if (options.chat !== undefined) {
+      chat = options.chat || undefined;
+    } else if (projectRoot && LOOPBACK_HOSTS.has(bindHost)) {
+      chat = createChatService({
+        projectDir: resolve(projectRoot),
+        home: options.home,
+        events: engine.events,
+        runner: createCliAgentRunner({ env: options.env }),
+      });
+    }
+
     const app = await startGateway(engine, {
       logger: options.logger ?? false,
       ...(account ? { account } : {}),
       ...(orchestrator ? { orchestrator } : {}),
       ...(changes ? { changes } : {}),
+      ...(chat ? { chat } : {}),
       ...((options.loginLauncher ?? loginLauncher)
         ? { loginLauncher: options.loginLauncher ?? loginLauncher }
         : {}),
@@ -365,6 +388,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
       goals,
       orchestrator,
       changes,
+      chat,
       url: `http://${connectHost(host)}:${port}`,
       host,
       port,
@@ -377,6 +401,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
           if (active) await goals?.cancel(active);
           await runner?.stop();
           await orchestrator?.close().catch(() => undefined);
+          await chat?.close().catch(() => undefined);
           await account?.close();
           await app.close();
         } finally {
@@ -386,6 +411,7 @@ export async function startRuntime(options: RuntimeOptions): Promise<Runtime> {
     };
   } catch (err) {
     await orchestrator?.close().catch(() => undefined);
+    await chat?.close().catch(() => undefined);
     await account?.close();
     engine.close();
     throw err;

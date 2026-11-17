@@ -148,6 +148,8 @@ export interface AgentRunRequest {
   mode: 'plan' | 'edit';
   /** Only for `edit` runs; defaults to `edit` (no shell for Claude Code). */
   access?: OrchestratorAccess;
+  /** Continue this conversation of the agent (an id an earlier result returned as `session`). */
+  resume?: string;
   signal: AbortSignal;
   timeoutMs: number;
   onOutput(chunk: AgentOutput): void;
@@ -165,6 +167,8 @@ export interface AgentRunResult {
    */
   retryable?: boolean;
   tokens?: number;
+  /** The agent's own id for this conversation, to continue it with `resume`. */
+  session?: string;
 }
 
 export interface AgentRunner {
