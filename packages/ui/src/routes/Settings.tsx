@@ -9,6 +9,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { createHttpClient, errorMessage } from '../lib/api';
 import { useData } from '../lib/data';
 import { formatDuration } from '../lib/format';
+import { setColorMode } from '../lib/preferences';
 import { useHealth } from '../lib/queries';
 import {
   type DataMode,
@@ -20,6 +21,7 @@ import {
 import { toast } from '../lib/toast';
 import { ui } from '../lib/ui-state';
 import { isValidUrl, SecretInput } from './accounts/forms';
+import { WorkspaceSettings } from './WorkspaceSettings';
 
 const REPO = 'https://github.com/DMRLZZ/DaveCode';
 
@@ -174,7 +176,7 @@ export function Settings() {
           <Segmented<ThemePref>
             label="Theme"
             value={settings.theme}
-            onChange={(v) => updateSettings({ theme: v })}
+            onChange={(v) => setColorMode(v)}
             options={[
               { value: 'dark', label: 'Dark', icon: Moon },
               { value: 'light', label: 'Light', icon: Sun },
@@ -186,6 +188,8 @@ export function Settings() {
           </Button>
         </div>
       </Panel>
+
+      <WorkspaceSettings />
 
       <Panel aria-labelledby="about-title">
         <PanelHeader id="about-title" title="About" />

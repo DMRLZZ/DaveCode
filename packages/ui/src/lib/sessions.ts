@@ -27,7 +27,8 @@ export type WorkspaceAction =
   | 'minimize'
   | 'zoom'
   | 'close'
-  | 'sidebar';
+  | 'sidebar'
+  | 'new-agent';
 
 const KEYS: Record<string, WorkspaceAction> = {
   d: 'split-right',
@@ -36,6 +37,7 @@ const KEYS: Record<string, WorkspaceAction> = {
   enter: 'zoom',
   w: 'close',
   b: 'sidebar',
+  t: 'new-agent',
 };
 
 /** What the keyboard shows next to each action. */
@@ -46,6 +48,7 @@ export const SHORTCUT_LABEL: Record<WorkspaceAction, string> = {
   zoom: 'Ctrl+Shift+Enter',
   close: 'Ctrl+Shift+W',
   sidebar: 'Ctrl+Shift+B',
+  'new-agent': 'Ctrl+Shift+T',
 };
 
 type KeyLike = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'altKey'>;

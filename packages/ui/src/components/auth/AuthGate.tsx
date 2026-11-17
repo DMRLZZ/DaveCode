@@ -9,6 +9,7 @@ import {
   signOutAccount,
   startAccountSignIn,
 } from '../../lib/account';
+import { getPreferences, updatePreferences } from '../../lib/preferences';
 import { navigate, parseLocation } from '../../lib/router';
 import { updateSettings, useSettings } from '../../lib/settings';
 import type { LoginProvider, LoginStatus } from '../../lib/types';
@@ -55,7 +56,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const settings = useSettings();
   const base = settings.gatewayUrl.replace(/\/+$/, '');
   const qc = useQueryClient();
-  const [local, setLocal] = useState(false);
+  // Remembered: whoever chose this device once is not asked again on the next launch.
+  const [local, setLocal] = useState(() => getPreferences().localMode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [signInUrl, setSignInUrl] = useState<string>();
@@ -114,6 +116,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       }
       qc.clear();
       setLocal(false);
+      updatePreferences({ localMode: false });
       navigate(inside ? '/' : '/login', { replace: true });
       await Promise.all([session.refetch(), inside ? account.refetch() : undefined]);
       setInside(false);
@@ -168,6 +171,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   function enterLocal() {
     setLocal(true);
+    updatePreferences({ localMode: true });
     navigate('/', { replace: true });
   }
 

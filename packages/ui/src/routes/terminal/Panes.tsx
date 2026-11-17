@@ -16,10 +16,13 @@ import { cn } from '../../lib/cn';
 import { useOrchestratorRunMap } from '../../lib/data';
 import {
   chooseProject,
+  onNotificationClick,
   type PaneKind,
   type TerminalBridge,
   workspaceBridge,
 } from '../../lib/desktop';
+import { takeFirstSession } from '../../lib/first-session';
+import { useInstalled } from '../../lib/installed';
 import {
   type Divider,
   dividers,
@@ -28,6 +31,7 @@ import {
   resizeAt,
   type SplitDirection,
 } from '../../lib/layout';
+import { notifyUser } from '../../lib/notify';
 import {
   availableAgents,
   isActiveRun,
@@ -36,6 +40,7 @@ import {
   startRequest,
   toggleAgent,
 } from '../../lib/orchestrator';
+import { usePreferences } from '../../lib/preferences';
 import {
   useChangesWorkspaces,
   useCreateWorkspace,
@@ -47,6 +52,7 @@ import {
 import { workspaceAction } from '../../lib/sessions';
 import type { OrchestratorAccess, OrchestratorAgent } from '../../lib/types';
 import {
+  EMPTY_WORKSPACE,
   initialWorkspace,
   isShown,
   parseSavedWorkspace,
@@ -58,7 +64,7 @@ import {
 import { ChangesPanel } from './Changes';
 import { KINDS, kindMeta } from './kinds';
 import { AccessToggle, AgentChips, type BarMode, ModeSwitch, PlannerPicker } from './Orchestrator';
-import { Pane } from './Pane';
+import { Pane, type PaneAttention } from './Pane';
 import { RunThread } from './RunThread';
 import { SessionSidebar, type SidebarSession } from './SessionSidebar';
 
@@ -80,7 +86,12 @@ interface Opening {
 }
 
 function freshOpening(): Opening {
-  return { state: initialWorkspace(), sidebar: true, access: 'edit', restoredIsolated: new Set() };
+  // Right after the first-run setup, the chosen agent opens instead of a plain shell.
+  const agent = takeFirstSession();
+  const state = agent
+    ? workspaceReducer(EMPTY_WORKSPACE, { type: 'open', kind: agent, label: kindMeta(agent).label })
+    : initialWorkspace();
+  return { state, sidebar: true, access: 'edit', restoredIsolated: new Set() };
 }
 
 /**
@@ -297,6 +308,44 @@ function Workspace({
     if (writer) writers.current.set(key, writer);
     else writers.current.delete(key);
   }, []);
+  const preferences = usePreferences();
+  const installed = useInstalled('agents');
+
+  // --- Attention: a pane that finished or asked for the person while they looked elsewhere ----
+  const [attention, setAttention] = useState<ReadonlySet<number>>(() => new Set());
+  const latest = useRef({ state, view });
+  latest.current = { state, view };
+  const onAttention = useCallback((key: number, why: PaneAttention) => {
+    const { state: now, view: shown } = latest.current;
+    const session = now.sessions.find((s) => s.key === key);
+    if (!session) return;
+    const seen =
+      document.hasFocus() && shown === 'terminals' && now.focused === key && isShown(now, key);
+    if (seen) return;
+    setAttention((current) => (current.has(key) ? current : new Set(current).add(key)));
+    const label = kindMeta(session.kind).label;
+    notifyUser(`pane:${key}`, {
+      title: why.kind === 'signal' ? `${session.name} needs you` : `${session.name} finished`,
+      body:
+        why.kind === 'signal' && why.message
+          ? why.message
+          : session.kind === 'shell'
+            ? 'The command finished.'
+            : `${label} is waiting for you.`,
+      target: { kind: 'pane', key },
+    });
+  }, []);
+  // Looking at a pane is reading what it had to say.
+  useEffect(() => {
+    const key = state.focused;
+    if (view !== 'terminals' || key === undefined || !attention.has(key)) return;
+    setAttention((current) => {
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
+  }, [state.focused, view, attention]);
+
   const onLive = useCallback((key: number, live: boolean) => {
     setLiveKeys((current) => {
       if (current.has(key) === live) return current;
@@ -340,9 +389,51 @@ function Workspace({
   const [startError, setStartError] = useState<string>();
   const shownRun = runs.find((r) => r.id === runId) ?? runs[0];
   const busyRun = runs.find(isActiveRun);
+  const installedLeads = availableAgents(availability);
+  // The default agent leads when it can; otherwise the first agent the orchestrator can drive.
+  const lead =
+    planner ??
+    (installedLeads.includes(preferences.defaultAgent as OrchestratorAgent)
+      ? (preferences.defaultAgent as OrchestratorAgent)
+      : installedLeads[0]);
+
+  // A run that ends while the person looks elsewhere is worth a notification.
+  const runStatus = useRef(new Map<string, boolean>());
+  const shownRunId = shownRun?.id;
+  useEffect(() => {
+    for (const run of runs) {
+      const wasActive = runStatus.current.get(run.id);
+      const nowActive = isActiveRun(run);
+      runStatus.current.set(run.id, nowActive);
+      if (wasActive !== true || nowActive) continue;
+      const watching = document.hasFocus() && view === 'run' && shownRunId === run.id;
+      if (watching) continue;
+      const outcome =
+        run.status === 'done' ? 'finished' : run.status === 'failed' ? 'failed' : 'was cancelled';
+      notifyUser(`run:${run.id}`, {
+        title: `Orchestrator run ${outcome}`,
+        body: run.objective.length > 160 ? `${run.objective.slice(0, 159)}…` : run.objective,
+        target: { kind: 'run', id: run.id },
+      });
+    }
+  }, [runs, view, shownRunId]);
+
+  // A click on a notification brings up what it was about.
+  useEffect(
+    () =>
+      onNotificationClick((target) => {
+        if (target.kind === 'pane') {
+          setView('terminals');
+          dispatch({ type: 'focus', key: target.key });
+        } else {
+          setRunId(target.id);
+          setView('run');
+        }
+      }),
+    [],
+  );
 
   const orchestrate = () => {
-    const lead = planner ?? availableAgents(availability)[0];
     const input = startRequest(message, selection, availability, lead, access);
     if (!input || start.isPending) return;
     setStartError(undefined);
@@ -390,6 +481,11 @@ function Workspace({
       setSidebar(sidebar === 'on' ? 'off' : 'on');
       return;
     }
+    if (action === 'new-agent') {
+      event.preventDefault();
+      add(preferences.defaultAgent);
+      return;
+    }
     const key = state.focused;
     if (view !== 'terminals' || key === undefined) return;
     event.preventDefault();
@@ -419,6 +515,7 @@ function Workspace({
     name: s.name,
     minimized: s.minimized,
     live: liveKeys.has(s.key),
+    attention: attention.has(s.key),
     branch: s.workspace
       ? shortBranch(workspaceById.get(s.workspace)?.branch ?? 'isolated')
       : undefined,
@@ -465,6 +562,9 @@ function Workspace({
           changesCount={changesCount}
           onShowChanges={() => (changesOpen ? setChangesOpen(false) : showChanges())}
           onCollapse={() => setSidebar('off')}
+          installed={installed}
+          defaultAgent={preferences.defaultAgent}
+          yolo={preferences.yolo}
         />
       )}
 
@@ -611,6 +711,7 @@ function Workspace({
                       onZoom={() => dispatch({ type: 'zoom', key: session.key })}
                       onWriter={onWriter}
                       onLive={onLive}
+                      onAttention={onAttention}
                       onShowChanges={() => showChanges(session.workspace)}
                     />
                   </div>
@@ -630,6 +731,7 @@ function Workspace({
               {shownCount === 0 && (
                 <EmptyTerminals
                   minimized={state.sessions.length}
+                  installed={installed}
                   onAdd={add}
                   onRestoreAll={() => {
                     for (const session of state.sessions) {
@@ -721,7 +823,7 @@ function Workspace({
                 <>
                   <PlannerPicker
                     installed={availableAgents(availability)}
-                    planner={planner}
+                    planner={lead}
                     onChange={setPlanner}
                   />
                   <AgentChips
@@ -780,11 +882,13 @@ function Workspace({
 
 function EmptyTerminals({
   minimized,
+  installed,
   onAdd,
   onRestoreAll,
 }: {
   /** Sessions that still run, off the grid. */
   minimized: number;
+  installed: Map<string, boolean> | undefined;
   onAdd: (kind: PaneKind) => void;
   onRestoreAll: () => void;
 }) {
@@ -805,7 +909,9 @@ function EmptyTerminals({
         </button>
       )}
       <div className="flex flex-wrap justify-center gap-1">
-        {KINDS.map(({ kind, label, accent }) => (
+        {KINDS.filter(
+          (k) => k.kind === 'shell' || installed === undefined || installed.get(k.kind),
+        ).map(({ kind, label, accent }) => (
           <button
             key={kind}
             type="button"

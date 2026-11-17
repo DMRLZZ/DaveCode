@@ -29,6 +29,8 @@ export interface SidebarSession {
   live: boolean;
   /** Short branch of its isolated workspace, when it has one. */
   branch?: string | undefined;
+  /** It finished or asked for the person while they looked elsewhere. */
+  attention: boolean;
 }
 
 /** Runs listed before "Show all". */
@@ -94,6 +96,9 @@ export function SessionSidebar({
   changesCount,
   onShowChanges,
   onCollapse,
+  installed,
+  defaultAgent,
+  yolo,
 }: {
   projectName: string | undefined;
   /** Absent outside the desktop app. */
@@ -121,8 +126,20 @@ export function SessionSidebar({
   changesCount: number;
   onShowChanges: () => void;
   onCollapse: () => void;
+  /** Which agent CLIs are on this computer; undefined until known. */
+  installed: Map<string, boolean> | undefined;
+  defaultAgent: PaneKind;
+  /** New agent sessions start without asking for permission. */
+  yolo: boolean;
 }) {
   const [adding, setAdding] = useState(false);
+  const [allKinds, setAllKinds] = useState(false);
+  // The shell and the agents found on this computer first, the default agent at the top of those.
+  const present = KINDS.filter(
+    (k) => k.kind === 'shell' || installed === undefined || installed.get(k.kind),
+  ).sort((a, b) => Number(b.kind === defaultAgent) - Number(a.kind === defaultAgent));
+  const absent = KINDS.filter((k) => !present.includes(k));
+  const defaultMeta = kindMeta(defaultAgent);
   const [allRuns, setAllRuns] = useState(false);
   const menuOpen = adding || sessions.length === 0;
   const shownRuns = allRuns ? runs : runs.slice(0, RUNS_SHOWN);
@@ -181,23 +198,60 @@ export function SessionSidebar({
           Sessions
         </Heading>
 
+        <button
+          type="button"
+          disabled={creating}
+          onClick={() => onAdd(defaultAgent)}
+          title={`New ${defaultMeta.label} session (Ctrl+Shift+T)`}
+          className="mx-2 mb-2 flex h-7 w-[calc(100%-1rem)] items-center gap-2 rounded border border-zinc-800 px-2 text-left text-zinc-200 hover:border-zinc-600 hover:text-white disabled:opacity-50"
+        >
+          <Plus aria-hidden className="size-3 shrink-0" style={{ color: defaultMeta.accent }} />
+          <span className="truncate">New {defaultMeta.label}</span>
+          {yolo && defaultMeta.kind !== 'shell' && (
+            <span
+              title="YOLO mode: agents start without asking for permission"
+              className="ml-auto shrink-0 rounded border border-amber-300/40 px-1 text-[9px] text-amber-300"
+            >
+              YOLO
+            </span>
+          )}
+        </button>
+
         {menuOpen && (
           <div id="new-session-menu" className="mx-2 mb-2 rounded border border-zinc-800 py-1">
-            {KINDS.map(({ kind, label, accent }) => (
+            {[...present, ...(allKinds ? absent : [])].map(({ kind, label, accent }) => {
+              const missing = absent.some((k) => k.kind === kind);
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  disabled={creating}
+                  title={missing ? `${label} was not found on this computer` : undefined}
+                  onClick={() => {
+                    onAdd(kind);
+                    setAdding(false);
+                  }}
+                  className={cn(
+                    'flex h-6 w-full items-center gap-2 px-2 text-left hover:bg-zinc-900 hover:text-white disabled:opacity-50',
+                    missing ? 'text-zinc-600' : 'text-zinc-300',
+                  )}
+                >
+                  <Plus aria-hidden className="size-3 shrink-0" style={{ color: accent }} />
+                  <span className="truncate">{label}</span>
+                  {kind === defaultAgent && <span className="ml-auto text-zinc-600">default</span>}
+                  {missing && <span className="ml-auto text-zinc-700">not found</span>}
+                </button>
+              );
+            })}
+            {absent.length > 0 && (
               <button
-                key={kind}
                 type="button"
-                disabled={creating}
-                onClick={() => {
-                  onAdd(kind);
-                  setAdding(false);
-                }}
-                className="flex h-6 w-full items-center gap-2 px-2 text-left text-zinc-300 hover:bg-zinc-900 hover:text-white disabled:opacity-50"
+                onClick={() => setAllKinds((all) => !all)}
+                className="flex h-6 w-full items-center px-2 text-left text-zinc-600 hover:text-zinc-200"
               >
-                <Plus aria-hidden className="size-3 shrink-0" style={{ color: accent }} />
-                {label}
+                {allKinds ? 'Fewer agents' : `More agents (${absent.length})`}
               </button>
-            ))}
+            )}
             {isolateOffered && (
               <label
                 title="New sessions get their own git worktree and branch, so agents never step on each other"
@@ -274,6 +328,14 @@ export function SessionSidebar({
                     </span>
                   )}
                 </div>
+                {session.attention && (
+                  <span
+                    role="img"
+                    aria-label="Finished or needs you"
+                    title="Finished or needs you"
+                    className="size-1.5 shrink-0 rounded-full bg-zinc-100"
+                  />
+                )}
                 {session.minimized && <span className="shrink-0 text-zinc-600">min</span>}
                 <span className="hidden shrink-0 items-center gap-0.5 group-focus-within:flex group-hover:flex">
                   <RowButton

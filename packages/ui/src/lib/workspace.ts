@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AGENT_IDS } from './agents';
 import type { PaneKind } from './desktop';
 import {
   addPane,
@@ -230,7 +231,7 @@ const savedSchema = z.object({
     .array(
       z.object({
         key: savedKey,
-        kind: z.enum(['shell', 'claude', 'codex', 'agy', 'davecode']),
+        kind: z.enum(['shell', ...AGENT_IDS] as [PaneKind, ...PaneKind[]]),
         name: z.string().min(1).max(SESSION_NAME_MAX_LENGTH),
         workspace: z
           .string()

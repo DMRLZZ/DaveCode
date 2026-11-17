@@ -9,11 +9,14 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ActivityTracker, scanSignals } from '../../lib/attention';
 import { lineCounts, shortBranch } from '../../lib/changes';
 import { cn } from '../../lib/cn';
 import type { PaneKind, TerminalBridge } from '../../lib/desktop';
 import type { SplitDirection } from '../../lib/layout';
+import { getPreferences, useColorMode, usePreferences } from '../../lib/preferences';
 import { isWorkspaceShortcut } from '../../lib/sessions';
+import { terminalTheme } from '../../lib/terminal-themes';
 import type { ChangesWorkspace } from '../../lib/types';
 import { kindMeta } from './kinds';
 
@@ -32,6 +35,18 @@ function isCopy(e: KeyboardEvent, selection: boolean): boolean {
 
 function isPaste(e: KeyboardEvent): boolean {
   return e.key.toLowerCase() === 'v' && (e.ctrlKey || e.metaKey);
+}
+
+/** Why a pane wants the person: its work went quiet, or the terminal asked for them. */
+export type PaneAttention = { kind: 'settled' } | { kind: 'signal'; message?: string | undefined };
+
+/** How often a pane checks whether its work went quiet. */
+const SETTLE_CHECK_MS = 1000;
+
+function useTerminalColors() {
+  const mode = useColorMode();
+  const preferences = usePreferences();
+  return terminalTheme(preferences.terminalTheme[mode], mode).colors;
 }
 
 /** The pane's name; double-click (or F2 on it) turns it into a field. */
@@ -136,6 +151,7 @@ export function Pane({
   onZoom,
   onWriter,
   onLive,
+  onAttention,
   onShowChanges,
 }: {
   session: PaneSession;
@@ -154,13 +170,17 @@ export function Pane({
   onZoom: () => void;
   onWriter: (key: number, writer: ((data: string) => void) | undefined) => void;
   onLive: (key: number, live: boolean) => void;
+  onAttention: (key: number, attention: PaneAttention) => void;
   onShowChanges: () => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const terminal = useRef<Terminal | undefined>(undefined);
   const refit = useRef<() => void>(() => {});
   const [live, setLive] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number }>();
   const meta = kindMeta(session.kind);
+  const colors = useTerminalColors();
+  const initialColors = useRef(colors);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: one terminal per pane for its lifetime
   useEffect(() => {
@@ -173,7 +193,7 @@ export function Pane({
       fontSize: 13,
       lineHeight: 1.2,
       scrollback: 10_000,
-      theme: { background: '#000000', foreground: '#f4f4f5', cursor: '#ffffff' },
+      theme: initialColors.current,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -200,11 +220,23 @@ export function Pane({
       setLive(value);
       onLive(session.key, value);
     };
+    // A long stretch of output that stops, or a bell, means the pane wants the person.
+    const activity = new ActivityTracker();
+    const received = (data: string) => {
+      term.write(data);
+      activity.output(Date.now());
+      for (const signal of scanSignals(data)) {
+        onAttention(session.key, { kind: 'signal', message: signal.message });
+      }
+    };
+    const settleTimer = window.setInterval(() => {
+      if (activity.settled(Date.now())) onAttention(session.key, { kind: 'settled' });
+    }, SETTLE_CHECK_MS);
     // Output can arrive before `open` resolves, so nothing is matched to this pane yet.
     const early: [string, string][] = [];
     const offData = bridge.onData((from, data) => {
       if (starting) early.push([from, data]);
-      else if (from === id) term.write(data);
+      else if (from === id) received(data);
     });
     const offExit = bridge.onExit((from, code) => {
       if (from !== id) return;
@@ -248,7 +280,7 @@ export function Pane({
         }
         id = opened;
         starting = false;
-        for (const [from, data] of early) if (from === opened) term.write(data);
+        for (const [from, data] of early) if (from === opened) received(data);
         early.length = 0;
         alive(true);
         onWriter(session.key, (data) => void bridge.write({ id: opened, data }));
@@ -262,6 +294,7 @@ export function Pane({
 
     return () => {
       disposed = true;
+      window.clearInterval(settleTimer);
       cancelAnimationFrame(frame);
       observer.disconnect();
       offData();
@@ -272,6 +305,34 @@ export function Pane({
       term.dispose();
     };
   }, []);
+
+  // A new theme or color mode repaints the terminal in place.
+  useEffect(() => {
+    if (terminal.current) terminal.current.options.theme = colors;
+  }, [colors]);
+
+  const copySelection = () => {
+    const term = terminal.current;
+    if (!term?.hasSelection()) return false;
+    void bridge.copy(term.getSelection());
+    term.clearSelection();
+    return true;
+  };
+  const paste = async () => {
+    const text = (await bridge.readClipboard?.()) ?? '';
+    // `paste` keeps bracketed paste, so a shell or an agent sees one paste, not typed keys.
+    if (text) terminal.current?.paste(text);
+    terminal.current?.focus();
+  };
+  const onContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    if (getPreferences().rightClick === 'paste' && !event.ctrlKey) {
+      if (!copySelection()) void paste();
+      return;
+    }
+    const bounds = event.currentTarget.getBoundingClientRect();
+    setMenu({ x: event.clientX - bounds.left, y: event.clientY - bounds.top });
+  };
 
   // A hidden pane has no size; fit again when it comes back.
   useEffect(() => {
@@ -366,7 +427,92 @@ export function Pane({
           </HeaderButton>
         </span>
       </header>
-      <div ref={host} className="min-h-0 flex-1 overflow-hidden p-1.5" />
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: the terminal inside takes the keyboard */}
+      <div
+        className="relative min-h-0 flex-1"
+        style={{ background: colors.background }}
+        onContextMenu={onContextMenu}
+      >
+        <div ref={host} className="h-full overflow-hidden p-1.5" />
+        {menu && (
+          <TerminalMenu
+            at={menu}
+            canCopy={Boolean(terminal.current?.hasSelection())}
+            onClose={() => {
+              setMenu(undefined);
+              terminal.current?.focus();
+            }}
+            onCopy={copySelection}
+            onPaste={() => void paste()}
+            onSelectAll={() => terminal.current?.selectAll()}
+            onClear={() => terminal.current?.clear()}
+          />
+        )}
+      </div>
     </section>
+  );
+}
+
+/** The right-click menu of a terminal pane. */
+function TerminalMenu({
+  at,
+  canCopy,
+  onClose,
+  onCopy,
+  onPaste,
+  onSelectAll,
+  onClear,
+}: {
+  at: { x: number; y: number };
+  canCopy: boolean;
+  onClose: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onSelectAll: () => void;
+  onClear: () => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    box.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus();
+    const away = (event: MouseEvent) => {
+      if (!box.current?.contains(event.target as Node)) onClose();
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('mousedown', away);
+    window.addEventListener('keydown', key);
+    return () => {
+      window.removeEventListener('mousedown', away);
+      window.removeEventListener('keydown', key);
+    };
+  }, [onClose]);
+  const item = (label: string, run: () => void, disabled = false) => (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={() => {
+        run();
+        onClose();
+      }}
+      className="flex h-7 w-full items-center px-3 text-left hover:bg-zinc-800 disabled:text-zinc-600 disabled:hover:bg-transparent"
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      ref={box}
+      role="menu"
+      aria-label="Terminal"
+      className="absolute z-20 w-40 rounded-md border border-zinc-700 bg-zinc-900 py-1 font-mono text-[11px] text-zinc-200 shadow-lg"
+      style={{ left: at.x, top: at.y }}
+    >
+      {item('Copy', onCopy, !canCopy)}
+      {item('Paste', onPaste)}
+      {item('Select all', onSelectAll)}
+      {item('Clear', onClear)}
+    </div>
   );
 }
